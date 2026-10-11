@@ -1,4 +1,13 @@
 -- =============================================================================
+-- VERSION ORDERING NOTE: this file is dated 20260925050112 to match the live
+-- applied version and, critically, to sort BEFORE the shop-scoping migrations
+-- (20260927134519 / 134618 / 134801) that ALTER this table, widen its RLS, and
+-- recreate record_order_shipment. Those files add `order_shipments.shop_id` and
+-- the `is_shop_member` guards; if this creation file sorted after them (it was
+-- previously mis-dated 20260928000000), a fresh `supabase db reset` would try
+-- to alter a table that does not exist yet. Do not re-date this later than
+-- 20260927134519. (Audit finding F-02.)
+-- =============================================================================
 -- Seller fulfillment: order_shipments — one lightweight tracking record per
 -- seller order (never per checkout_group_id). Stores the manual courier +
 -- tracking number captured at "Mark as shipped", plus a `packed_at` audit
