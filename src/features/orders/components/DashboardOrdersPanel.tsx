@@ -42,7 +42,7 @@ export async function DashboardOrdersPanel({
   const params: OrderListParams = parsed.data;
 
   let result: PaginatedResult<Order>;
-  let attentionCounts: { needsConfirmation: number; codAwaitingCollection: number };
+  let attentionCounts: Awaited<ReturnType<typeof getOrderAttentionCounts>>;
   try {
     [result, attentionCounts] = await Promise.all([
       listDashboardOrders(params),
@@ -59,6 +59,8 @@ export async function DashboardOrdersPanel({
       <OrderAttentionStrip
         needsConfirmation={attentionCounts.needsConfirmation}
         codAwaitingCollection={attentionCounts.codAwaitingCollection}
+        returnsAwaitingRestock={attentionCounts.returnsAwaitingRestock}
+        returnsHref={isAdmin ? ROUTES.adminReturns : ROUTES.sellerOrders}
       />
 
       {items.length === 0 ? (

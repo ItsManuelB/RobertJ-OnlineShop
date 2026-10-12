@@ -188,6 +188,19 @@ export function CartSummary({ isAuthenticated }: CartSummaryProps) {
     isRowUnavailable(item),
   );
 
+  // A selected line can carry more quantity than is actually in stock (the
+  // cart itself never enforces a ceiling — see the F-05 audit finding) and
+  // previously only surfaced an informational "Only N left" banner, letting
+  // the buyer reach checkout anyway and fail at the very last step. Blocking
+  // here instead routes them to the existing "Reduce to N" control first.
+  const isRowLowStock = (item: { productId: string; variantId?: string; quantity: number }) => {
+    if (!checked || isRowUnavailable(item)) return false;
+    const live = availability?.data.get(getCartLineKey(item));
+    return Boolean(live && live.quantity < item.quantity);
+  };
+  const hasLowStockSelectedItem = selectedItems.some((item) => isRowLowStock(item));
+  const blockCheckout = hasUnavailableSelectedItem || hasLowStockSelectedItem;
+
   function handleDeleteSelected() {
     if (selectedCount === 0) return;
     removeMany(selectedItems);
@@ -573,20 +586,25 @@ export function CartSummary({ isAuthenticated }: CartSummaryProps) {
             One of your selected items is no longer available — deselect or remove it to check
             out the rest.
           </p>
+        ) : hasLowStockSelectedItem ? (
+          <p className="text-xs font-semibold text-rj-red-dark">
+            One of your selected items has less stock than you&apos;ve selected — use
+            &quot;Reduce to N&quot; above to check out the rest.
+          </p>
         ) : null}
 
         <Link
           href={ROUTES.checkout}
-          aria-disabled={selectedCount === 0 || hasUnavailableSelectedItem}
+          aria-disabled={selectedCount === 0 || blockCheckout}
           onClick={(event) => {
-            if (selectedCount === 0 || hasUnavailableSelectedItem) event.preventDefault();
+            if (selectedCount === 0 || blockCheckout) event.preventDefault();
           }}
         >
           <Button
             variant="rj"
             size="rj"
             className="w-full"
-            disabled={selectedCount === 0 || hasUnavailableSelectedItem}
+            disabled={selectedCount === 0 || blockCheckout}
           >
             Checkout
           </Button>

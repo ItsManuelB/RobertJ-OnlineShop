@@ -38,6 +38,8 @@ export const dashboardOrderListParamsSchema = paginationSchema.extend({
   status: orderStatusSchema.optional(),
   paymentMethod: z.enum(["cod", "xendit"]).optional(),
   dateRange: z.enum(["today", "7d", "30d"]).optional(),
+  /** Admin-only shop filter (F-12) — a seller's own `listDashboardOrders` call is already shop-scoped by RLS, so this is simply ignored (harmless) if a non-admin URL ever carried it. */
+  shopId: uuidSchema.optional(),
   // Deliberately not z.coerce.boolean() — Boolean("false") is true, which
   // would make ?attentionOnly=false behave identically to ?attentionOnly=true.
   attentionOnly: z

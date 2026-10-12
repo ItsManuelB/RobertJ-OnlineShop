@@ -332,6 +332,8 @@ const orderExportFiltersSchema = dashboardOrderListParamsSchema.omit({ page: tru
 export interface OrderExportRow {
   orderNumber: string;
   buyerName: string | null;
+  /** Admin-only column in the exported CSV (F-12) — carried here regardless of caller role, same as `Order.shopName` itself. */
+  shopName: string | null;
   itemCount: number;
   totalCents: number;
   currency: string;
@@ -356,6 +358,7 @@ export async function exportOrdersAction(
       orders.map((order) => ({
         orderNumber: order.orderNumber,
         buyerName: order.buyerName,
+        shopName: order.shopName,
         itemCount: order.items.length,
         totalCents: order.totalCents,
         currency: order.currency,

@@ -57,6 +57,39 @@ export function rpcError(context: string, error: unknown): Error {
 }
 
 /**
+ * Thrown by `createOrderGroup` when `create_order_group`'s per-seller
+ * attribution (F-06) identifies which seller's item caused the all-or-nothing
+ * group checkout to fail. `sellerId` is `null` when the RPC failed for a
+ * reason that was never seller-specific (e.g. "Duplicate order submission"),
+ * in which case the caller should fall back to the generic message.
+ */
+export class GroupOrderError extends Error {
+  constructor(
+    message: string,
+    public readonly sellerId: string | null,
+  ) {
+    super(message);
+    this.name = "GroupOrderError";
+  }
+}
+
+/**
+ * Like `rpcError`, but for `create_order_group` specifically: preserves the
+ * raw `.message` (same curated-business-message trust as `rpcError`) and
+ * additionally extracts the failing seller's id from the Postgres `DETAIL`
+ * field `create_order_group` attaches on a per-seller failure, so the caller
+ * can attribute the error back to one seller group instead of showing one
+ * opaque message for the whole multi-seller checkout.
+ */
+export function groupOrderError(context: string, error: unknown): GroupOrderError {
+  const e = extract(error);
+  console.error(`[queries] ${context}`, e);
+  const message = e.message && e.message.trim().length > 0 ? e.message : context;
+  const sellerId = e.details && e.details.trim().length > 0 ? e.details : null;
+  return new GroupOrderError(message, sellerId);
+}
+
+/**
  * Like `rpcError`, but only trusts the RPC's raised `.message` when its
  * error code is in `allowedCodes` — the exact `errcode`s that specific RPC
  * is documented to `RAISE EXCEPTION ... using errcode = '…'` with for its

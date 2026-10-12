@@ -80,7 +80,11 @@ export function BuyerOrderCard({ order, shopName, shopId, groupInfo = null }: Bu
             </Link>
           ) : null}
         </div>
-        <OrderStatusBadge status={order.status} />
+        <OrderStatusBadge
+          status={order.status}
+          paymentStatus={order.paymentStatus}
+          paymentMethod={order.paymentMethod}
+        />
       </div>
 
       <ul className="flex flex-col divide-y divide-rj-gray-100 border-t border-rj-gray-100">

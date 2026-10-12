@@ -158,10 +158,21 @@ export function OrdersDataTable({ orders, isAdmin }: OrdersDataTableProps) {
       }
       downloadCsv(
         "orders.csv",
-        ["Order #", "Buyer", "Items", "Total (PHP)", "Method", "Payment status", "Order status", "Placed"],
+        [
+          "Order #",
+          "Buyer",
+          ...(isAdmin ? ["Shop"] : []),
+          "Items",
+          "Total (PHP)",
+          "Method",
+          "Payment status",
+          "Order status",
+          "Placed",
+        ],
         result.data.map((row) => [
           row.orderNumber,
           row.buyerName,
+          ...(isAdmin ? [row.shopName ?? "—"] : []),
           row.itemCount,
           (row.totalCents / 100).toFixed(2),
           row.paymentMethod === "cod" ? "COD" : "Online",
@@ -178,10 +189,21 @@ export function OrdersDataTable({ orders, isAdmin }: OrdersDataTableProps) {
     const rows = selectedOrders;
     downloadCsv(
       "orders-selected.csv",
-      ["Order #", "Buyer", "Items", "Total (PHP)", "Method", "Payment status", "Order status", "Placed"],
+      [
+        "Order #",
+        "Buyer",
+        ...(isAdmin ? ["Shop"] : []),
+        "Items",
+        "Total (PHP)",
+        "Method",
+        "Payment status",
+        "Order status",
+        "Placed",
+      ],
       rows.map((o) => [
         o.orderNumber,
         o.buyerName,
+        ...(isAdmin ? [o.shopName ?? "—"] : []),
         o.items.length,
         (o.totalCents / 100).toFixed(2),
         o.paymentMethod === "cod" ? "COD" : "Online",
@@ -269,6 +291,9 @@ export function OrdersDataTable({ orders, isAdmin }: OrdersDataTableProps) {
                 />
               </th>
               <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Order</th>
+              {isAdmin ? (
+                <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Shop</th>
+              ) : null}
               <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Items</th>
               <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total</th>
               <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Payment</th>
@@ -309,6 +334,11 @@ export function OrdersDataTable({ orders, isAdmin }: OrdersDataTableProps) {
                         </div>
                       </div>
                     </td>
+                    {isAdmin ? (
+                      <td className="p-3 align-top text-sm text-muted-foreground">
+                        {order.shopName ?? "—"}
+                      </td>
+                    ) : null}
                     <td className="p-3 align-top text-sm text-muted-foreground">
                       {order.items.length} item{order.items.length === 1 ? "" : "s"}
                     </td>
@@ -321,7 +351,11 @@ export function OrdersDataTable({ orders, isAdmin }: OrdersDataTableProps) {
                         <PaymentStatusBadge status={order.paymentStatus} paymentMethod={order.paymentMethod} />
                       </div>
                     </td>
-                    <td className="p-3 align-top"><OrderStatusBadge status={order.status} /></td>
+                    <td className="p-3 align-top"><OrderStatusBadge
+                        status={order.status}
+                        paymentStatus={order.paymentStatus}
+                        paymentMethod={order.paymentMethod}
+                      /></td>
                     <td className="p-3 align-top text-sm text-muted-foreground">{formatDate(order.placedAt)}</td>
                     <td className="p-3 align-top text-right">
                       <RowMenu open={openMenuId === order.id} onOpenChange={(open) => setOpenMenuId(open ? order.id : null)}>
@@ -371,7 +405,7 @@ export function OrdersDataTable({ orders, isAdmin }: OrdersDataTableProps) {
                   </tr>
                   {confirmCancelIds && confirmCancelIds.length === 1 && confirmCancelIds[0] === order.id ? (
                     <tr>
-                      <td colSpan={8} className="border-b border-border bg-muted p-4">
+                      <td colSpan={isAdmin ? 9 : 8} className="border-b border-border bg-muted p-4">
                         <ConfirmPanel
                           label={`Cancel order ${order.orderNumber}`}
                           title={`Cancel order ${order.orderNumber}?`}
@@ -408,10 +442,16 @@ export function OrdersDataTable({ orders, isAdmin }: OrdersDataTableProps) {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-foreground">{order.orderNumber}</p>
                   <p className="text-xs text-muted-foreground">
-                    {order.buyerName ?? "Unknown buyer"} · {order.items.length} item{order.items.length === 1 ? "" : "s"} · {formatCurrency(order.totalCents, order.currency)}
+                    {order.buyerName ?? "Unknown buyer"}
+                    {isAdmin ? ` · ${order.shopName ?? "—"}` : ""} · {order.items.length} item
+                    {order.items.length === 1 ? "" : "s"} · {formatCurrency(order.totalCents, order.currency)}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-1.5">
-                    <OrderStatusBadge status={order.status} />
+                    <OrderStatusBadge
+                        status={order.status}
+                        paymentStatus={order.paymentStatus}
+                        paymentMethod={order.paymentMethod}
+                      />
                     <PaymentStatusBadge status={order.paymentStatus} paymentMethod={order.paymentMethod} />
                   </div>
                 </div>

@@ -1,4 +1,4 @@
-import { AlertTriangle, CreditCard, Package, ShoppingBag, Timer, TrendingUp } from "lucide-react";
+import { AlertTriangle, CreditCard, Package, RotateCcw, ShoppingBag, Timer, TrendingUp } from "lucide-react";
 
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -34,6 +34,7 @@ export async function AdminKpiRow({ from, to }: AdminKpiRowProps) {
   let pendingOrders: number;
   let totalProducts: number;
   let lowStockCount: number;
+  let returnsAwaitingRestock: number;
 
   try {
     const [salesSummary, attentionCounts, productCount, lowStock] = await Promise.all([
@@ -46,12 +47,13 @@ export async function AdminKpiRow({ from, to }: AdminKpiRowProps) {
     pendingOrders = attentionCounts.needsConfirmation;
     totalProducts = productCount;
     lowStockCount = lowStock.length;
+    returnsAwaitingRestock = attentionCounts.returnsAwaitingRestock;
   } catch {
     return <ErrorState message="We couldn't load the platform overview right now." />;
   }
 
   return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
+    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-7">
       <StatCard
         href={ROUTES.adminReports}
         label="Total Revenue"
@@ -100,14 +102,22 @@ export async function AdminKpiRow({ from, to }: AdminKpiRowProps) {
         iconBg="bg-primary/10"
         iconColor="text-primary"
       />
+      <StatCard
+        href={ROUTES.adminReturns}
+        label="Returns Awaiting Restock"
+        value={returnsAwaitingRestock}
+        icon={RotateCcw}
+        iconBg="bg-warning/10"
+        iconColor="text-warning"
+      />
     </div>
   );
 }
 
 export function AdminKpiRowSkeleton() {
   return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
-      {Array.from({ length: 6 }).map((_, i) => (
+    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-7">
+      {Array.from({ length: 7 }).map((_, i) => (
         <div key={i} className="rounded-xl border border-border bg-card p-5">
           <Skeleton className="mb-4 h-9 w-9 rounded-lg" />
           <Skeleton className="mb-2 h-7 w-16" />

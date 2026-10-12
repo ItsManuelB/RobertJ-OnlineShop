@@ -2,15 +2,16 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
 import { RJ_CARD } from "@/components/ui/card";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { ROUTES } from "@/constants/routes";
+import { checkCartAvailabilityAction } from "@/features/cart/actions/cart.actions";
 import { useCart } from "@/features/cart/hooks/useCart";
-import { getSelectedItems } from "@/features/cart/utils/cart-reducer";
+import { getCartLineKey, getSelectedItems } from "@/features/cart/utils/cart-reducer";
 import { createAddressAction } from "@/features/addresses/actions/address.actions";
 import type { Address } from "@/features/addresses/types/address.types";
 import { placeOrderAction } from "@/features/checkout/actions/checkout.actions";
@@ -115,6 +116,52 @@ export function CheckoutForm({
     [items, selectedIds],
   );
   const groups = useMemo(() => groupCartBySeller(checkoutItems), [checkoutItems]);
+
+  // F-05: a buyer who deep-links straight to /checkout (skipping /cart) never
+  // triggers CartSummary's own live-stock check, so the first stock
+  // validation they'd otherwise hit is create_order itself, at the very end
+  // of the flow. Mirrors CartSummary's own availability check exactly —
+  // same action, same key-guard pattern — just blocking "Place order"
+  // instead of the "Checkout" link.
+  const checkoutIdsKey = useMemo(
+    () => [...new Set(checkoutItems.map((item) => getCartLineKey(item)))].sort().join(","),
+    [checkoutItems],
+  );
+  const [hasCheckoutStockIssue, setHasCheckoutStockIssue] = useState(false);
+  const checkoutAvailabilityKeyRef = useRef<string | null>(null);
+
+  const runCheckoutAvailabilityCheck = useCallback(() => {
+    if (!checkoutIdsKey) return;
+    if (checkoutAvailabilityKeyRef.current === checkoutIdsKey) return;
+    checkoutAvailabilityKeyRef.current = checkoutIdsKey;
+    void (async () => {
+      const lines = checkoutItems.map((item) => ({
+        productId: item.productId,
+        variantId: item.variantId,
+      }));
+      const availabilityResult = await checkCartAvailabilityAction(lines);
+      if (!availabilityResult.success) return;
+      const byKey = new Map(
+        availabilityResult.data.map((entry) => [
+          getCartLineKey({ productId: entry.productId, variantId: entry.variantId ?? undefined }),
+          entry,
+        ]),
+      );
+      const issue = checkoutItems.some((item) => {
+        const live = byKey.get(getCartLineKey(item));
+        return !live || live.status !== "active" || live.quantity < item.quantity;
+      });
+      setHasCheckoutStockIssue(issue);
+    })();
+    // `checkoutItems` (not just checkoutIdsKey) is read for each line's
+    // variantId/quantity, which the key alone doesn't expose — same
+    // intentional omission as CartSummary's own availability-check effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checkoutIdsKey]);
+
+  useEffect(() => {
+    runCheckoutAvailabilityCheck();
+  }, [runCheckoutAvailabilityCheck]);
 
   const [address, setAddress] = useState<ShippingAddressInput>(
     initialAddress ?? EMPTY_ADDRESS,
@@ -239,6 +286,13 @@ export function CheckoutForm({
   function handlePlaceOrder() {
     setFormError(null);
     setResult(null);
+
+    if (hasCheckoutStockIssue) {
+      setFormError(
+        "One of your items no longer has enough stock. Go back to your cart to adjust it before placing this order.",
+      );
+      return;
+    }
 
     const parsed = shippingAddressSchema.safeParse(address);
     if (!parsed.success) {
@@ -566,11 +620,22 @@ export function CheckoutForm({
             </p>
           ) : null}
 
+          {hasCheckoutStockIssue ? (
+            <p role="alert" className="text-xs font-semibold text-rj-red-dark sm:text-right">
+              One of your items no longer has enough stock.{" "}
+              <Link href={ROUTES.cart} className="underline underline-offset-2">
+                Go back to your cart
+              </Link>{" "}
+              to adjust it.
+            </p>
+          ) : null}
+
           <Button
             type="submit"
             variant="rj"
             size="rj"
             isLoading={isPending}
+            disabled={hasCheckoutStockIssue}
             className="w-full sm:w-auto sm:min-w-55"
           >
             {isPending ? CHECKOUT_COPY.placingOrder : CHECKOUT_COPY.placeOrder}

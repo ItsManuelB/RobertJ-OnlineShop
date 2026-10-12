@@ -5,6 +5,15 @@
  * schema has `orders.shipping_fee_cents` but **no shipping-rate table**, so the
  * fee is a flat constant per seller order (default 0 = free shipping). This is a
  * documented mapping, not a schema back-fill (see the module plan §7).
+ *
+ * Audit finding F-11, re-assessed: this fee applies ONCE PER SELLER'S
+ * ORDER/PARCEL — by design, not a per-checkout total to be divided across a
+ * multi-seller cart. Each seller's order gets its own `order_shipments` row,
+ * courier, and tracking number, and is packed/shipped entirely
+ * independently (`create_order_group` intentionally passes the same value
+ * to every seller's inner `create_order` call, unsplit). When a non-zero
+ * fee is introduced, size it as "the cost of shipping one seller's parcel,"
+ * not "total checkout shipping" — a 3-seller cart is 3 real parcels.
  */
 export const CHECKOUT_CONSTANTS = {
   shippingFeeCentsPerSeller: 0,

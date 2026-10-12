@@ -14,6 +14,7 @@ import type {
 import type { LifecycleTab } from "@/features/orders";
 import { fail, fromZodError, ok } from "@/lib/utils/result";
 import * as queries from "@/lib/supabase/queries";
+import { GroupOrderError } from "@/lib/supabase/query-error";
 import type { ActionResult } from "@/types/action.types";
 
 /**
@@ -103,14 +104,38 @@ export async function placeOrderAction(
     // Online Payment and COD are entirely unaffected and keep the existing
     // per-seller loop and partial-success behavior, unchanged.
     if (parsed.data.paymentMethod === "xendit" && parsed.data.groups.length > 1) {
-      const group = await queries.createOrderGroup({
-        groups: parsed.data.groups.map((g) => ({ sellerId: g.sellerId, items: g.items })),
-        shippingAddress,
-        shippingFeeCents: CHECKOUT_CONSTANTS.shippingFeeCentsPerSeller,
-        notes: parsed.data.notes || null,
-        paymentMethod: parsed.data.paymentMethod,
-        idempotencyKey: parsed.data.idempotencyKey,
-      });
+      let group: Awaited<ReturnType<typeof queries.createOrderGroup>>;
+      try {
+        group = await queries.createOrderGroup({
+          groups: parsed.data.groups.map((g) => ({ sellerId: g.sellerId, items: g.items })),
+          shippingAddress,
+          shippingFeeCents: CHECKOUT_CONSTANTS.shippingFeeCentsPerSeller,
+          notes: parsed.data.notes || null,
+          paymentMethod: parsed.data.paymentMethod,
+          idempotencyKey: parsed.data.idempotencyKey,
+        });
+      } catch (error) {
+        // F-06: the whole group is all-or-nothing (correct — one combined
+        // charge can't cover a partial order), but attribute the failure to
+        // the specific seller `create_order_group` identified, reusing the
+        // exact same `failed` shape/UI the COD partial-success path already
+        // has, instead of one opaque message with no attribution.
+        if (error instanceof GroupOrderError && error.sellerId) {
+          const sourceGroup = parsed.data.groups.find((g) => g.sellerId === error.sellerId);
+          return ok({
+            created: [],
+            failed: [
+              {
+                sellerId: error.sellerId,
+                sellerName: sourceGroup?.sellerName ?? null,
+                reason: error.message,
+              },
+            ],
+            redirectTab: null,
+          });
+        }
+        throw error;
+      }
 
       const created: PlacedOrder[] = group.orders.map((order) => {
         const sourceGroup = parsed.data.groups.find((g) => g.sellerId === order.sellerId);

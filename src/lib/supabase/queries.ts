@@ -11,6 +11,7 @@ import {
   ORDER_STATUS,
   PAYMENT_STATUS,
   PRODUCT_STATUS,
+  RETURN_STATUS,
   type OrderStatus,
   type PaymentStatus,
   type ProductCondition,
@@ -23,7 +24,7 @@ import {
   createSupabaseServerClient,
 } from "@/lib/supabase/server";
 import { mapPostgresError } from "@/lib/supabase/postgres-errors";
-import { curatedRpcError, queryError, rpcError } from "@/lib/supabase/query-error";
+import { curatedRpcError, groupOrderError, queryError, rpcError } from "@/lib/supabase/query-error";
 import type { Database, Json } from "@/lib/supabase/database.types";
 import { slugify } from "@/lib/utils/format";
 import { toCents } from "@/lib/utils/currency";
@@ -1690,12 +1691,13 @@ type OrderItemRow = Database["public"]["Tables"]["order_items"]["Row"];
  * items keep their immutable title/price snapshots either way.
  */
 const ORDER_COLUMNS = `
-  id, order_number, buyer_id, seller_id, subtotal_cents, shipping_fee_cents,
+  id, order_number, buyer_id, seller_id, shop_id, subtotal_cents, shipping_fee_cents,
   total_cents, currency, payment_status, payment_method, order_status, shipping_address, notes,
   placed_at, paid_at, shipped_at, delivered_at, cancelled_at, checkout_group_id,
   cancellation_reason, cancelled_by, buyer_confirmed_received_at,
   buyer:profiles!orders_buyer_id_fkey ( full_name, username ),
   seller:profiles!orders_seller_id_fkey ( full_name, username, role ),
+  shop:shops!orders_shop_id_fkey ( name ),
   order_items (
     id, product_id, product_title, quantity, unit_price_cents, subtotal_cents,
     variant_id, variant_label,
@@ -1706,6 +1708,7 @@ const ORDER_COLUMNS = `
 type OrderRowWithItems = Omit<OrderRow, "shipping_address"> & {
   shipping_address: Json;
   buyer: Pick<ProfileRow, "full_name" | "username"> | null;
+  shop: { name: string } | null;
   seller: Pick<ProfileRow, "full_name" | "username" | "role"> | null;
   order_items: Array<
     OrderItemRow & {
@@ -1756,6 +1759,8 @@ function toOrder(row: OrderRowWithItems): Order {
     sellerId: row.seller_id,
     sellerName: sellerDisplayName(row.seller_id, row.seller),
     sellerRole: (row.seller?.role as UserRole | undefined) ?? null,
+    shopId: row.shop_id,
+    shopName: row.shop?.name ?? null,
     items: (row.order_items ?? []).map((item) => ({
       id: item.id,
       productId: item.product_id,
@@ -2174,6 +2179,9 @@ export async function listDashboardOrders(
   if (params.dateRange) {
     query = query.gte("placed_at", dateRangeBoundary(params.dateRange));
   }
+  if (params.shopId) {
+    query = query.eq("shop_id", params.shopId);
+  }
 
   query = query.order("placed_at", { ascending: false });
 
@@ -2247,6 +2255,10 @@ async function listDashboardOrdersNeedingAttention(
     needsConfirmation = needsConfirmation.gte("placed_at", boundary);
     codAwaitingCollection = codAwaitingCollection.gte("placed_at", boundary);
   }
+  if (params.shopId) {
+    needsConfirmation = needsConfirmation.eq("shop_id", params.shopId);
+    codAwaitingCollection = codAwaitingCollection.eq("shop_id", params.shopId);
+  }
 
   const [confirmResult, codResult] = await Promise.all([
     needsConfirmation.order("placed_at", { ascending: false }).limit(ATTENTION_SCAN_LIMIT),
@@ -2279,9 +2291,16 @@ async function listDashboardOrdersNeedingAttention(
 export async function getOrderAttentionCounts(): Promise<{
   needsConfirmation: number;
   codAwaitingCollection: number;
+  /**
+   * F-10: a refunded return whose item condition (sellable/not-sellable) was
+   * never recorded leaves stock permanently un-restored with nothing
+   * reminding anyone the step exists. Counts `return_requests` stuck in
+   * exactly that state — same head-count pattern as the other two.
+   */
+  returnsAwaitingRestock: number;
 }> {
   const supabase = await createSupabaseServerClient();
-  const [confirmResult, codResult] = await Promise.all([
+  const [confirmResult, codResult, restockResult] = await Promise.all([
     supabase
       .from(DATABASE_TABLES.ORDERS)
       .select("id", { count: "exact", head: true })
@@ -2293,14 +2312,22 @@ export async function getOrderAttentionCounts(): Promise<{
       .eq("payment_method", "cod")
       .eq("payment_status", PAYMENT_STATUS.pending)
       .in("order_status", [ORDER_STATUS.shipped, ORDER_STATUS.delivered]),
+    supabase
+      .from(DATABASE_TABLES.RETURN_REQUESTS)
+      .select("id", { count: "exact", head: true })
+      .eq("status", RETURN_STATUS.refunded)
+      .is("restocked_at", null)
+      .is("marked_unsellable_at", null),
   ]);
 
   if (confirmResult.error) throw queryError("Failed to load order counts", confirmResult.error);
   if (codResult.error) throw queryError("Failed to load order counts", codResult.error);
+  if (restockResult.error) throw queryError("Failed to load order counts", restockResult.error);
 
   return {
     needsConfirmation: confirmResult.count ?? 0,
     codAwaitingCollection: codResult.count ?? 0,
+    returnsAwaitingRestock: restockResult.count ?? 0,
   };
 }
 
@@ -2726,7 +2753,10 @@ export async function createOrderGroup(
   });
 
   if (error) {
-    throw rpcError("Could not place this order.", error);
+    // F-06: carries the failing seller's id (if `create_order_group`
+    // identified one) so the caller can attribute a multi-seller rollback
+    // to a specific seller instead of one opaque message.
+    throw groupOrderError("Could not place this order.", error);
   }
   if (!data || data.length === 0 || !data[0].checkout_group_id) {
     throw new Error("Could not create the order.");

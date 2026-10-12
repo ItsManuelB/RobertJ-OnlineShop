@@ -34,7 +34,11 @@ export function OrderHeader({ order, themed = false }: { order: Order; themed?: 
           Placed {formatDate(order.placedAt)}
         </p>
       </div>
-      <OrderStatusBadge status={order.status} />
+      <OrderStatusBadge
+        status={order.status}
+        paymentStatus={order.paymentStatus}
+        paymentMethod={order.paymentMethod}
+      />
     </header>
   );
 }

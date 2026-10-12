@@ -88,6 +88,10 @@ export interface Order {
    * admin's personal name).
    */
   sellerRole: UserRole | null;
+  /** Null for pre-shop-scoping legacy orders, or an admin-authored listing with no shop. */
+  shopId: string | null;
+  /** Shop display name, or null when `shopId` is null. Admin-only "shop" column/filter (F-12) — not shown elsewhere. */
+  shopName: string | null;
   items: OrderItem[];
   placedAt: string;
   paidAt: string | null;
@@ -142,6 +146,8 @@ export interface OrderListParams {
    * spans several statuses, so the two aren't combined).
    */
   attentionOnly?: boolean;
+  /** Admin-only: narrows to one shop (F-12) — a seller's own list is already shop-scoped by RLS. */
+  shopId?: string;
 }
 
 /** Overview-hub payload: per-status counts + the 5 most recent orders. */

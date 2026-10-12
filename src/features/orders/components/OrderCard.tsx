@@ -74,7 +74,11 @@ export function OrderCard({ order, href, themed = false, actions }: OrderCardPro
         <p className={cn("text-sm font-bold", ink)}>
           {formatCurrency(order.totalCents, order.currency)}
         </p>
-        <OrderStatusBadge status={order.status} />
+        <OrderStatusBadge
+          status={order.status}
+          paymentStatus={order.paymentStatus}
+          paymentMethod={order.paymentMethod}
+        />
       </div>
       </Link>
       {actions ? (
