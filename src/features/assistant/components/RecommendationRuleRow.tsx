@@ -8,13 +8,16 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmPanel } from "@/components/ui/confirm-panel";
 import { ErrorState } from "@/components/feedback/ErrorState";
-import { FormField } from "@/components/forms/FormField";
 import {
   deleteRecommendationRuleAction,
   updateRecommendationRuleAction,
 } from "@/features/assistant/actions/rule.actions";
-import { OCCASION_LABELS } from "@/features/assistant/constants/assistant.constants";
 import {
+  GUIDED_SELECTION_SIZES,
+  OCCASION_LABELS,
+} from "@/features/assistant/constants/assistant.constants";
+import {
+  isGuidedSelectionSize,
   OCCASIONS,
   updateRecommendationRuleSchema,
   type UpdateRecommendationRuleInput,
@@ -33,7 +36,7 @@ function toInput(rule: RecommendationRule): UpdateRecommendationRuleInput {
     id: rule.id,
     variantId: rule.variantId ?? undefined,
     occasion: rule.occasion ?? undefined,
-    size: rule.size ?? "",
+    size: isGuidedSelectionSize(rule.size) ? rule.size : undefined,
     active: rule.active,
   };
 }
@@ -133,13 +136,34 @@ export function RecommendationRuleRow({
                 ))}
               </select>
             </div>
-            <FormField
-              label="Size (optional)"
-              value={values.size ?? ""}
-              onChange={(event) => setValues((prev) => ({ ...prev, size: event.target.value }))}
-              placeholder="Any size"
-              errors={fieldErrors.size}
-            />
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium">Size</label>
+              <select
+                value={values.size ?? ""}
+                onChange={(event) =>
+                  setValues((prev) => ({
+                    ...prev,
+                    size:
+                      event.target.value === ""
+                        ? undefined
+                        : (event.target.value as UpdateRecommendationRuleInput["size"]),
+                  }))
+                }
+                className={selectClasses}
+              >
+                <option value="">Any size</option>
+                {GUIDED_SELECTION_SIZES.map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
+              </select>
+              {fieldErrors.size ? (
+                <p role="alert" className="text-xs text-danger">
+                  {fieldErrors.size[0]}
+                </p>
+              ) : null}
+            </div>
           </div>
 
           {variants.length > 0 ? (

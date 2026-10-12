@@ -48,6 +48,7 @@ import type {
   GuidedSelectionMatch,
   RecommendationOccasion,
   RecommendationRule,
+  RecommendationSize,
 } from "@/features/assistant/types/assistant.types";
 import {
   ACTIVE_ORDER_STATUSES,
@@ -7031,7 +7032,7 @@ export async function listDashboardRecommendationRules(): Promise<Recommendation
 export interface RecommendationRuleInput {
   variantId?: string;
   occasion?: RecommendationOccasion;
-  size?: string;
+  size?: RecommendationSize;
 }
 
 /** Creates a rule for a product the caller owns (or, for admin, any product — moderation, not ownership). */
@@ -7173,8 +7174,7 @@ type GuidedSelectionMatchRow = {
 
 export interface GuidedSelectionMatchInput {
   occasion?: RecommendationOccasion;
-  /** Free text, same convention as `product_variants.size`/`recommendation_rules.size`. */
-  size?: string;
+  size?: RecommendationSize;
   /** Major-unit pesos (not cents) — converted to price_cents below. */
   minPrice?: number;
   maxPrice?: number;

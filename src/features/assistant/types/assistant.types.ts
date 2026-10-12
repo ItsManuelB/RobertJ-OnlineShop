@@ -1,4 +1,5 @@
 import type { Product } from "@/features/products";
+import type { SIZES } from "@/features/assistant/schemas/rule.schema";
 
 /**
  * Guided Product Selection is rule-based (DECISIONS.md ADR-009) — never
@@ -17,6 +18,17 @@ export type RecommendationOccasion =
   | "party"
   | "wedding"
   | "everyday";
+
+/**
+ * Validated input shape for `size` — `(typeof SIZES)[number]` from
+ * `rule.schema.ts`'s `sizeSchema`, the same enum-validation shape as
+ * `RecommendationOccasion`. Only for *input* types (`RecommendationRuleInput`,
+ * `GuidedSelectionMatchInput`): unlike occasion, `size` has no backing
+ * Postgres enum, so a *stored* row's `size` stays `string | null` below —
+ * narrowing reads to this union would claim a DB guarantee that doesn't
+ * exist.
+ */
+export type RecommendationSize = (typeof SIZES)[number];
 
 /** Domain model returned by the assistant service to the rest of the app. */
 export interface RecommendationRule {

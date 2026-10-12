@@ -14,7 +14,10 @@ import { ROUTES } from "@/constants/routes";
 import { formatCurrency } from "@/lib/utils/currency";
 import { useScrollLock } from "@/hooks/useScrollLock";
 import { getGuidedSelectionMatchesAction } from "@/features/assistant/actions/quiz.actions";
-import { OCCASION_LABELS } from "@/features/assistant/constants/assistant.constants";
+import {
+  GUIDED_SELECTION_SIZES,
+  OCCASION_LABELS,
+} from "@/features/assistant/constants/assistant.constants";
 import { guidedSelectionQuerySchema } from "@/features/assistant/schemas/quiz.schema";
 import { OCCASIONS } from "@/features/assistant/schemas/rule.schema";
 import type { GuidedSelectionMatch } from "@/features/assistant/types/assistant.types";
@@ -51,7 +54,7 @@ export function GuidedSelectorQuiz({ trigger }: GuidedSelectorQuizProps) {
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<View>("form");
   const [occasion, setOccasion] = useState<string | undefined>(undefined);
-  const [size, setSize] = useState("");
+  const [size, setSize] = useState<string | undefined>(undefined);
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>(emptyFieldErrors());
@@ -73,7 +76,7 @@ export function GuidedSelectorQuiz({ trigger }: GuidedSelectorQuizProps) {
   function resetQuiz() {
     setView("form");
     setOccasion(undefined);
-    setSize("");
+    setSize(undefined);
     setMinPrice("");
     setMaxPrice("");
     setMatches(null);
@@ -128,7 +131,7 @@ export function GuidedSelectorQuiz({ trigger }: GuidedSelectorQuizProps) {
     setFormError(null);
     const parsed = guidedSelectionQuerySchema.safeParse({
       occasion: occasion || undefined,
-      size: size.trim() || undefined,
+      size: size || undefined,
       minPrice: minPrice === "" ? undefined : Number(minPrice),
       maxPrice: maxPrice === "" ? undefined : Number(maxPrice),
     });
@@ -206,13 +209,33 @@ export function GuidedSelectorQuiz({ trigger }: GuidedSelectorQuizProps) {
                     </div>
                   </div>
 
-                  <FormField
-                    label="Size (optional)"
-                    value={size}
-                    onChange={(event) => setSize(event.target.value)}
-                    placeholder="Any size"
-                    errors={fieldErrors.size}
-                  />
+                  <div>
+                    <p className="mb-2 text-sm font-semibold text-rj-black">Size (optional)</p>
+                    <div className="flex flex-wrap gap-2" role="group" aria-label="Size">
+                      <button
+                        type="button"
+                        aria-pressed={!size}
+                        className={!size ? CHIP_ACTIVE : CHIP_IDLE}
+                        onClick={() => setSize(undefined)}
+                      >
+                        Any
+                      </button>
+                      {GUIDED_SELECTION_SIZES.map((value) => (
+                        <button
+                          key={value}
+                          type="button"
+                          aria-pressed={size === value}
+                          className={size === value ? CHIP_ACTIVE : CHIP_IDLE}
+                          onClick={() => setSize(value)}
+                        >
+                          {value}
+                        </button>
+                      ))}
+                    </div>
+                    {fieldErrors.size ? (
+                      <p className="mt-1.5 text-xs text-rj-red-dark">{fieldErrors.size[0]}</p>
+                    ) : null}
+                  </div>
 
                   <div>
                     <p className="mb-2 text-sm font-semibold text-rj-black">Budget (optional)</p>

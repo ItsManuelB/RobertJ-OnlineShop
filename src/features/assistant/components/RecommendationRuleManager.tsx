@@ -5,10 +5,12 @@ import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/feedback/ErrorState";
-import { FormField } from "@/components/forms/FormField";
 import { createRecommendationRuleAction } from "@/features/assistant/actions/rule.actions";
 import { RecommendationRuleRow } from "@/features/assistant/components/RecommendationRuleRow";
-import { OCCASION_LABELS } from "@/features/assistant/constants/assistant.constants";
+import {
+  GUIDED_SELECTION_SIZES,
+  OCCASION_LABELS,
+} from "@/features/assistant/constants/assistant.constants";
 import {
   OCCASIONS,
   recommendationRuleSchema,
@@ -23,7 +25,7 @@ const selectClasses =
   "h-10 rounded-md border border-rj-gray-200 bg-rj-white px-3 text-sm text-rj-black outline-none transition-colors focus-visible:border-rj-black focus-visible:ring-2 focus-visible:ring-rj-red/30";
 
 function emptyInput(productId: string): RecommendationRuleFormInput {
-  return { productId, variantId: undefined, occasion: undefined, size: "" };
+  return { productId, variantId: undefined, occasion: undefined, size: undefined };
 }
 
 export interface RecommendationRuleManagerProps {
@@ -138,13 +140,34 @@ export function RecommendationRuleManager({
                   ))}
                 </select>
               </div>
-              <FormField
-                label="Size (optional)"
-                value={values.size ?? ""}
-                onChange={(event) => setValues((prev) => ({ ...prev, size: event.target.value }))}
-                placeholder="Any size"
-                errors={fieldErrors.size}
-              />
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium">Size</label>
+                <select
+                  value={values.size ?? ""}
+                  onChange={(event) =>
+                    setValues((prev) => ({
+                      ...prev,
+                      size:
+                        event.target.value === ""
+                          ? undefined
+                          : (event.target.value as RecommendationRuleFormInput["size"]),
+                    }))
+                  }
+                  className={selectClasses}
+                >
+                  <option value="">Any size</option>
+                  {GUIDED_SELECTION_SIZES.map((size) => (
+                    <option key={size} value={size}>
+                      {size}
+                    </option>
+                  ))}
+                </select>
+                {fieldErrors.size ? (
+                  <p role="alert" className="text-xs text-danger">
+                    {fieldErrors.size[0]}
+                  </p>
+                ) : null}
+              </div>
             </div>
 
             {variants.length > 0 ? (

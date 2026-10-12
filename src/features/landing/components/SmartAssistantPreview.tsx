@@ -1,13 +1,14 @@
 "use client";
 
-import { Check, ListChecks, ShieldCheck, Sparkles, Wallet } from "lucide-react";
+import { Check, ListChecks, Ruler, Sparkles, Wallet } from "lucide-react";
 
 import { GuidedSelectorQuiz } from "@/features/assistant";
+import { GUIDED_SELECTION_SIZES } from "@/features/assistant/constants/assistant.constants";
 import { ASSISTANT_BENEFITS } from "@/features/landing/constants/landing.constants";
 
 const CRITERIA = [
   { icon: Sparkles, label: "Occasion", hint: "Casual, formal, work, party…" },
-  { icon: ShieldCheck, label: "Size", hint: "Whatever you wear" },
+  { icon: Ruler, label: "Size", hint: GUIDED_SELECTION_SIZES.join(", ") },
   { icon: Wallet, label: "Budget", hint: "Your price range" },
 ] as const;
 
