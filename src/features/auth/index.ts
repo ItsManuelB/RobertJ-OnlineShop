@@ -4,7 +4,6 @@ export { EditorialPanel } from "./components/layout/EditorialPanel";
 export { AuthCard } from "./components/layout/AuthCard";
 export { AuthHeader } from "./components/layout/AuthHeader";
 export { AuthFooter } from "./components/layout/AuthFooter";
-export { CalloutBubble } from "./components/layout/CalloutBubble";
 export { SocialLoginButtons } from "./components/social/SocialLoginButtons";
 export { SocialButton } from "./components/social/SocialButton";
 export { Divider } from "./components/social/Divider";

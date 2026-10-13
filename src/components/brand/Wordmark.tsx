@@ -14,21 +14,31 @@ export interface WordmarkProps {
 }
 
 /**
- * Shared RobertJ logo mark. Extracted from `LandingNavbar`'s private `Logo`
- * into the reusable branding library so the landing, auth, and future
- * dashboards all render a single source of truth.
+ * Shared RobertJ logo mark: the brand image plus the "RobertJ Shop"
+ * wordmark, matching `SiteFooter`'s brand lockup. Extracted from
+ * `LandingNavbar`'s private `Logo` into the reusable branding library so the
+ * landing, auth, and dashboard headers all render a single source of truth.
  */
 export function Wordmark({ className }: WordmarkProps) {
   return (
-    <Link href={ROUTES.home} className={cn("inline-flex flex-shrink-0 items-center", className)}>
+    <Link
+      href={ROUTES.home}
+      className={cn("inline-flex flex-shrink-0 items-center gap-2.5", className)}
+    >
       <Image
-        src="/brand/logo.png"
+        src="/brand/logo-v2.png"
         alt="RobertJ Shop"
         width={1254}
         height={1254}
         priority
-        className="h-11 w-11 rounded-lg object-cover"
+        className="h-11 w-11 flex-shrink-0 rounded-lg object-cover"
       />
+      <span className="hidden items-baseline gap-1.5 sm:flex">
+        <span className="font-serif text-2xl text-rj-black">RobertJ</span>
+        <span className="text-[9px] font-bold uppercase tracking-[0.22em] text-rj-red">
+          Shop
+        </span>
+      </span>
     </Link>
   );
 }

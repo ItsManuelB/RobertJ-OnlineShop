@@ -43,12 +43,16 @@ export const ABOUT_STATS: LandingStat[] = [
   { value: 0, suffix: "+", label: "Registered Buyers", source: "live", metric: "buyerCount" },
 ];
 
-/** Local fallbacks for categories whose `image_url` is null. */
+/**
+ * Local fallbacks for categories whose `image_url` is null, matched
+ * positionally to the live `categories` rows ordered by `sort_order`
+ * (Shirts & Tops, Bottoms, Outerwear, Decors).
+ */
 export const CATEGORY_FALLBACK_IMAGES = [
-  "/landing/category-womens.jpg",
-  "/landing/category-mens.jpg",
-  "/landing/category-outerwear.jpg",
-  "/landing/category-essentials.jpg",
+  "/landing/category-shirts-tops.png",
+  "/landing/category-bottoms.png",
+  "/landing/category-outerwear.png",
+  "/landing/category-decors-v2.jpg",
 ] as const;
 
 /**
@@ -57,10 +61,10 @@ export const CATEGORY_FALLBACK_IMAGES = [
  * `/products` page) rather than fabricated item counts presented as real.
  */
 export const CATEGORY_PLACEHOLDERS = [
-  { name: "Women's", countLabel: "Explore", imageUrl: "/landing/category-womens.jpg" },
-  { name: "Men's", countLabel: "Explore", imageUrl: "/landing/category-mens.jpg" },
-  { name: "Outerwear", countLabel: "Explore", imageUrl: "/landing/category-outerwear.jpg" },
-  { name: "Essentials", countLabel: "Explore", imageUrl: "/landing/category-essentials.jpg" },
+  { name: "Shirts & Tops", countLabel: "Explore", imageUrl: "/landing/category-shirts-tops.png" },
+  { name: "Bottoms", countLabel: "Explore", imageUrl: "/landing/category-bottoms.png" },
+  { name: "Outerwear", countLabel: "Explore", imageUrl: "/landing/category-outerwear.png" },
+  { name: "Decors", countLabel: "Explore", imageUrl: "/landing/category-decors-v2.jpg" },
 ] as const;
 
 /**

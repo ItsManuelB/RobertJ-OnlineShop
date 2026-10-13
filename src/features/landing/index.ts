@@ -13,6 +13,7 @@ export { ProductCategories } from "./components/ProductCategories";
 export { FeaturedProducts } from "./components/FeaturedProducts";
 export { EditorialBanner } from "./components/EditorialBanner";
 export { AboutSection } from "./components/AboutSection";
+export { OurStorySection } from "./components/OurStorySection";
 export { MarketplaceFeatures } from "./components/MarketplaceFeatures";
 export { SmartAssistantPreview } from "./components/SmartAssistantPreview";
 export { BackToTop } from "./components/BackToTop";

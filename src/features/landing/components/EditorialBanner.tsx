@@ -10,11 +10,11 @@ export function EditorialBanner() {
   return (
     <section className="relative flex h-[52vh] min-h-[320px] items-center overflow-hidden bg-rj-black">
       <Image
-        src="/landing/editorial-banner.jpg"
+        src="/landing/editorial-banner-v2.png"
         alt=""
         fill
         sizes="100vw"
-        className="object-cover opacity-30"
+        className="object-contain opacity-30"
       />
       <div className="absolute inset-0 bg-gradient-to-r from-rj-black/90 via-rj-black/60 to-transparent" />
       <Reveal

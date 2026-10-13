@@ -1,5 +1,5 @@
 export const siteConfig = {
-  name: "Roberj Marketplace",
+  name: "Roberj Shop",
   description: "Multi-vendor marketplace for browsing, buying, and managing products.",
   locale: "en-PH",
   currency: "PHP",

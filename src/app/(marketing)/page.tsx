@@ -11,7 +11,7 @@ import {
 } from "@/features/landing";
 
 /**
- * RobertJ Marketplace landing page. Data-backed sections (categories, featured
+ * RobertJ Shop landing page. Data-backed sections (categories, featured
  * products) fetch from Supabase inside their own Server Components and fall
  * back to placeholders. Section order: categories (broad orientation) before
  * the shop-level carousel (deeper discovery) — see ARCHITECTURE.md Module

@@ -9,7 +9,7 @@ import { Reveal } from "@/features/landing/components/Reveal";
 import { ABOUT_STATS } from "@/features/landing/constants/landing.constants";
 
 /**
- * "More Than a Marketplace" story section with an image collage and metrics.
+ * "More Than a Shop" story section with an image collage and metrics.
  * Verified Shops uses a live seller count (falling back to the constant); sales,
  * buyers, and rating are marketing placeholders.
  */
@@ -23,8 +23,8 @@ export async function AboutSection() {
             desktop-only, but the section shouldn't be text-only for most visitors. */}
         <Reveal direction="left" className="relative h-64 overflow-hidden rounded-2xl shadow-xl lg:hidden">
           <Image
-            src="/landing/about-boutique.jpg"
-            alt="Independent boutique interior"
+            src="/landing/about-shorts.png"
+            alt="Folded printed shorts from a RobertJ Shop seller"
             fill
             sizes="100vw"
             className="object-cover"
@@ -35,8 +35,8 @@ export async function AboutSection() {
         <Reveal direction="left" className="relative hidden h-[500px] lg:block">
           <div className="absolute left-0 top-0 h-[68%] w-[58%] overflow-hidden rounded-2xl shadow-xl">
             <Image
-              src="/landing/about-boutique.jpg"
-              alt="Independent boutique interior"
+              src="/landing/about-shorts.png"
+              alt="Folded printed shorts from a RobertJ Shop seller"
               fill
               sizes="(min-width: 1024px) 29vw, 50vw"
               className="object-cover"
@@ -44,8 +44,8 @@ export async function AboutSection() {
           </div>
           <div className="absolute bottom-0 right-0 h-[58%] w-[52%] overflow-hidden rounded-2xl shadow-xl">
             <Image
-              src="/landing/about-shop.jpg"
-              alt="Curated fashion rack"
+              src="/landing/about-pants.png"
+              alt="Folded wide-leg pants from a RobertJ Shop seller"
               fill
               sizes="(min-width: 1024px) 26vw, 50vw"
               className="object-cover"
@@ -53,7 +53,7 @@ export async function AboutSection() {
           </div>
           <div className="absolute bottom-6 left-[38%] rounded-2xl bg-white px-5 py-4 shadow-lg">
             <div className="font-serif text-3xl text-rj-black">2022</div>
-            <div className="text-[11px] text-rj-gray-400">Founded in Manila</div>
+            <div className="text-[11px] text-rj-gray-400">Founded in San Rafael, Bulacan</div>
           </div>
           <div className="absolute right-4 top-4 h-20 w-20 rounded-full bg-rj-red/15 blur-2xl" />
         </Reveal>
@@ -66,10 +66,10 @@ export async function AboutSection() {
           <h2 className="mb-6 font-serif text-4xl leading-[1.05] text-rj-black md:text-[52px]">
             More Than a
             <br />
-            Marketplace
+            Shop
           </h2>
           <p className="mb-4 text-[15px] leading-relaxed text-rj-gray-600">
-            RobertJ Marketplace was built to give independent Filipino fashion
+            RobertJ Shop was built to give independent Filipino fashion
             shops the digital shelf they deserve — without the complexity of
             running their own storefront. We handle the platform; they focus on
             the craft.
@@ -103,7 +103,7 @@ export async function AboutSection() {
           </dl>
 
           <Link
-            href={ROUTES.products}
+            href={ROUTES.ourStory}
             className="group inline-flex items-center gap-2 text-[13px] font-bold text-rj-red"
           >
             Our Story

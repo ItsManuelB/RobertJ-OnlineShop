@@ -49,7 +49,7 @@ export function SellerSidebar({ user, pathname, onNavigate, onClose }: SellerSid
       <div className="flex h-20 flex-shrink-0 items-center justify-between border-b border-sidebar-border px-5 lg:justify-center">
         <Link href={ROUTES.home} className="flex items-center gap-3">
           <Image
-            src="/brand/logo.png"
+            src="/brand/logo-v2.png"
             alt="RobertJ Shop — back to homepage"
             width={1254}
             height={1254}

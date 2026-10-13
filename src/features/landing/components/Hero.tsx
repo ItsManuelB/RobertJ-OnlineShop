@@ -21,7 +21,7 @@ export async function Hero() {
       {/* Background */}
       <div className="absolute inset-0">
         <Image
-          src="/landing/hero-bg.jpg"
+          src="/landing/hero-v2.png"
           alt=""
           fill
           priority
@@ -77,7 +77,7 @@ export async function Hero() {
             style={{ animation: "fadeSlideIn 0.7s ease 0.15s both" }}
           >
             <Image
-              src="/landing/hero-card-main.jpg"
+              src="/landing/hero-v2.png"
               alt="Featured Autumn Linen collection"
               fill
               sizes="100vw"
@@ -123,7 +123,7 @@ export async function Hero() {
               style={{ transform: "rotate(-4deg)" }}
             >
               <Image
-                src="/landing/hero-card-back.jpg"
+                src="/landing/hero-v2.png"
                 alt=""
                 fill
                 sizes="224px"
@@ -134,7 +134,7 @@ export async function Hero() {
             {/* Main card */}
             <div className="relative h-[420px] w-80 overflow-hidden rounded-3xl shadow-2xl">
               <Image
-                src="/landing/hero-card-main.jpg"
+                src="/landing/hero-v2.png"
                 alt="Featured Autumn Linen collection"
                 fill
                 sizes="320px"

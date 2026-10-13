@@ -70,7 +70,7 @@ export function SiteFooter() {
             <div className="mb-4 flex items-baseline gap-0.5">
               <span className="font-serif text-2xl">RobertJ</span>
               <span className="ml-1.5 text-[9px] font-bold uppercase tracking-[0.22em] text-rj-red">
-                Marketplace
+                Shop
               </span>
             </div>
             <p className="mb-7 max-w-xs text-[13px] leading-relaxed text-rj-gray-600">
@@ -103,10 +103,10 @@ export function SiteFooter() {
             </div>
           </div>
 
-          {/* Marketplace */}
-          <nav aria-label="Marketplace">
+          {/* Shop */}
+          <nav aria-label="Shop">
             <h4 className="mb-5 text-[10px] font-bold uppercase tracking-[0.25em] text-rj-gray-600">
-              Marketplace
+              Shop
             </h4>
             <ul className="space-y-3">
               <li>
@@ -172,7 +172,7 @@ export function SiteFooter() {
 
         {/* Bottom bar */}
         <p className="text-center text-[11px] text-rj-gray-600 md:text-left">
-          © {new Date().getFullYear()} RobertJ Marketplace. All rights reserved.
+          © {new Date().getFullYear()} RobertJ Shop. All rights reserved.
         </p>
       </div>
     </footer>
