@@ -5297,25 +5297,48 @@ export async function bulkAssignProductCategory(
   return (data ?? []).map((row) => row.id);
 }
 
+/** Safe-to-surface error codes for `admin_transfer_product_shop` — mirrors `ADMIN_USER_RPC_SAFE_ERROR_CODES`. */
+const ADMIN_PRODUCT_RPC_SAFE_ERROR_CODES = ["42501", "22023", "P0002"] as const;
+
 /**
- * Admin-only: assigns a shop to a legacy/unassigned product (`shop_id`
- * currently `null`). Relies on `is_admin()` in RLS — the caller's admin
- * status is the actual authorization boundary, not this function.
+ * Admin-only: assigns or transfers a product's shop via the
+ * `admin_transfer_product_shop` RPC — the sole write path for
+ * `products.shop_id` (a DB trigger rejects any other attempt, including a
+ * direct update by an admin — see
+ * 20261013065349_admin_transfer_product_shop.sql). Works for an unassigned
+ * product (`shop_id` currently `null`) and for re-assigning an
+ * already-assigned one; the RPC validates the destination shop is active,
+ * cascades to the product's variants, and logs to `admin_action_log`. The
+ * RPC itself returns only the plain `products` row, so this re-fetches the
+ * full joined shape (images/seller/category) the UI expects — same
+ * two-step pattern as `recordOrderShipment` + `getDashboardOrder`.
  */
 export async function assignProductShop(
   productId: string,
   shopId: string,
 ): Promise<Product> {
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from(DATABASE_TABLES.PRODUCTS)
-    .update({ shop_id: shopId })
-    .eq("id", productId)
-    .select(PRODUCT_COLUMNS)
-    .single();
+  const { error } = await supabase.rpc("admin_transfer_product_shop", {
+    p_product_id: productId,
+    p_shop_id: shopId,
+  });
 
   if (error) {
-    throw queryError("Failed to assign shop", error);
+    throw curatedRpcError(
+      "Could not assign the shop.",
+      error,
+      ADMIN_PRODUCT_RPC_SAFE_ERROR_CODES,
+    );
+  }
+
+  const { data, error: fetchError } = await supabase
+    .from(DATABASE_TABLES.PRODUCTS)
+    .select(PRODUCT_COLUMNS)
+    .eq("id", productId)
+    .single();
+
+  if (fetchError) {
+    throw queryError("Failed to load the updated product", fetchError);
   }
 
   return toProduct(data as ProductRowWithImages);

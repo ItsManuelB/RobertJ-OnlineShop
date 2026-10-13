@@ -96,6 +96,8 @@ export function ProductsDataTable({
   const [confirmArchiveIds, setConfirmArchiveIds] = useState<string[] | null>(null);
   const [assigningShopId, setAssigningShopId] = useState<string | null>(null);
   const [selectedShopId, setSelectedShopId] = useState("");
+  /** Set only when transferring an *already-assigned* product (not the initial assign) — the more consequential case gets an explicit confirm step. */
+  const [confirmingTransferId, setConfirmingTransferId] = useState<string | null>(null);
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -204,8 +206,15 @@ export function ProductsDataTable({
         return;
       }
       setAssigningShopId(null);
+      setConfirmingTransferId(null);
       setSelectedShopId("");
     });
+  }
+
+  function cancelAssignShop() {
+    setAssigningShopId(null);
+    setConfirmingTransferId(null);
+    setSelectedShopId("");
   }
 
   const selectedCount = selected.size;
@@ -453,7 +462,7 @@ export function ProductsDataTable({
                         >
                           Manage stock
                         </Link>
-                        {isAdmin && product.shopId === null ? (
+                        {isAdmin ? (
                           <button
                             type="button"
                             onClick={() => {
@@ -462,7 +471,7 @@ export function ProductsDataTable({
                             }}
                             className="w-full rounded px-2 py-1.5 text-left text-sm text-foreground hover:bg-muted"
                           >
-                            Assign to shop
+                            {product.shopId === null ? "Assign to shop" : "Transfer to another shop"}
                           </button>
                         ) : null}
                         <hr className="my-1 border-border" />
@@ -510,38 +519,64 @@ export function ProductsDataTable({
                   {assigningShopId === product.id ? (
                     <tr>
                       <td colSpan={8} className="border-b border-border bg-muted p-4">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <select
-                            value={selectedShopId}
-                            onChange={(event) => setSelectedShopId(event.target.value)}
-                            className="h-9 rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
-                          >
-                            <option value="">Select a shop…</option>
-                            {shops.map((shop) => (
-                              <option key={shop.id} value={shop.id}>
-                                {shop.name}
-                              </option>
-                            ))}
-                          </select>
-                          <Button
-                            type="button"
-                            variant="primary"
-                            size="rjSm"
-                            isLoading={isPending}
-                            disabled={!selectedShopId}
-                            onClick={() => runAssignShop(product.id)}
-                          >
-                            Assign
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="rjSm"
-                            disabled={isPending}
-                            onClick={() => setAssigningShopId(null)}
-                          >
-                            Cancel
-                          </Button>
+                        <div className="flex flex-col gap-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <select
+                              value={selectedShopId}
+                              onChange={(event) => {
+                                setSelectedShopId(event.target.value);
+                                setConfirmingTransferId(null);
+                              }}
+                              className="h-9 rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
+                            >
+                              <option value="">Select a shop…</option>
+                              {shops.map((shop) => (
+                                <option key={shop.id} value={shop.id}>
+                                  {shop.name}
+                                </option>
+                              ))}
+                            </select>
+                            {selectedShopId && confirmingTransferId !== product.id ? (
+                              <Button
+                                type="button"
+                                variant="primary"
+                                size="rjSm"
+                                isLoading={isPending}
+                                onClick={() => {
+                                  if (product.shopId === null) {
+                                    runAssignShop(product.id);
+                                  } else {
+                                    setConfirmingTransferId(product.id);
+                                  }
+                                }}
+                              >
+                                {product.shopId === null ? "Assign" : "Transfer"}
+                              </Button>
+                            ) : null}
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="rjSm"
+                              disabled={isPending}
+                              onClick={cancelAssignShop}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                          {confirmingTransferId === product.id ? (
+                            <ConfirmPanel
+                              label={`Transfer ${product.title} to ${shops.find((shop) => shop.id === selectedShopId)?.name ?? "the selected shop"}`}
+                              title={`Transfer ${product.title} to ${shops.find((shop) => shop.id === selectedShopId)?.name ?? "the selected shop"}?`}
+                              description="Sellers at the current shop lose access to this product and its stock; sellers at the destination shop gain it immediately. This can be changed again later."
+                              tone="neutral"
+                              confirmLabel="Confirm transfer"
+                              pendingLabel="Transferring…"
+                              cancelLabel="Back"
+                              isPending={isPending}
+                              onConfirm={() => runAssignShop(product.id)}
+                              onCancel={() => setConfirmingTransferId(null)}
+                            />
+                          ) : null}
                         </div>
                       </td>
                     </tr>

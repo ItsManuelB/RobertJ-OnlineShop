@@ -76,7 +76,14 @@ export async function createProductAction(
   }
 }
 
-/** Admin-only: assign a shop to a legacy/unassigned product. */
+/**
+ * Admin-only: assign a shop to an unassigned product, or transfer an
+ * already-assigned one to a different shop — both go through
+ * `admin_transfer_product_shop` (the sole write path for `products.shop_id`;
+ * a DB trigger rejects any other attempt, defense-in-depth beyond
+ * `requireRole` below). Revalidates both admin and seller surfaces since a
+ * transfer changes which sellers can see/manage this product.
+ */
 export async function assignProductShopAction(
   productId: string,
   shopId: string,
@@ -91,6 +98,9 @@ export async function assignProductShopAction(
       parsed.data.shopId,
     );
     revalidatePath(ROUTES.adminProducts);
+    revalidatePath(ROUTES.adminInventory);
+    revalidatePath(ROUTES.sellerProducts);
+    revalidatePath(ROUTES.sellerInventory);
     return ok(product);
   } catch (error) {
     return fail(

@@ -133,7 +133,7 @@ export const updateProductSchema = createProductSchema.partial().extend({
   id: z.uuid(),
 });
 
-/** Admin-only: assign a shop to a legacy/unassigned product. */
+/** Admin-only: assign a shop to an unassigned product, or transfer an already-assigned one to a different shop. */
 export const assignProductShopSchema = z.object({
   productId: z.uuid(),
   shopId: z.uuid(),

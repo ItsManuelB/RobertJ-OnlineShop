@@ -1674,6 +1674,37 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      admin_transfer_product_shop: {
+        Args: { p_product_id: string; p_shop_id: string }
+        Returns: {
+          category_id: string | null
+          condition: Database["public"]["Enums"]["product_condition"]
+          created_at: string
+          currency: string
+          description: string | null
+          featured: boolean
+          id: string
+          location: string | null
+          price_cents: number
+          published_at: string | null
+          quantity: number
+          search_vector: unknown
+          seller_id: string | null
+          shop_id: string | null
+          slug: string
+          status: Database["public"]["Enums"]["product_status"]
+          tags: string[]
+          title: string
+          updated_at: string
+          views_count: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "products"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       admin_update_shop: {
         Args: { p_active?: boolean; p_name?: string; p_shop_id: string }
         Returns: {
