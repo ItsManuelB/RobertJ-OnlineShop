@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
+import { ChoiceGroup } from "@/components/ui/choice-group";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { createRecommendationRuleAction } from "@/features/assistant/actions/rule.actions";
 import { RecommendationRuleRow } from "@/features/assistant/components/RecommendationRuleRow";
@@ -21,8 +22,6 @@ import type { Product, ProductVariant } from "@/features/products/types/product.
 
 type FieldErrors = Record<string, string[] | undefined>;
 
-const selectClasses =
-  "h-10 rounded-md border border-rj-gray-200 bg-rj-white px-3 text-sm text-rj-black outline-none transition-colors focus-visible:border-rj-black focus-visible:ring-2 focus-visible:ring-rj-red/30";
 
 function emptyInput(productId: string): RecommendationRuleFormInput {
   return { productId, variantId: undefined, occasion: undefined, size: undefined };
@@ -118,50 +117,38 @@ export function RecommendationRuleManager({
           <div className="flex flex-col gap-3">
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium">Occasion</label>
-                <select
+                <span className="text-sm font-medium">Occasion</span>
+                <ChoiceGroup
+                  label="Occasion"
+                  options={[
+                    { value: "", label: "Any occasion" },
+                    ...OCCASIONS.map((occasion) => ({ value: occasion, label: OCCASION_LABELS[occasion] })),
+                  ]}
                   value={values.occasion ?? ""}
-                  onChange={(event) =>
+                  onChange={(next) =>
                     setValues((prev) => ({
                       ...prev,
-                      occasion:
-                        event.target.value === ""
-                          ? undefined
-                          : (event.target.value as RecommendationRuleFormInput["occasion"]),
+                      occasion: next === "" ? undefined : (next as RecommendationRuleFormInput["occasion"]),
                     }))
                   }
-                  className={selectClasses}
-                >
-                  <option value="">Any occasion</option>
-                  {OCCASIONS.map((occasion) => (
-                    <option key={occasion} value={occasion}>
-                      {OCCASION_LABELS[occasion]}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
               <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium">Size</label>
-                <select
+                <span className="text-sm font-medium">Size</span>
+                <ChoiceGroup
+                  label="Size"
+                  options={[
+                    { value: "", label: "Any size" },
+                    ...GUIDED_SELECTION_SIZES.map((size) => ({ value: size, label: size })),
+                  ]}
                   value={values.size ?? ""}
-                  onChange={(event) =>
+                  onChange={(next) =>
                     setValues((prev) => ({
                       ...prev,
-                      size:
-                        event.target.value === ""
-                          ? undefined
-                          : (event.target.value as RecommendationRuleFormInput["size"]),
+                      size: next === "" ? undefined : (next as RecommendationRuleFormInput["size"]),
                     }))
                   }
-                  className={selectClasses}
-                >
-                  <option value="">Any size</option>
-                  {GUIDED_SELECTION_SIZES.map((size) => (
-                    <option key={size} value={size}>
-                      {size}
-                    </option>
-                  ))}
-                </select>
+                />
                 {fieldErrors.size ? (
                   <p role="alert" className="text-xs text-danger">
                     {fieldErrors.size[0]}
@@ -172,24 +159,19 @@ export function RecommendationRuleManager({
 
             {variants.length > 0 ? (
               <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium">Specific variant (optional)</label>
-                <select
+                <span className="text-sm font-medium">Specific variant (optional)</span>
+                <ChoiceGroup
+                  label="Specific variant"
+                  options={[
+                    { value: "", label: "No specific variant" },
+                    ...variants.map((variant) => ({
+                      value: variant.id,
+                      label: [variant.color, variant.size].filter(Boolean).join(" / ") || variant.id,
+                    })),
+                  ]}
                   value={values.variantId ?? ""}
-                  onChange={(event) =>
-                    setValues((prev) => ({
-                      ...prev,
-                      variantId: event.target.value === "" ? undefined : event.target.value,
-                    }))
-                  }
-                  className={selectClasses}
-                >
-                  <option value="">No specific variant</option>
-                  {variants.map((variant) => (
-                    <option key={variant.id} value={variant.id}>
-                      {[variant.color, variant.size].filter(Boolean).join(" / ") || variant.id}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(next) => setValues((prev) => ({ ...prev, variantId: next === "" ? undefined : next }))}
+                />
               </div>
             ) : null}
 

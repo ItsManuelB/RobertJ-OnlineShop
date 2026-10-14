@@ -8,16 +8,13 @@ import { Button } from "@/components/ui/button";
 import { ConfirmPanel } from "@/components/ui/confirm-panel";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { FormField } from "@/components/forms/FormField";
-import {
-  deleteProductVariantAction,
-  updateProductVariantAction,
-} from "@/features/products/actions/product-variant.actions";
+import type { VariantOps } from "@/features/products/lib/product-variant-ops";
 import {
   updateProductVariantSchema,
   type UpdateProductVariantInput,
 } from "@/features/products/schemas/product-variant.schema";
 import type { ProductAttributeKey } from "@/features/categories/types/category.types";
-import type { Product, ProductVariant } from "@/features/products/types/product.types";
+import type { ProductVariant } from "@/features/products/types/product.types";
 import { fromCents } from "@/lib/utils/currency";
 import { formatCurrency } from "@/lib/utils/currency";
 
@@ -46,7 +43,11 @@ function toInput(variant: ProductVariant): UpdateProductVariantInput {
 
 export interface ProductVariantRowProps {
   variant: ProductVariant;
-  product: Product;
+  /** Only the parent product's price and currency are used (to show what a blank price override inherits). */
+  product: { priceCents: number; currency: string };
+  ops: VariantOps;
+  /** Every option of the product (this one included), for the draft duplicate check. */
+  siblings: ProductVariant[];
   /** The product's currently-enabled variant axes (from `ProductVariantManager`'s checkboxes) — determines which fields this row's edit form shows. */
   activeAxes: ProductAttributeKey[];
   onChange: (variant: ProductVariant) => void;
@@ -57,6 +58,8 @@ export interface ProductVariantRowProps {
 export function ProductVariantRow({
   variant,
   product,
+  ops,
+  siblings,
   activeAxes,
   onChange,
   onDelete,
@@ -84,7 +87,7 @@ export function ProductVariantRow({
       return;
     }
     startSaving(async () => {
-      const result = await updateProductVariantAction(parsed.data);
+      const result = await ops.update(parsed.data, siblings);
       if (!result.success) {
         setFormError(result.error);
         return;
@@ -103,7 +106,7 @@ export function ProductVariantRow({
 
   function handleDelete() {
     startDeleting(async () => {
-      const result = await deleteProductVariantAction({ id: variant.id });
+      const result = await ops.remove(variant.id);
       if (!result.success) {
         setFormError(result.error);
         setMode("view");

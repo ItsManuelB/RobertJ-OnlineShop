@@ -13,7 +13,7 @@ import {
   bulkArchiveProductsSchema,
   bulkAssignProductCategorySchema,
   bulkUpdateProductStatusSchema,
-  createProductSchema,
+  createProductRequestSchema,
   deleteProductImageSchema,
   setProductImageVariantSchema,
   updateProductSchema,
@@ -56,13 +56,15 @@ export async function createProductAction(
   _prevState: ActionResult<Product> | null,
   formData: FormData,
 ): Promise<ActionResult<Product>> {
-  const parsed = createProductSchema.safeParse(Object.fromEntries(formData));
+  const parsed = createProductRequestSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return fromZodError(parsed.error);
+  const { clientId, ...input } = parsed.data;
 
   try {
     const seller = await queries.requireRole([USER_ROLES.seller]);
     const shopId = await queries.requireOwnShopId();
-    const product = await queries.createProduct(parsed.data, seller.id, shopId);
+    // `clientId` makes a repeated request resolve to the same product (see `createProduct`).
+    const product = await queries.createProduct(input, seller.id, shopId, clientId);
     revalidatePath(ROUTES.adminInventory);
     revalidatePath(ROUTES.sellerInventory);
     revalidatePath(ROUTES.products);

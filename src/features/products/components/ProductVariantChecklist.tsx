@@ -4,15 +4,15 @@ import { useState, useTransition } from "react";
 
 import { Checkbox } from "@/components/ui/checkbox";
 import { ErrorState } from "@/components/feedback/ErrorState";
-import {
-  createProductVariantAction,
-  deleteProductVariantAction,
-} from "@/features/products/actions/product-variant.actions";
 import type { ProductAttributeKey } from "@/features/categories/types/category.types";
-import type { Product, ProductVariant } from "@/features/products/types/product.types";
+import type { VariantOps } from "@/features/products/lib/product-variant-ops";
+import type { ProductVariant } from "@/features/products/types/product.types";
 
 export interface ProductVariantChecklistProps {
-  product: Product;
+  /** Only the id is used (the variant's parent). */
+  product: { id: string };
+  /** Where ticks and unticks go: the server (existing product) or an in-memory draft (new product). */
+  ops: VariantOps;
   /** The single active variant axis this checklist covers. */
   attributeKey: ProductAttributeKey;
   /** Plural, lowercase noun for copy — e.g. "sizes". */
@@ -36,6 +36,7 @@ export interface ProductVariantChecklistProps {
  */
 export function ProductVariantChecklist({
   product,
+  ops,
   attributeKey,
   label,
   allowedValues,
@@ -52,13 +53,13 @@ export function ProductVariantChecklist({
     setPendingValue(value);
     startTransition(async () => {
       if (checked) {
-        const result = await createProductVariantAction({ productId: product.id, [attributeKey]: value });
+        const result = await ops.create({ productId: product.id, [attributeKey]: value }, variants);
         if (result.success) onCreated(result.data);
         else setError({ title: `Couldn't add ${value}`, message: result.error });
       } else {
         const existing = variants.find((variant) => variant[attributeKey] === value);
         if (existing) {
-          const result = await deleteProductVariantAction({ id: existing.id });
+          const result = await ops.remove(existing.id);
           if (result.success) onDeleted(existing.id);
           else setError({ title: `Couldn't remove ${value}`, message: result.error });
         }

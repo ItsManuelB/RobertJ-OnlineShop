@@ -25,7 +25,7 @@ export interface FormFieldProps
   /**
    * Renders the resting input through the Admin/Seller portal tokens instead of
    * the fixed rj-* palette, so it inverts correctly in dark mode. Pass from
-   * portal forms only (ProductForm, StockAdjustmentForm, ShopForm); Buyer/auth
+   * portal forms only (ProductEditor, StockAdjustmentForm, ShopForm); Buyer/auth
    * forms omit it and keep the fixed-light look.
    */
   themed?: boolean;

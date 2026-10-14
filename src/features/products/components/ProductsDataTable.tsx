@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Fragment, useRef, useState, useTransition } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +19,6 @@ import {
   PRODUCT_STATUS_LABELS,
   type ProductStatus,
 } from "@/constants/status";
-import type { RecommendationRule } from "@/features/assistant";
 import {
   archiveProductAction,
   assignProductShopAction,
@@ -28,10 +28,9 @@ import {
   restoreProductAction,
 } from "@/features/products/actions/product.actions";
 import { LOW_STOCK_THRESHOLD } from "@/features/products/constants/product.constants";
-import { ProductEditDrawer } from "@/features/products/components/ProductEditDrawer";
 import { ProductGridCard } from "@/features/products/components/ProductGridCard";
 import { ProductStatusBadge } from "@/features/products/components/ProductStatusBadge";
-import type { Category, CategoryAttribute } from "@/features/categories/types/category.types";
+import type { Category } from "@/features/categories/types/category.types";
 import { getCoverImage, type Product, type ProductVariant } from "@/features/products/types/product.types";
 import type { Shop } from "@/features/shops/types/shop.types";
 import { formatCurrency } from "@/lib/utils/currency";
@@ -41,15 +40,11 @@ import { cn } from "@/lib/utils/cn";
 export interface ProductsDataTableProps {
   products: Product[];
   categories: Category[];
-  /** Every category's attribute config, threaded down to `ProductEditDrawer`. */
-  categoryAttributes: CategoryAttribute[];
   /** Populated only for an admin (from `listShops()`); empty for a seller. */
   shops: Shop[];
   isAdmin: boolean;
   /** Every variant visible to the caller — filtered per row below, no N+1. */
   variants: ProductVariant[];
-  /** Every Guided Selection rule visible to the caller — filtered per row below, no N+1. */
-  rules: RecommendationRule[];
   /** Presentation only — defaults to the pre-existing table/card layout. */
   view?: "grid" | "list";
   /** True when the caller filtered to `status=archived` (the Recycle Bin view) — swaps each row's Archive action for Restore and hides the bulk-archive button. */
@@ -79,22 +74,18 @@ function stockCell(product: Product, hasVariants: boolean) {
  * Products dashboard table — desktop `<table>` + `sm:hidden` card fallback,
  * checkbox multi-select driving a bulk-actions bar, and a row menu (kebab)
  * for Edit/Manage stock/Archive. Replaces `DashboardProductRow`'s one-card-
- * per-product stack; single-row edit now opens `ProductEditDrawer` instead
- * of expanding the row in place.
+ * per-product stack; single-row edit opens the full-page product editor.
  */
 export function ProductsDataTable({
   products,
   categories,
-  categoryAttributes,
   shops,
   isAdmin,
   variants,
-  rules,
   view = "list",
   isArchivedView = false,
 }: ProductsDataTableProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [editingId, setEditingId] = useState<string | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [confirmArchiveIds, setConfirmArchiveIds] = useState<string[] | null>(null);
   const [assigningShopId, setAssigningShopId] = useState<string | null>(null);
@@ -108,7 +99,9 @@ export function ProductsDataTable({
   const [isPending, startTransition] = useTransition();
   const archiveTriggerRef = useRef<HTMLButtonElement>(null);
 
-  const editingProduct = products.find((p) => p.id === editingId) ?? null;
+  const router = useRouter();
+  /** Editing is a full page (the same editor the Add product page uses), not a drawer. */
+  const editHref = (id: string) => (isAdmin ? ROUTES.adminProductEdit(id) : ROUTES.sellerProductEdit(id));
   const inventoryHref = isAdmin ? ROUTES.adminInventory : ROUTES.sellerInventory;
 
   const allSelected = products.length > 0 && products.every((p) => selected.has(p.id));
@@ -354,7 +347,7 @@ export function ProductsDataTable({
                 selectedShopId={selectedShopId}
                 isArchivedView={isArchivedView}
                 onToggleSelect={(checked) => toggleOne(product.id, checked)}
-                onEdit={() => setEditingId(product.id)}
+                onEdit={() => router.push(editHref(product.id))}
                 onMenuOpenChange={(open) => setOpenMenuId(open ? product.id : null)}
                 onRequestArchive={() => {
                   setConfirmArchiveIds([product.id]);
@@ -424,13 +417,12 @@ export function ProductsDataTable({
                           )}
                         </div>
                         <div className="min-w-0">
-                          <button
-                            type="button"
-                            onClick={() => setEditingId(product.id)}
+                          <Link
+                            href={editHref(product.id)}
                             className="block max-w-[220px] truncate text-left text-sm font-semibold text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
                           >
                             {product.title}
-                          </button>
+                          </Link>
                           <p className="text-xs text-muted-foreground">{PRODUCT_CONDITION_LABELS[product.condition]}</p>
                           {product.shopId === null ? <Badge tone="warning">Unassigned</Badge> : null}
                         </div>
@@ -448,16 +440,13 @@ export function ProductsDataTable({
                         open={openMenuId === product.id}
                         onOpenChange={(open) => setOpenMenuId(open ? product.id : null)}
                       >
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingId(product.id);
-                            setOpenMenuId(null);
-                          }}
-                          className="w-full rounded px-2 py-1.5 text-left text-sm text-foreground hover:bg-muted"
+                        <Link
+                          href={editHref(product.id)}
+                          onClick={() => setOpenMenuId(null)}
+                          className="block w-full rounded px-2 py-1.5 text-left text-sm text-foreground hover:bg-muted"
                         >
                           Edit
-                        </button>
+                        </Link>
                         <Link
                           href={`${inventoryHref}?search=${encodeURIComponent(product.title)}`}
                           onClick={() => setOpenMenuId(null)}
@@ -618,9 +607,9 @@ export function ProductsDataTable({
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Button type="button" variant="outline" size="rjSm" onClick={() => setEditingId(product.id)}>
+                  <Link href={editHref(product.id)} className={cn(buttonVariants({ variant: "outline", size: "rjSm" }))}>
                     Edit
-                  </Button>
+                  </Link>
                   <Link
                     href={`${inventoryHref}?search=${encodeURIComponent(product.title)}`}
                     className={cn(buttonVariants({ variant: "outline", size: "rjSm" }))}
@@ -663,15 +652,6 @@ export function ProductsDataTable({
           );
         })}
       </div>
-
-      <ProductEditDrawer
-        product={editingProduct}
-        categories={categories}
-        categoryAttributes={categoryAttributes}
-        variants={editingProduct ? variants.filter((v) => v.productId === editingProduct.id) : []}
-        rules={editingProduct ? rules.filter((r) => r.productId === editingProduct.id) : []}
-        onClose={() => setEditingId(null)}
-      />
     </div>
   );
 }

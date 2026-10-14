@@ -26,7 +26,7 @@ export interface ShopImageUploaderProps {
 /**
  * One uploader, parameterized by `kind`, serves both the logo and the
  * banner rather than forking two near-identical components. Mirrors
- * `ProductForm`'s upload pattern (hidden file input, `useTransition`,
+ * `ProductPhotosSection`'s upload pattern (hidden file input, `useTransition`,
  * inline error) but simpler — a shop always already exists by the time this
  * renders, so there's no "create mode" staging to handle.
  *

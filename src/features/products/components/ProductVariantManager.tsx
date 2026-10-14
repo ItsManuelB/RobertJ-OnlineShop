@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { FormField } from "@/components/forms/FormField";
-import { createProductVariantAction } from "@/features/products/actions/product-variant.actions";
+import { draftVariantOps, liveVariantOps } from "@/features/products/lib/product-variant-ops";
 import { ProductVariantChecklist } from "@/features/products/components/ProductVariantChecklist";
 import { ProductVariantRow } from "@/features/products/components/ProductVariantRow";
 import {
@@ -15,7 +15,7 @@ import {
   type ProductVariantFormInput,
 } from "@/features/products/schemas/product-variant.schema";
 import type { CategoryAttribute, ProductAttributeKey } from "@/features/categories/types/category.types";
-import type { Product, ProductVariant } from "@/features/products/types/product.types";
+import type { ProductVariant } from "@/features/products/types/product.types";
 import { formatCurrency } from "@/lib/utils/currency";
 
 type FieldErrors = Record<string, string[] | undefined>;
@@ -38,18 +38,35 @@ function axisInUse(variants: ProductVariant[], key: ProductAttributeKey): boolea
   return variants.some((variant) => Boolean(variant[key]));
 }
 
+/** The slice of a product the option editor needs — a full `Product` satisfies it, and so does the in-progress form of a product that is not saved yet. */
+export interface VariantProductContext {
+  id: string;
+  categoryId: string | null;
+  priceCents: number;
+  currency: string;
+}
+
 export interface ProductVariantManagerProps {
-  product: Product;
+  product: VariantProductContext;
   variants: ProductVariant[];
+  /**
+   * `live` (default): every change is saved immediately — an existing product.
+   * `draft`: changes stay in memory and are reported through
+   * `onVariantsChange`; the caller saves them once the product exists.
+   */
+  mode?: "live" | "draft";
+  /** Called with the full list after every change (and once on mount). */
+  onVariantsChange?: (variants: ProductVariant[]) => void;
   /** Every category's attribute config — filtered internally to `product.categoryId`. */
   categoryAttributes: CategoryAttribute[];
 }
 
 /**
- * Optional variant management for one product — edit-mode only (a variant
- * needs a real product id, so this never appears in create mode). Mirrors
- * the Addresses feature's list/add/edit/delete shape. `ProductForm` itself
- * is untouched; this is a sibling block, not a change to it.
+ * Optional variant management for one product. Mirrors the Addresses
+ * feature's list/add/edit/delete shape. It is a section of
+ * the product editor (`ProductEditor`), used in both modes: `live` saves each
+ * change immediately (existing product), `draft` keeps changes in memory until
+ * the new product is saved.
  *
  * Generalized per docs/plans/product-specifications-and-variants-
  * implementation.md §8.3: which attributes are offered as variant axes is
@@ -65,9 +82,19 @@ export interface ProductVariantManagerProps {
 export function ProductVariantManager({
   product,
   variants: initialVariants,
+  mode = "live",
+  onVariantsChange,
   categoryAttributes,
 }: ProductVariantManagerProps) {
   const [variants, setVariants] = useState<ProductVariant[]>(initialVariants);
+
+  // Reports the list to the parent after every change (and once on mount).
+  const onChangeRef = useRef(onVariantsChange);
+  useEffect(() => {
+    onChangeRef.current = onVariantsChange;
+    onChangeRef.current?.(variants);
+  }, [variants, onVariantsChange]);
+  const ops = mode === "draft" ? draftVariantOps : liveVariantOps;
 
   const categoryConfig = categoryAttributes.filter((a) => a.categoryId === product.categoryId);
   const hasConfig = categoryConfig.length > 0;
@@ -137,7 +164,7 @@ export function ProductVariantManager({
       return;
     }
     startTransition(async () => {
-      const result = await createProductVariantAction(parsed.data);
+      const result = await ops.create(parsed.data, variants);
       if (!result.success) {
         setFormError(result.error);
         return;
@@ -200,6 +227,8 @@ export function ProductVariantManager({
               key={variant.id}
               variant={variant}
               product={product}
+              ops={ops}
+              siblings={variants}
               activeAxes={axisKeys.filter((key) => enabledAxes.has(key))}
               onChange={(updated) =>
                 setVariants((prev) => prev.map((v) => (v.id === updated.id ? updated : v)))
@@ -213,6 +242,7 @@ export function ProductVariantManager({
       {checklistAttribute && checklistValues ? (
         <ProductVariantChecklist
           product={product}
+          ops={ops}
           attributeKey={checklistAttribute.attributeKey}
           label={ATTRIBUTE_LABELS[checklistAttribute.attributeKey]}
           allowedValues={checklistValues}

@@ -142,6 +142,18 @@ export const createProductSchema = z.object({
 });
 
 /**
+ * What `createProductAction` accepts: the create payload plus an optional
+ * client-generated `clientId`. It becomes the new product's primary key, so
+ * repeating the same request (a double click, or a retry after a lost
+ * response) resolves to the product that already exists instead of creating a
+ * duplicate. Deliberately NOT part of `createProductSchema`: the update schema
+ * is derived from that one and its fields are written straight to the row.
+ */
+export const createProductRequestSchema = createProductSchema.extend({
+  clientId: z.uuid().optional(),
+});
+
+/**
  * A product's shop is never reassignable through the general edit form (see
  * `assignProductShopSchema` for the distinct, admin-only reassignment path)
  * — there's no `shopId` field here to omit, since `createProductSchema`
@@ -162,8 +174,8 @@ export const assignProductShopSchema = z.object({
 /** Mirrors the `product-images` bucket's own file_size_limit/allowed_mime_types
  * (see the storage migration) so the UI fails fast instead of round-tripping
  * to Storage only to be rejected there. */
-const MAX_PRODUCT_IMAGE_BYTES = 5 * 1024 * 1024;
-const ALLOWED_PRODUCT_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+export const MAX_PRODUCT_IMAGE_BYTES = 5 * 1024 * 1024;
+export const ALLOWED_PRODUCT_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 export const uploadProductImageSchema = z.object({
   productId: z.uuid(),
@@ -197,6 +209,7 @@ export type BulkAssignProductCategoryInput = z.infer<typeof bulkAssignProductCat
 export type BulkArchiveProductsInput = z.infer<typeof bulkArchiveProductsSchema>;
 export type ProductListParamsInput = z.input<typeof productListParamsSchema>;
 export type CreateProductInput = z.infer<typeof createProductSchema>;
+export type CreateProductRequestInput = z.infer<typeof createProductRequestSchema>;
 export type UpdateProductInput = z.infer<typeof updateProductSchema>;
 export type AssignProductShopInput = z.infer<typeof assignProductShopSchema>;
 export type UploadProductImageInput = z.infer<typeof uploadProductImageSchema>;

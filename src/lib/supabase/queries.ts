@@ -840,11 +840,14 @@ export async function createProduct(
   input: CreateProductInput,
   sellerId: string,
   shopId: string,
+  clientId?: string,
 ): Promise<Product> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from(DATABASE_TABLES.PRODUCTS)
     .insert({
+      // Client-generated primary key = idempotency key (see the 23505 branch).
+      ...(clientId ? { id: clientId } : {}),
       slug: `${slugify(input.title)}-${Date.now().toString(36)}`,
       title: input.title,
       description: input.description ?? null,
@@ -865,10 +868,49 @@ export async function createProduct(
     .single();
 
   if (error) {
+    // Idempotent retry: the same `clientId` already created this product (a
+    // double submit, or a retry after a lost response). Return that row —
+    // but only when it is this seller's own; a key that collides with
+    // someone else's product (or a slug clash, which is a different unique
+    // constraint) is a genuine failure, never silently "adopted".
+    if (clientId && error.code === "23505" && /products_pkey/.test(`${error.message} ${error.details ?? ""}`)) {
+      const existing = await getDashboardProduct(clientId, { sellerId, shopId });
+      if (existing && existing.sellerId === sellerId) return existing;
+    }
     throw queryError("Failed to create product", error);
   }
 
   return toProduct(data as ProductRowWithImages);
+}
+
+/**
+ * One product by id for the Seller/Admin dashboard editor — same owner scope
+ * as `listDashboardProductsPage` (`null` = admin, RLS is the boundary;
+ * otherwise the caller's own products or their shop's). Archived products
+ * stay reachable here so they can be restored and edited. Null when missing
+ * or out of scope.
+ */
+export async function getDashboardProduct(
+  id: string,
+  owner: { sellerId: string; shopId: string | null } | null,
+): Promise<Product | null> {
+  const supabase = await createSupabaseServerClient();
+  let query = supabase.from(DATABASE_TABLES.PRODUCTS).select(PRODUCT_COLUMNS).eq("id", id);
+
+  if (owner) {
+    query = query.or(
+      owner.shopId
+        ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
+        : `seller_id.eq.${owner.sellerId}`,
+    );
+  }
+
+  const { data, error } = await query.maybeSingle();
+
+  if (error) {
+    throw queryError("Failed to load product", error);
+  }
+  return data ? toProduct(data as ProductRowWithImages) : null;
 }
 
 /**
@@ -6239,6 +6281,53 @@ export async function createProductVariant(
     throw queryError("Failed to create variant", error);
   }
   return toProductVariant(data as ProductVariantRow);
+}
+
+/** The variant of `productId` with exactly this color/size/material/dimensions combination (null = unset), or null. Mirrors `product_variants_unique_combo_idx`. */
+async function findProductVariantByAttributes(
+  productId: string,
+  input: Pick<ProductVariantInput, "color" | "size" | "material" | "dimensions">,
+): Promise<ProductVariant | null> {
+  const supabase = await createSupabaseServerClient();
+  let query = supabase
+    .from(DATABASE_TABLES.PRODUCT_VARIANTS)
+    .select(PRODUCT_VARIANT_COLUMNS)
+    .eq("product_id", productId);
+
+  for (const key of ["color", "size", "material", "dimensions"] as const) {
+    const value = input[key] || null;
+    query = value === null ? query.is(key, null) : query.eq(key, value);
+  }
+
+  const { data, error } = await query.maybeSingle();
+  if (error) {
+    throw queryError("Failed to look up variant", error);
+  }
+  return data ? toProductVariant(data as ProductVariantRow) : null;
+}
+
+/**
+ * Idempotent `createProductVariant` for the "save the whole new product"
+ * flow: the same option combination always resolves to the one variant row,
+ * so a retry after a lost response (or a double submit) can never create a
+ * duplicate. Relies on the existing unique index for the concurrent case.
+ */
+export async function ensureProductVariant(
+  productId: string,
+  sellerId: string,
+  shopId: string | null,
+  input: ProductVariantInput,
+): Promise<ProductVariant> {
+  const existing = await findProductVariantByAttributes(productId, input);
+  if (existing) return existing;
+
+  try {
+    return await createProductVariant(productId, sellerId, shopId, input);
+  } catch (error) {
+    const raced = await findProductVariantByAttributes(productId, input);
+    if (raced) return raced;
+    throw error;
+  }
 }
 
 /**
