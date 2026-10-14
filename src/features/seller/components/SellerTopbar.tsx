@@ -162,7 +162,7 @@ export function SellerTopbar({ user, pathname, notifications, onMenuClick }: Sel
               </div>
               <div className="py-1.5">
                 <Link
-                  href={ROUTES.profile}
+                  href={ROUTES.sellerSettings}
                   className="block w-full px-4 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted"
                   onClick={() => setShowProfile(false)}
                 >

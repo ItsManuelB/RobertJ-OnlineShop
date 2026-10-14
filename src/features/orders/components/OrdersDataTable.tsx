@@ -15,7 +15,8 @@ import { ROUTES } from "@/constants/routes";
 import { advanceOrderStatusAction, bulkCancelOrdersAction, bulkConfirmOrdersAction, exportOrdersAction } from "@/features/orders/actions/order.actions";
 import { OrderStatusBadge } from "@/features/orders/components/OrderStatusBadge";
 import { PaymentStatusBadge } from "@/features/orders/components/PaymentStatusBadge";
-import { isOrderNeedingAttention, type Order } from "@/features/orders/types/order.types";
+import { OrderItemThumbs } from "@/features/orders/components/OrderItemThumbs";
+import { getBuyerDisplayName, isOrderNeedingAttention, summarizeOrderItems, type Order } from "@/features/orders/types/order.types";
 import { downloadCsv } from "@/lib/utils/csv";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate } from "@/lib/utils/date";
@@ -27,11 +28,6 @@ const LABEL_ELIGIBLE = new Set(["processing", "shipped", "delivered"]);
 export interface OrdersDataTableProps {
   orders: Order[];
   isAdmin: boolean;
-}
-
-function initials(name: string) {
-  const words = name.split(" ").filter(Boolean);
-  return `${words[0]?.[0] ?? ""}${words[1]?.[0] ?? ""}`.toUpperCase();
 }
 
 function canConfirm(order: Order) {
@@ -323,14 +319,12 @@ export function OrdersDataTable({ orders, isAdmin }: OrdersDataTableProps) {
                     </td>
                     <td className="p-3 align-top">
                       <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-xs font-bold text-muted-foreground">
-                          {initials(order.buyerName ?? "?")}
-                        </div>
+                        <OrderItemThumbs items={order.items} />
                         <div className="min-w-0">
                           <Link href={orderHref(order.id)} className="block text-sm font-semibold text-foreground hover:underline">
                             {order.orderNumber}
                           </Link>
-                          <p className="text-xs text-muted-foreground">{order.buyerName ?? "Unknown buyer"}</p>
+                          <p className="text-xs text-muted-foreground">{getBuyerDisplayName(order)}</p>
                         </div>
                       </div>
                     </td>
@@ -340,7 +334,7 @@ export function OrdersDataTable({ orders, isAdmin }: OrdersDataTableProps) {
                       </td>
                     ) : null}
                     <td className="p-3 align-top text-sm text-muted-foreground">
-                      {order.items.length} item{order.items.length === 1 ? "" : "s"}
+                      <p className="line-clamp-2 max-w-[16rem] text-foreground">{summarizeOrderItems(order.items)}</p>
                     </td>
                     <td className="p-3 align-top text-sm font-medium text-foreground">
                       {formatCurrency(order.totalCents, order.currency)}
@@ -439,13 +433,14 @@ export function OrdersDataTable({ orders, isAdmin }: OrdersDataTableProps) {
                   aria-label={`Select order ${order.orderNumber}`}
                   className="mt-1"
                 />
+                <OrderItemThumbs items={order.items} size="sm" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-foreground">{order.orderNumber}</p>
                   <p className="text-xs text-muted-foreground">
-                    {order.buyerName ?? "Unknown buyer"}
-                    {isAdmin ? ` · ${order.shopName ?? "—"}` : ""} · {order.items.length} item
-                    {order.items.length === 1 ? "" : "s"} · {formatCurrency(order.totalCents, order.currency)}
+                    {getBuyerDisplayName(order)}
+                    {isAdmin ? ` · ${order.shopName ?? "—"}` : ""} · {formatCurrency(order.totalCents, order.currency)}
                   </p>
+                  <p className="mt-0.5 line-clamp-2 text-xs text-foreground">{summarizeOrderItems(order.items)}</p>
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     <OrderStatusBadge
                         status={order.status}

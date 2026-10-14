@@ -172,3 +172,22 @@ export function isOrderNeedingAttention(order: Pick<Order, "status" | "paymentMe
     (order.status === "shipped" || order.status === "delivered");
   return needsConfirmation || codAwaitingCollection;
 }
+
+/**
+ * Name to show for an order's buyer on the dashboards. A seller can only read a
+ * buyer's profile for orders addressed to them, so `buyerName` can be null for
+ * a shop co-member's order; the delivery name captured on the order itself is
+ * always readable and is the next-best answer.
+ */
+export function getBuyerDisplayName(order: Pick<Order, "buyerName" | "shippingAddress">): string {
+  return order.buyerName ?? order.shippingAddress?.fullName ?? "Unknown buyer";
+}
+
+/** One-line summary of what was bought, e.g. "Vintage Jacket Demin ×2 (Blue / M) +1 more". */
+export function summarizeOrderItems(items: OrderItem[]): string {
+  const [first, ...rest] = items;
+  if (!first) return "No items";
+  const label = first.variantLabel ? ` (${first.variantLabel})` : "";
+  const more = rest.length > 0 ? ` +${rest.length} more` : "";
+  return `${first.productTitle} ×${first.quantity}${label}${more}`;
+}

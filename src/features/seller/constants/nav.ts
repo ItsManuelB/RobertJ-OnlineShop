@@ -36,6 +36,7 @@ export const SELLER_NAV_GROUPS: readonly SellerNavGroup[] = [
 export const SELLER_PAGE_META: Record<string, { title: string; subtitle: string }> = {
   [ROUTES.sellerDashboard]: { title: "Dashboard", subtitle: "Overview of your shop's performance" },
   [ROUTES.sellerShop]: { title: "My Shop", subtitle: "Manage your shop's public branding" },
+  [ROUTES.sellerSettings]: { title: "Settings", subtitle: "Manage your account and sign-in" },
   [ROUTES.sellerProducts]: { title: "Products", subtitle: "Manage your product catalog" },
   [ROUTES.sellerInventory]: { title: "Inventory", subtitle: "Track your shop's stock levels" },
   [ROUTES.sellerOrders]: { title: "Orders", subtitle: "Fulfil and track your shop's orders" },
