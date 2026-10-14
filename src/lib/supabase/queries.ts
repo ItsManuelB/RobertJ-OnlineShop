@@ -7819,6 +7819,17 @@ export async function deleteRecommendationRule(
 
 /** Candidate pool per query. Newest first, so a very large category degrades to "newest N" rather than failing. */
 const GUIDED_SELECTION_CANDIDATE_LIMIT = 300;
+const GUIDED_SELECTION_BATCH = 40;
+
+type GuidedVariantRow = {
+  id: string;
+  product_id: string;
+  color: string | null;
+  size: string | null;
+  material: string | null;
+  dimensions: string | null;
+  price_cents: number | null;
+};
 
 export interface GuidedSelectionMatchInput {
   occasion?: RecommendationOccasion;
@@ -7873,18 +7884,27 @@ export async function listGuidedSelectionMatches(
   const products = (productRows ?? []) as unknown as ProductRowWithImages[];
   if (products.length === 0) return [];
 
-  const { data: variantRows, error: variantError } = await supabase
-    .from(DATABASE_TABLES.PRODUCT_VARIANTS)
-    .select("id, product_id, color, size, material, dimensions, price_cents")
-    .in("product_id", products.map((product) => product.id))
-    .eq("status", "active");
-  if (variantError) {
-    throw queryError("Failed to load Guided Selection matches", variantError);
+  // Batched: a single `.in()` over hundreds of uuids makes a URL long enough for the API gateway to reject.
+  const variantRows: GuidedVariantRow[] = [];
+  for (let i = 0; i < products.length; i += GUIDED_SELECTION_BATCH) {
+    const { data, error: variantError } = await supabase
+      .from(DATABASE_TABLES.PRODUCT_VARIANTS)
+      .select("id, product_id, color, size, material, dimensions, price_cents")
+      .in("product_id", products.slice(i, i + GUIDED_SELECTION_BATCH).map((product) => product.id))
+      .eq("status", "active");
+    if (variantError) {
+      throw queryError("Failed to load Guided Selection matches", variantError);
+    }
+    variantRows.push(...(data ?? []));
   }
 
-  const stock = await getVariantStock((variantRows ?? []).map((variant) => variant.id));
+  const stock = new Map<string, number>();
+  for (let i = 0; i < variantRows.length; i += GUIDED_SELECTION_BATCH) {
+    const batch = await getVariantStock(variantRows.slice(i, i + GUIDED_SELECTION_BATCH).map((variant) => variant.id));
+    for (const [variantId, quantity] of batch) stock.set(variantId, quantity);
+  }
   const optionsByProduct = new Map<string, MatchOption[]>();
-  for (const variant of variantRows ?? []) {
+  for (const variant of variantRows) {
     const options = optionsByProduct.get(variant.product_id) ?? [];
     options.push({
       id: variant.id,
