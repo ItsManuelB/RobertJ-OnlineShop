@@ -24,6 +24,7 @@ import { Breadcrumbs } from "@/features/products/components/Breadcrumbs";
 import { LOW_STOCK_THRESHOLD } from "@/features/products/constants/product.constants";
 import { ProductGallery } from "@/features/products/components/ProductGallery";
 import { ProductJsonLd } from "@/features/products/components/ProductJsonLd";
+import { ProductSelectionProvider } from "@/features/products/components/ProductSelectionProvider";
 import { ProductQuantityAndAddToCart } from "@/features/products/components/ProductQuantityAndAddToCart";
 import { RelatedProducts } from "@/features/products/components/RelatedProducts";
 import { ProductReviews } from "@/features/reviews/components/ProductReviews";
@@ -107,8 +108,9 @@ export default async function ProductDetailPage({
       />
       <Breadcrumbs items={breadcrumbItems} />
 
+      <ProductSelectionProvider>
       <div className="grid gap-8 md:grid-cols-2 lg:gap-12">
-        <ProductGallery images={product.images} title={product.title} />
+        <ProductGallery images={product.images} title={product.title} variants={variants} />
 
         <div className="flex flex-col gap-5">
           <div>
@@ -251,6 +253,7 @@ export default async function ProductDetailPage({
           </div>
         </div>
       </div>
+      </ProductSelectionProvider>
 
       <div id="reviews">
         <ProductReviews summary={reviewSummary} />

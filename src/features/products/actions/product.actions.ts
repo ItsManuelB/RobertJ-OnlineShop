@@ -15,6 +15,7 @@ import {
   bulkUpdateProductStatusSchema,
   createProductSchema,
   deleteProductImageSchema,
+  setProductImageVariantSchema,
   updateProductSchema,
   uploadProductImageSchema,
 } from "@/features/products/schemas/product.schema";
@@ -350,6 +351,39 @@ export async function deleteProductImageAction(
   } catch (error) {
     return fail(
       error instanceof Error ? error.message : "Could not delete the image.",
+    );
+  }
+}
+
+/**
+ * Tags a product photo to one of the product's variants (or clears it with
+ * `variantId: null`). Same role/ownership shape as `deleteProductImageAction`;
+ * the variant-belongs-to-this-product check lives in the service layer.
+ */
+export async function setProductImageVariantAction(
+  input: unknown,
+): Promise<ActionResult<ProductImage>> {
+  const parsed = setProductImageVariantSchema.safeParse(input);
+  if (!parsed.success) return fromZodError(parsed.error);
+
+  try {
+    const seller = await queries.requireRole(DASHBOARD_ROLES);
+    const owner =
+      seller.role === USER_ROLES.admin
+        ? null
+        : { sellerId: seller.id, shopId: await queries.getOwnShopId(seller.id) };
+    const image = await queries.setProductImageVariant(
+      parsed.data.imageId,
+      parsed.data.variantId,
+      owner,
+    );
+    revalidatePath(ROUTES.adminProducts);
+    revalidatePath(ROUTES.sellerProducts);
+    revalidatePath(ROUTES.products);
+    return ok(image);
+  } catch (error) {
+    return fail(
+      error instanceof Error ? error.message : "Could not update the image.",
     );
   }
 }

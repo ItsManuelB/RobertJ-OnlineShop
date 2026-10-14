@@ -12,12 +12,14 @@ import { PRODUCT_CONDITION_LABELS, PRODUCT_STATUS_LABELS } from "@/constants/sta
 import {
   createProductAction,
   deleteProductImageAction,
+  setProductImageVariantAction,
   updateProductAction,
   uploadProductImageAction,
 } from "@/features/products/actions/product.actions";
 import type { Category, CategoryAttribute, ProductAttributeKey } from "@/features/categories/types/category.types";
-import type { Product, ProductImage } from "@/features/products/types/product.types";
+import type { Product, ProductImage, ProductVariant } from "@/features/products/types/product.types";
 import { fromCents } from "@/lib/utils/currency";
+import { getColorOptions } from "@/lib/utils/variant-images";
 import type { ActionResult } from "@/types/action.types";
 
 const IMAGE_INPUT_ACCEPT = "image/jpeg,image/png,image/webp";
@@ -46,6 +48,8 @@ export interface ProductFormProps {
   categoryAttributes: CategoryAttribute[];
   /** Omit for create mode; pass the product being edited for edit mode. */
   product?: Product;
+  /** The product's variants (edit mode) — drives the optional per-photo "Applies to" color picker. */
+  variants?: ProductVariant[];
   onDone?: () => void;
 }
 
@@ -58,7 +62,7 @@ export interface ProductFormProps {
  * mode, where every field — including "Featured" — is identical regardless
  * of who's using it.
  */
-export function ProductForm({ categories, categoryAttributes, product, onDone }: ProductFormProps) {
+export function ProductForm({ categories, categoryAttributes, product, variants = [], onDone }: ProductFormProps) {
   const isEdit = Boolean(product);
   const [state, formAction, isPending] = useActionState<
     ActionResult<Product> | null,
@@ -167,6 +171,28 @@ export function ProductForm({ categories, categoryAttributes, product, onDone }:
     URL.revokeObjectURL(previewUrl);
   }
 
+  // One option per distinct color; only offered once a variant actually has a color.
+  const colorOptions = getColorOptions(variants);
+  const variantColorById = new Map(variants.map((variant) => [variant.id, variant.color]));
+
+  /** A photo tagged to any variant of a color shows that color's option as selected. */
+  function selectedColorOption(image: ProductImage): string {
+    const color = image.variantId ? variantColorById.get(image.variantId) : null;
+    return colorOptions.find((option) => option.color === color)?.variantId ?? "";
+  }
+
+  function handleImageVariantChange(imageId: string, variantId: string) {
+    setImageError(null);
+    startImageTransition(async () => {
+      const result = await setProductImageVariantAction({ imageId, variantId: variantId || null });
+      if (result.success) {
+        setImages((current) => current.map((image) => (image.id === imageId ? result.data : image)));
+      } else {
+        setImageError(result.error);
+      }
+    });
+  }
+
   function handleDeleteImage(imageId: string) {
     if (!product) return;
     setImageError(null);
@@ -215,23 +241,43 @@ export function ProductForm({ categories, categoryAttributes, product, onDone }:
         {images.length > 0 || pendingImages.length > 0 ? (
           <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
             {images.map((image) => (
-              <div key={image.id} className="group relative aspect-square overflow-hidden rounded-md border border-border">
-                <Image
-                  src={image.url}
-                  alt={image.altText ?? ""}
-                  fill
-                  className="object-cover"
-                  sizes="120px"
-                />
-                <button
-                  type="button"
-                  onClick={() => handleDeleteImage(image.id)}
-                  disabled={isImagePending}
-                  aria-label="Remove image"
-                  className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white transition-opacity hover:bg-black/80 disabled:opacity-50"
-                >
-                  <X className="h-3.5 w-3.5" aria-hidden="true" />
-                </button>
+              <div key={image.id} className="flex flex-col gap-1">
+                <div className="group relative aspect-square overflow-hidden rounded-md border border-border">
+                  <Image
+                    src={image.url}
+                    alt={image.altText ?? ""}
+                    fill
+                    className="object-cover"
+                    sizes="120px"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteImage(image.id)}
+                    disabled={isImagePending}
+                    aria-label="Remove image"
+                    className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white transition-opacity hover:bg-black/80 disabled:opacity-50"
+                  >
+                    <X className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                </div>
+                {colorOptions.length > 0 ? (
+                  <label className="flex flex-col gap-0.5 text-[11px] text-muted-foreground">
+                    Shows for
+                    <select
+                      value={selectedColorOption(image)}
+                      onChange={(event) => handleImageVariantChange(image.id, event.target.value)}
+                      disabled={isImagePending}
+                      className="h-8 rounded-md border border-border bg-background px-1.5 text-xs text-foreground"
+                    >
+                      <option value="">All colors</option>
+                      {colorOptions.map((option) => (
+                        <option key={option.variantId} value={option.variantId}>
+                          {option.color}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
               </div>
             ))}
             {pendingImages.map((pending) => (

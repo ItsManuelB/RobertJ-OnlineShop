@@ -43,6 +43,7 @@ export function ProductEditDrawer({
             categories={categories}
             categoryAttributes={categoryAttributes}
             product={product}
+            variants={variants}
             onDone={onClose}
           />
           <div className="border-t border-border pt-5">

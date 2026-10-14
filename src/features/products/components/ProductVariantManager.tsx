@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { FormField } from "@/components/forms/FormField";
 import { createProductVariantAction } from "@/features/products/actions/product-variant.actions";
+import { ProductVariantChecklist } from "@/features/products/components/ProductVariantChecklist";
 import { ProductVariantRow } from "@/features/products/components/ProductVariantRow";
 import {
   productVariantSchema,
@@ -83,6 +84,19 @@ export function ProductVariantManager({
       ? new Set(axisKeys.filter((key) => axisInUse(variants, key)))
       : new Set(LEGACY_AXES),
   );
+  // Checklist mode: exactly ONE active axis whose category config carries a
+  // picklist. Two or more active axes (would need a combination matrix) and
+  // free-text axes (`allowedValues` null) keep the manual "Add variant" flow.
+  const activeAxisKeys = axisKeys.filter((key) => enabledAxes.has(key));
+  const checklistAttribute =
+    activeAxisKeys.length === 1
+      ? variantEligible.find((a) => a.attributeKey === activeAxisKeys[0])
+      : undefined;
+  const checklistValues =
+    checklistAttribute?.allowedValues && checklistAttribute.allowedValues.length > 0
+      ? checklistAttribute.allowedValues
+      : null;
+
   const [axisError, setAxisError] = useState<string | null>(null);
 
   const [isAdding, setIsAdding] = useState(false);
@@ -196,7 +210,17 @@ export function ProductVariantManager({
         </ul>
       )}
 
-      {isAdding ? (
+      {checklistAttribute && checklistValues ? (
+        <ProductVariantChecklist
+          product={product}
+          attributeKey={checklistAttribute.attributeKey}
+          label={ATTRIBUTE_LABELS[checklistAttribute.attributeKey]}
+          allowedValues={checklistValues}
+          variants={variants}
+          onCreated={(created) => setVariants((prev) => [...prev, created])}
+          onDeleted={(id) => setVariants((prev) => prev.filter((v) => v.id !== id))}
+        />
+      ) : isAdding ? (
         <div className="rounded-xl border border-border p-4">
           <div className="flex flex-col gap-3">
             <div className="grid grid-cols-2 gap-3">

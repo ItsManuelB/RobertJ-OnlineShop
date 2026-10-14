@@ -7,6 +7,10 @@ All notable changes to RoberJ Online Shop are documented here, newest first. For
 
 ## [Unreleased]
 
+### Added
+- **Seller: tick-a-value variant checklist.** When a product has exactly one active variant axis and its category config carries a picklist (`category_attributes.allowed_values`, e.g. Shirts & Tops sizes), the Variant Manager shows a checklist instead of the free-text "Add variant" form — ticking creates the variant, unticking deletes it (the existing "already ordered" error is shown unchanged). Two or more active axes, and free-text axes (`allowed_values` null), keep the existing manual flow.
+- **Variant-specific photos.** New nullable `product_images.variant_id` (`20261014050000_product_images_variant_id.sql`; `ON DELETE SET NULL`). Sellers can tag a photo "Shows for" a color in the product form; the PDP gallery then follows the selected color. Untagged products behave exactly as before. **Apply the migration before deploying this code.**
+
 ### Known gaps (tracked, not resolved)
 - `recommendation_rules` table not yet implemented (Guided Product Selection — Phase 9).
 - No automated test runner (see `DECISIONS.md` → ADR-015).

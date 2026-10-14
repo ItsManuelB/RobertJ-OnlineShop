@@ -162,7 +162,7 @@ const PRODUCT_COLUMNS = `
   status, featured, location, tags, category_id, seller_id, shop_id, published_at,
   material, dimensions,
   created_at, updated_at,
-  product_images ( id, url, alt_text, sort_order ),
+  product_images ( id, url, alt_text, sort_order, variant_id ),
   seller:profiles!products_seller_id_fkey ( full_name, username, role ),
   category:categories!products_category_id_fkey ( name, slug )
 `;
@@ -185,10 +185,10 @@ function sellerDisplayName(
 }
 
 type ProductRowWithImages = Omit<ProductRow, "search_vector"> & {
-  product_images: Pick<
-    ProductImageRow,
-    "id" | "url" | "alt_text" | "sort_order"
-  >[];
+  // `variant_id` is optional so selects that don't fetch it (Guided Selection's
+  // embed) still satisfy this shape — absent maps to a shared (null) photo.
+  product_images: (Pick<ProductImageRow, "id" | "url" | "alt_text" | "sort_order"> &
+    Partial<Pick<ProductImageRow, "variant_id">>)[];
   seller: Pick<ProfileRow, "full_name" | "username" | "role"> | null;
   category: { name: string; slug: string } | null;
 };
@@ -215,6 +215,7 @@ function toProduct(row: ProductRowWithImages): Product {
         url: image.url,
         altText: image.alt_text,
         sortOrder: image.sort_order,
+        variantId: image.variant_id ?? null,
       })),
     categoryId: row.category_id,
     categoryName: row.category?.name ?? null,
@@ -1190,7 +1191,7 @@ export async function addProductImage(
   const { data, error } = await supabase
     .from(DATABASE_TABLES.PRODUCT_IMAGES)
     .insert({ product_id: productId, url, sort_order: nextSortOrder })
-    .select("id, url, alt_text, sort_order")
+    .select("id, url, alt_text, sort_order, variant_id")
     .single();
 
   if (error) {
@@ -1202,6 +1203,80 @@ export async function addProductImage(
     url: data.url,
     altText: data.alt_text,
     sortOrder: data.sort_order,
+    variantId: data.variant_id,
+  };
+}
+
+/**
+ * Tags a product photo to one of the same product's variants (or clears the
+ * tag with `variantId = null`, reverting it to a shared photo). Same owner
+ * scope as `deleteProductImage` (`null` = admin). The service layer — not a
+ * CHECK, which can't span tables — guarantees the variant belongs to the
+ * image's own product.
+ */
+export async function setProductImageVariant(
+  imageId: string,
+  variantId: string | null,
+  owner: { sellerId: string; shopId: string | null } | null,
+): Promise<ProductImage> {
+  const supabase = await createSupabaseServerClient();
+
+  const { data: image, error: readError } = await supabase
+    .from(DATABASE_TABLES.PRODUCT_IMAGES)
+    .select("id, product_id, products!inner ( seller_id, shop_id )")
+    .eq("id", imageId)
+    .maybeSingle<{
+      id: string;
+      product_id: string;
+      products: { seller_id: string; shop_id: string | null };
+    }>();
+
+  if (readError) {
+    throw new Error(`Failed to load image: ${readError.message}`);
+  }
+  if (!image) {
+    throw new Error("Image not found.");
+  }
+  if (
+    owner &&
+    image.products.seller_id !== owner.sellerId &&
+    !(owner.shopId && image.products.shop_id === owner.shopId)
+  ) {
+    throw new Error("Image not found.");
+  }
+
+  if (variantId) {
+    const { data: variant, error: variantError } = await supabase
+      .from(DATABASE_TABLES.PRODUCT_VARIANTS)
+      .select("id")
+      .eq("id", variantId)
+      .eq("product_id", image.product_id)
+      .maybeSingle();
+    if (variantError) {
+      throw queryError("Failed to verify variant", variantError);
+    }
+    if (!variant) {
+      throw new Error("That option doesn't belong to this product.");
+    }
+  }
+
+  const { data, error } = await supabase
+    .from(DATABASE_TABLES.PRODUCT_IMAGES)
+    .update({ variant_id: variantId })
+    .eq("id", imageId)
+    .select("id, url, alt_text, sort_order, variant_id")
+    .single();
+
+  if (error) {
+    throw queryError("Failed to update image", error);
+  }
+
+  return {
+    id: data.id,
+    url: data.url,
+    altText: data.alt_text,
+    sortOrder: data.sort_order,
+    variantId: data.variant_id,
   };
 }
 

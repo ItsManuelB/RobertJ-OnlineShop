@@ -185,6 +185,12 @@ export const deleteProductImageSchema = z.object({
   productId: z.uuid(),
 });
 
+/** `variantId: null` clears the tag (photo goes back to being shared by every variant). */
+export const setProductImageVariantSchema = z.object({
+  imageId: z.uuid(),
+  variantId: z.uuid().nullable(),
+});
+
 export type DashboardProductListParamsInput = z.input<typeof dashboardProductListParamsSchema>;
 export type BulkUpdateProductStatusInput = z.infer<typeof bulkUpdateProductStatusSchema>;
 export type BulkAssignProductCategoryInput = z.infer<typeof bulkAssignProductCategorySchema>;
@@ -194,4 +200,5 @@ export type CreateProductInput = z.infer<typeof createProductSchema>;
 export type UpdateProductInput = z.infer<typeof updateProductSchema>;
 export type AssignProductShopInput = z.infer<typeof assignProductShopSchema>;
 export type UploadProductImageInput = z.infer<typeof uploadProductImageSchema>;
+export type SetProductImageVariantInput = z.infer<typeof setProductImageVariantSchema>;
 export type DeleteProductImageInput = z.infer<typeof deleteProductImageSchema>;

@@ -3,20 +3,30 @@
 import Image from "next/image";
 import { useRef, useState } from "react";
 
+import { useProductSelection } from "@/features/products/components/ProductSelectionProvider";
 import { ProductLightbox } from "@/features/products/components/ProductLightbox";
-import type { ProductImage } from "@/features/products/types/product.types";
+import type { ProductImage, ProductVariant } from "@/features/products/types/product.types";
+import { filterImagesForColor } from "@/lib/utils/variant-images";
 
 export interface ProductGalleryProps {
   images: ProductImage[];
   title: string;
+  /** Active variants — only used to narrow the photos to the selected color. Omit for a plain gallery. */
+  variants?: ProductVariant[];
 }
 
 /** Main image + thumbnail switcher, with a click-to-open full-screen lightbox. */
-export function ProductGallery({ images, title }: ProductGalleryProps) {
-  const [activeIndex, setActiveIndex] = useState(0);
+export function ProductGallery({ images: allImages, title, variants = [] }: ProductGalleryProps) {
+  const selectedColor = useProductSelection()?.selectedColor ?? null;
+  const images = filterImagesForColor(allImages, variants, selectedColor);
+  // Tracked by image id (not index) so the active photo is re-derived — falling
+  // back to the first — whenever the color filter changes the visible set.
+  const [activeId, setActiveId] = useState<string | null>(null);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const activeIndex = Math.max(0, images.findIndex((image) => image.id === activeId));
   const active = images[activeIndex] ?? null;
+  const setActiveIndex = (index: number) => setActiveId(images[index]?.id ?? null);
 
   function closeLightbox() {
     setLightboxOpen(false);
