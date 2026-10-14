@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { OCCASIONS } from "@/constants/occasions";
 import { PAGINATION } from "@/constants/pagination";
 import { PRODUCT_CONDITION, PRODUCT_STATUS } from "@/constants/status";
 
@@ -117,6 +118,17 @@ export const createProductSchema = z.object({
   categoryId: z.uuid("Select a category.").optional(),
   location: z.string().trim().max(160).optional(),
   tags: z.array(z.string().trim().min(1).max(30)).max(20).default([]),
+  /**
+   * "Good for" occasions, sent as a comma-separated string (FormData has no
+   * arrays). Stored as product tags so Guided Selection can match on them
+   * (ADR-022). When present on an update — even empty — it replaces the
+   * product's occasion tags and leaves every other tag (e.g. "sale") alone.
+   */
+  occasions: z
+    .string()
+    .transform((value) => value.split(",").map((item) => item.trim()).filter(Boolean))
+    .pipe(z.array(z.enum(OCCASIONS)).max(OCCASIONS.length))
+    .optional(),
   status: productStatusSchema.default(PRODUCT_STATUS.draft),
   /**
    * Default/spec values for the two new category-driven attributes (see

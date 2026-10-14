@@ -10,7 +10,6 @@ import { ErrorState } from "@/components/feedback/ErrorState";
 import { siteConfig } from "@/config/site";
 import { ROUTES } from "@/constants/routes";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
-import { RecommendationRuleManager, type RecommendationRule } from "@/features/assistant";
 import {
   createProductAction,
   setProductImageVariantAction,
@@ -63,8 +62,6 @@ export interface ProductEditorProps {
   product?: Product;
   /** Edit mode: the product's saved options. */
   variants?: ProductVariant[];
-  /** Edit mode: the product's Guided Selection rules. */
-  rules?: RecommendationRule[];
   /** Which portal the page is in; decides every link (list, edit page, inventory). A plain string so a Server Component can pass it. */
   area: "seller" | "admin";
 }
@@ -89,7 +86,6 @@ function ProductEditorForm({
   categoryAttributes,
   product,
   variants,
-  rules = [],
   area,
   onStartOver,
 }: ProductEditorProps & { onStartOver: () => void }) {
@@ -295,7 +291,6 @@ function ProductEditorForm({
     { id: "sec-options", label: "Options", state: optionVariants.length > 0 ? "done" : "optional" },
     { id: "sec-details", label: "Details", state: "optional" },
     { id: "sec-visibility", label: "Visibility", state: "done" },
-    ...(isEdit ? ([{ id: "sec-rules", label: "Guided selection", state: "optional" }] as EditorSection[]) : []),
   ];
 
   const hasPhoto = (isEdit ? savedImages.length : pendingPhotos.length) > 0;
@@ -513,11 +508,6 @@ function ProductEditorForm({
 
             <VisibilitySection values={values} setValue={setValue} isEdit={isEdit} />
 
-            {isEdit && product ? (
-              <ProductEditorSection id="sec-rules" title="Guided selection">
-                <RecommendationRuleManager product={product} rules={rules} variants={optionVariants} />
-              </ProductEditorSection>
-            ) : null}
           </fieldset>
 
           <details className="rounded-xl border border-border bg-background p-3 lg:hidden">

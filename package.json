@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test:unit": "node --experimental-strip-types --no-warnings scripts/test-product-save-flow.mjs"
+    "test:unit": "node --experimental-strip-types --no-warnings --test scripts/test-product-save-flow.mjs scripts/test-guided-match.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

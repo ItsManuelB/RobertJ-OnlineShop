@@ -1,3 +1,4 @@
+import { isOccasion, type Occasion } from "@/constants/occasions";
 import { PRODUCT_CONDITION, PRODUCT_STATUS, type ProductCondition, type ProductStatus } from "@/constants/status";
 import type { CategoryAttribute, ProductAttributeKey } from "@/features/categories/types/category.types";
 import type { Product } from "@/features/products/types/product.types";
@@ -17,6 +18,8 @@ export interface ProductEditorValues {
   location: string;
   material: string;
   dimensions: string;
+  /** "Good for" occasions — stored as product tags, read by Guided Selection. */
+  occasions: Occasion[];
 }
 
 type SpecKey = Extract<ProductAttributeKey, "material" | "dimensions">;
@@ -38,6 +41,7 @@ export function valuesFromProduct(product?: Product): ProductEditorValues {
     location: product?.location ?? "",
     material: product?.material ?? "",
     dimensions: product?.dimensions ?? "",
+    occasions: (product?.tags ?? []).filter(isOccasion),
   };
 }
 
@@ -87,6 +91,7 @@ export function toProductFormData(
   formData.set("location", values.location);
   if (values.featured) formData.set("featured", "on");
   if (values.categoryId) formData.set("categoryId", values.categoryId);
+  formData.set("occasions", values.occasions.join(","));
   for (const spec of specs) {
     const active = spec.isRequired || enabledSpecs.has(spec.attributeKey);
     const next = active ? values[spec.attributeKey] : "";

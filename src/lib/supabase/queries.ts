@@ -60,6 +60,8 @@ import type {
   RecommendationRule,
   RecommendationSize,
 } from "@/features/assistant/types/assistant.types";
+import { isOccasion } from "@/constants/occasions";
+import { matchCandidates, type MatchOption } from "@/features/assistant/lib/guided-match";
 import {
   ACTIVE_ORDER_STATUSES,
   CANCELLABLE_ORDER_STATUSES,
@@ -868,7 +870,7 @@ export async function createProduct(
       condition: input.condition,
       status: input.status,
       location: input.location ?? null,
-      tags: input.tags,
+      tags: [...new Set([...input.tags, ...(input.occasions ?? [])])],
       category_id: input.categoryId ?? null,
       seller_id: sellerId,
       shop_id: shopId,
@@ -950,7 +952,7 @@ export async function updateProduct(
   owner: { sellerId: string; shopId: string | null } | null,
 ): Promise<Product> {
   const supabase = await createSupabaseServerClient();
-  const { id, price, categoryId, description, location, quantity, material, dimensions, ...rest } = input;
+  const { id, price, categoryId, description, location, quantity, material, dimensions, occasions, ...rest } = input;
 
   if (owner) {
     const ownerFilter = owner.shopId
@@ -979,10 +981,26 @@ export async function updateProduct(
     }
   }
 
+  // Occasions live in `tags`: replace only the occasion tags, keep the rest (e.g. "sale").
+  let occasionTags: { tags: string[] } | Record<string, never> = {};
+  if (occasions !== undefined) {
+    const { data: tagRow, error: tagError } = await supabase
+      .from(DATABASE_TABLES.PRODUCTS)
+      .select("tags")
+      .eq("id", id)
+      .single();
+    if (tagError) {
+      throw queryError("Failed to update product", tagError);
+    }
+    const kept = (tagRow.tags ?? []).filter((tag: string) => !isOccasion(tag));
+    occasionTags = { tags: [...kept, ...occasions] };
+  }
+
   const { data, error } = await supabase
     .from(DATABASE_TABLES.PRODUCTS)
     .update({
       ...rest,
+      ...occasionTags,
       ...(description !== undefined ? { description: description || null } : {}),
       ...(location !== undefined ? { location: location || null } : {}),
       ...(price !== undefined ? { price_cents: toCents(price) } : {}),
@@ -7793,64 +7811,20 @@ export async function deleteRecommendationRule(
 }
 
 // ============================================================================
-// Guided Product Selection — buyer-facing matching query. Public (no
-// `requireSessionUser()`) — a guest can use Guided Selection with no
-// account, same as the rest of the catalog/cart reads (ADR-013's precedent).
+// Guided Product Selection — buyer-facing matching query (ADR-022). Matches
+// straight from the live catalog (products + options + stock) — no seller-
+// authored rules. Public (no `requireSessionUser()`): a guest can use Guided
+// Selection with no account, same as the rest of the catalog/cart reads.
 // ============================================================================
 
-// Literal for the same reason as `PRODUCT_COLUMNS`/`RECOMMENDATION_RULE_COLUMNS`
-// above: the embedded product select must repeat `PRODUCT_COLUMNS`' column
-// list as its own literal, not `${PRODUCT_COLUMNS}` — interpolating a
-// constant widens the string and Supabase's generated-type parser can no
-// longer infer the joined shape.
-const GUIDED_SELECTION_MATCH_COLUMNS = `
-  id, variant_id, size,
-  variant:product_variants!recommendation_rules_variant_id_fkey ( color, size, material, dimensions, price_cents ),
-  product:products!recommendation_rules_product_id_fkey!inner (
-    id, slug, title, description, price_cents, currency, quantity, condition,
-    status, featured, location, tags, category_id, seller_id, shop_id, published_at,
-    material, dimensions,
-    created_at, updated_at,
-    product_images ( id, url, alt_text, sort_order ),
-    seller:profiles!products_seller_id_fkey ( full_name, username, role ),
-    category:categories!products_category_id_fkey ( name, slug )
-  )
-`;
-
-type GuidedSelectionMatchRow = {
-  variant_id: string | null;
-  size: string | null;
-  variant: {
-    color: string | null;
-    size: string | null;
-    material: string | null;
-    dimensions: string | null;
-    price_cents: number | null;
-  } | null;
-  product: ProductRowWithImages;
-};
+/** Candidate pool per query. Newest first, so a very large category degrades to "newest N" rather than failing. */
+const GUIDED_SELECTION_CANDIDATE_LIMIT = 300;
 
 export interface GuidedSelectionMatchInput {
   occasion?: RecommendationOccasion;
-  size?: RecommendationSize;
-  /**
-   * Category scope (§6 of the implementation plan). Narrowing to one
-   * category is also what unlocks the color/material/dimensions filters
-   * below — same "ambiguous across categories, so omit" rule
-   * `resolveFilterableAttributes` uses for the catalog filters.
-   */
+  /** Category scope. Also what unlocks the size/color/material/dimensions answers — same "ambiguous across categories, so omit" rule `resolveFilterableAttributes` uses for the catalog filters. */
   categoryId?: string;
-  /**
-   * New, generalized attribute answers — resolved against each candidate's
-   * variant (if the rule targets one) or product default, NOT a
-   * `recommendation_rules` column. Deliberately NOT extended to `size`:
-   * a live-data audit before this migration found 4 of 5 existing rules
-   * depend on the legacy `size` column with zero `product_variants` rows to
-   * migrate that preference onto, so `size` keeps matching against the
-   * rule's own `size` field, unchanged, below — only color/material/
-   * dimensions use this new resolution path, since they have no legacy
-   * data to break.
-   */
+  size?: string;
   color?: string;
   material?: string;
   dimensions?: string;
@@ -7860,23 +7834,12 @@ export interface GuidedSelectionMatchInput {
 }
 
 /**
- * Matches active rules of active products against the buyer's occasion/size/
- * category/attribute answers (an unanswered criterion matches anything) and
- * checks each match's *live* price — the variant's price when the rule
- * targets one, else the product's own price — against the buyer's budget
- * window. Budget is never compared to a stored value (see the
- * `recommendation_rules` migration's header comment).
- *
- * Occasion and category are filtered in SQL (a fixed enum and a uuid FK,
- * both safe to interpolate via `.eq()`/`.or()`). Size, the new color/
- * material/dimensions answers, and budget are applied in application code
- * instead: free text is unsafe to interpolate into a PostgREST `.or()`
- * filter string (the same concern `listProducts`'s `params.search`
- * sanitizes for), and budget needs the per-row variant-or-product price
- * resolution above, which SQL can't express as a single column filter here.
- * The admin-authored rule table is small, so filtering the fetched rows in
- * memory (rather than a second round trip) is the simplest correct option
- * (KISS) — same rationale as the pre-existing size/budget handling.
+ * Ranks active, in-stock products against the buyer's answers. The matching
+ * rules live in `features/assistant/lib/guided-match.ts` (pure, unit-tested);
+ * this function only gathers the live data they need: products, their active
+ * options, and per-option stock (`get_variant_stock` — `inventory` is not
+ * publicly readable). Products of deactivated shops are hidden, as in the
+ * catalog.
  */
 export async function listGuidedSelectionMatches(
   input: GuidedSelectionMatchInput,
@@ -7884,72 +7847,94 @@ export async function listGuidedSelectionMatches(
 ): Promise<GuidedSelectionMatch[]> {
   const supabase = await createSupabaseServerClient();
 
-  let query = supabase
-    .from(DATABASE_TABLES.RECOMMENDATION_RULES)
-    .select(GUIDED_SELECTION_MATCH_COLUMNS)
-    .eq("active", true)
-    .eq("product.status", PRODUCT_STATUS.active);
+  const { data: inactiveShopRows } = await supabase
+    .from(DATABASE_TABLES.SHOPS)
+    .select("id")
+    .eq("active", false);
+  const inactiveShopIds = (inactiveShopRows ?? []).map((row) => row.id);
 
-  if (input.occasion) {
-    query = query.or(`occasion.is.null,occasion.eq.${input.occasion}`);
+  let productQuery = supabase
+    .from(DATABASE_TABLES.PRODUCTS)
+    .select(PRODUCT_COLUMNS)
+    .eq("status", PRODUCT_STATUS.active);
+  if (inactiveShopIds.length > 0) {
+    productQuery = productQuery.or(`shop_id.is.null,shop_id.not.in.(${inactiveShopIds.join(",")})`);
   }
   if (input.categoryId) {
-    query = query.eq("product.category_id", input.categoryId);
+    productQuery = productQuery.eq("category_id", input.categoryId);
+  }
+  const { data: productRows, error: productError } = await productQuery
+    .order("created_at", { ascending: false })
+    .limit(GUIDED_SELECTION_CANDIDATE_LIMIT);
+
+  if (productError) {
+    throw queryError("Failed to load Guided Selection matches", productError);
+  }
+  const products = (productRows ?? []) as unknown as ProductRowWithImages[];
+  if (products.length === 0) return [];
+
+  const { data: variantRows, error: variantError } = await supabase
+    .from(DATABASE_TABLES.PRODUCT_VARIANTS)
+    .select("id, product_id, color, size, material, dimensions, price_cents")
+    .in("product_id", products.map((product) => product.id))
+    .eq("status", "active");
+  if (variantError) {
+    throw queryError("Failed to load Guided Selection matches", variantError);
   }
 
-  const { data, error } = await query.order("created_at", { ascending: false });
-
-  if (error) {
-    throw queryError("Failed to load Guided Selection matches", error);
-  }
-
-  const wantedSize = input.size?.trim().toLowerCase();
-  const wantedColor = input.color?.trim().toLowerCase();
-  const wantedMaterial = input.material?.trim().toLowerCase();
-  const wantedDimensions = input.dimensions?.trim().toLowerCase();
-  const minCents = input.minPrice !== undefined ? toCents(input.minPrice) : null;
-  const maxCents = input.maxPrice !== undefined ? toCents(input.maxPrice) : null;
-
-  const seen = new Set<string>();
-  const matches: GuidedSelectionMatch[] = [];
-
-  for (const row of (data ?? []) as unknown as GuidedSelectionMatchRow[]) {
-    if (!row.product) continue;
-    if (row.size && wantedSize && row.size.trim().toLowerCase() !== wantedSize) continue;
-
-    // Variant overrides product default — same resolution `create_order`/
-    // `toCartLineItem` use. Unlike size/occasion, a candidate with no data
-    // for an explicitly-requested attribute is excluded outright (there is
-    // no rule-level wildcard for these — see the type's doc comment).
-    if (wantedColor && row.variant?.color?.trim().toLowerCase() !== wantedColor) continue;
-    const effectiveMaterial = (row.variant?.material ?? row.product.material)?.trim().toLowerCase();
-    if (wantedMaterial && effectiveMaterial !== wantedMaterial) continue;
-    const effectiveDimensions = (row.variant?.dimensions ?? row.product.dimensions)?.trim().toLowerCase();
-    if (wantedDimensions && effectiveDimensions !== wantedDimensions) continue;
-
-    const matchedPriceCents = row.variant?.price_cents ?? row.product.price_cents;
-    if (minCents !== null && matchedPriceCents < minCents) continue;
-    if (maxCents !== null && matchedPriceCents > maxCents) continue;
-
-    const dedupeKey = `${row.product.id}:${row.variant_id ?? ""}`;
-    if (seen.has(dedupeKey)) continue;
-    seen.add(dedupeKey);
-
-    matches.push({
-      product: toProduct(row.product),
-      variantId: row.variant_id,
-      variantLabel: row.variant
-        ? [row.variant.color, row.variant.size, row.variant.material, row.variant.dimensions]
-            .filter(Boolean)
-            .join(" / ") || null
-        : null,
-      matchedPriceCents,
+  const stock = await getVariantStock((variantRows ?? []).map((variant) => variant.id));
+  const optionsByProduct = new Map<string, MatchOption[]>();
+  for (const variant of variantRows ?? []) {
+    const options = optionsByProduct.get(variant.product_id) ?? [];
+    options.push({
+      id: variant.id,
+      color: variant.color,
+      size: variant.size,
+      material: variant.material,
+      dimensions: variant.dimensions,
+      priceCents: variant.price_cents,
+      quantity: stock.get(variant.id) ?? 0,
     });
-
-    if (matches.length >= limit) break;
+    optionsByProduct.set(variant.product_id, options);
   }
 
-  return matches;
+  const results = matchCandidates(
+    products.map((product) => ({
+      id: product.id,
+      priceCents: product.price_cents,
+      quantity: product.quantity,
+      material: product.material,
+      dimensions: product.dimensions,
+      tags: product.tags ?? [],
+      options: optionsByProduct.get(product.id) ?? [],
+    })),
+    {
+      occasion: input.occasion,
+      size: input.size,
+      color: input.color,
+      material: input.material,
+      dimensions: input.dimensions,
+      minPriceCents: input.minPrice !== undefined ? toCents(input.minPrice) : null,
+      maxPriceCents: input.maxPrice !== undefined ? toCents(input.maxPrice) : null,
+    },
+    limit,
+  );
+
+  const productById = new Map(products.map((product) => [product.id, product]));
+  return results.flatMap((result) => {
+    const row = productById.get(result.candidateId);
+    if (!row) return [];
+    return [
+      {
+        product: toProduct(row),
+        variantId: result.optionId,
+        variantLabel: result.optionLabel,
+        matchedPriceCents: result.matchedPriceCents,
+        fit: result.fit,
+        note: result.note,
+      },
+    ];
+  });
 }
 
 /** One active category's id/name/slug plus whether Guided Selection should ask Occasion for it — see `categories.supports_occasion_matching`. */

@@ -8,7 +8,6 @@ import {
   getOwnShopId,
   listActiveCategories,
   listAllCategoryAttributes,
-  listDashboardRecommendationRules,
   listProductVariants,
   requireSessionUser,
 } from "@/lib/supabase/queries";
@@ -28,11 +27,10 @@ export default async function SellerEditProductPage({ params }: SellerEditProduc
   const product = await getDashboardProduct(id, { sellerId: user.id, shopId: await getOwnShopId(user.id) });
   if (!product) notFound();
 
-  const [categories, categoryAttributes, variants, rules] = await Promise.all([
+  const [categories, categoryAttributes, variants] = await Promise.all([
     listActiveCategories(),
     listAllCategoryAttributes(),
     listProductVariants(id),
-    listDashboardRecommendationRules(),
   ]);
 
   return (
@@ -43,7 +41,6 @@ export default async function SellerEditProductPage({ params }: SellerEditProduc
         categoryAttributes={categoryAttributes}
         product={product}
         variants={variants}
-        rules={rules.filter((rule) => rule.productId === id)}
         area="seller"
       />
     </div>

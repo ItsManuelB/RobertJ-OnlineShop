@@ -185,6 +185,9 @@ export function GuidedSelectorQuiz({ trigger }: GuidedSelectorQuizProps) {
   const selectedCategory = categories.find((c) => c.id === categoryId);
   const showOccasion = !categoryId || selectedCategory?.supportsOccasionMatching !== false;
 
+  const exactCount = matches?.filter((match) => match.fit === "exact").length ?? 0;
+  const closeCount = (matches?.length ?? 0) - exactCount;
+
   function handleSearch() {
     setFormError(null);
     const parsed = guidedSelectionQuerySchema.safeParse({
@@ -229,7 +232,7 @@ export function GuidedSelectorQuiz({ trigger }: GuidedSelectorQuizProps) {
               <div>
                 <p className="text-sm font-bold text-rj-black">Guided Selection</p>
                 <p className="text-xs text-rj-gray-600">
-                  Deterministic, rule-based matches — human-authored, never AI.
+                  Matched from what&apos;s in stock right now.
                 </p>
               </div>
               <button
@@ -382,7 +385,8 @@ export function GuidedSelectorQuiz({ trigger }: GuidedSelectorQuizProps) {
                 <div className="flex flex-col gap-4">
                   <div className="flex items-center justify-between">
                     <p className="text-sm text-rj-gray-600" aria-live="polite">
-                      {matches?.length ?? 0} match{matches?.length === 1 ? "" : "es"}
+                      {exactCount} match{exactCount === 1 ? "" : "es"}
+                      {closeCount > 0 ? ` · ${closeCount} close` : ""}
                     </p>
                     <button
                       type="button"
@@ -396,7 +400,7 @@ export function GuidedSelectorQuiz({ trigger }: GuidedSelectorQuizProps) {
                   {!matches || matches.length === 0 ? (
                     <EmptyState
                       title="No matches yet"
-                      description="Try a broader category, occasion, or budget — sellers are still adding Guided Selection rules for more products."
+                      description="Nothing in stock fits all of your answers. Try a different size or color, a wider budget, or Any category."
                     />
                   ) : (
                     <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3">
@@ -430,6 +434,9 @@ export function GuidedSelectorQuiz({ trigger }: GuidedSelectorQuizProps) {
                               <p className="line-clamp-2 text-xs font-medium text-rj-black">
                                 {match.product.title}
                               </p>
+                              {match.fit === "close" && match.note ? (
+                                <p className="text-[11px] font-semibold text-rj-red-dark">Close: {match.note}</p>
+                              ) : null}
                               {match.variantLabel ? (
                                 <p className="text-[11px] text-rj-gray-500">{match.variantLabel}</p>
                               ) : null}

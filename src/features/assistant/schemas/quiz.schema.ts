@@ -1,19 +1,19 @@
 import { z } from "zod";
 
-import { occasionSchema, sizeSchema } from "@/features/assistant/schemas/rule.schema";
+import { occasionSchema } from "@/features/assistant/schemas/rule.schema";
 
 /**
  * Buyer-facing Guided Selection query — every criterion is optional
  * independently (a buyer can skip occasion, size, or budget and still get
  * matches), same convention as `recommendationRuleSchema`'s nullable criteria.
- * `size` reuses `sizeSchema` rather than redeclaring its own string
- * validation, so the buyer's query and a seller's rule are enforced against
- * the exact same vocabulary.
+ * Size, like color/material/dimensions, is free text here: the quiz offers the
+ * category's own values (`resolveFilterableAttributes`) and the matcher compares
+ * them against the product's real options (ADR-022).
  */
 export const guidedSelectionQuerySchema = z
   .object({
     occasion: occasionSchema.optional(),
-    size: sizeSchema.optional(),
+    size: z.string().trim().max(60).optional(),
     /**
      * Category scope + the new color/material/dimensions answers (§6 of the
      * implementation plan) — resolved against variant/product data, not a

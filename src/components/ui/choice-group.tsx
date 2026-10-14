@@ -88,3 +88,55 @@ export function ChoiceGroup<V extends string = string>({
     </div>
   );
 }
+
+export interface MultiChoiceGroupProps<V extends string = string> {
+  label: string;
+  options: ChoiceOption<V>[];
+  value: V[];
+  onChange: (value: V[]) => void;
+  disabled?: boolean;
+  className?: string;
+}
+
+/** Visible multi-choice control — `ChoiceGroup`'s sibling for "pick any number" (native checkboxes, same pill look). */
+export function MultiChoiceGroup<V extends string = string>({
+  label,
+  options,
+  value,
+  onChange,
+  disabled = false,
+  className,
+}: MultiChoiceGroupProps<V>) {
+  return (
+    <div role="group" aria-label={label} className={cn("flex flex-wrap gap-2", className)}>
+      {options.map((option) => {
+        const checked = value.includes(option.value);
+        const isDisabled = disabled || option.disabled;
+        return (
+          <label
+            key={option.value}
+            className={cn(
+              BASE,
+              checked
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-border bg-background text-foreground hover:border-primary/60",
+              isDisabled && "cursor-not-allowed opacity-50",
+            )}
+          >
+            <input
+              type="checkbox"
+              value={option.value}
+              checked={checked}
+              disabled={isDisabled}
+              onChange={() =>
+                onChange(checked ? value.filter((item) => item !== option.value) : [...value, option.value])
+              }
+              className="sr-only"
+            />
+            <span>{option.label}</span>
+          </label>
+        );
+      })}
+    </div>
+  );
+}

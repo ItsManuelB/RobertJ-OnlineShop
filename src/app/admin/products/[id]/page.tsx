@@ -7,7 +7,6 @@ import {
   getDashboardProduct,
   listActiveCategories,
   listAllCategoryAttributes,
-  listDashboardRecommendationRules,
   listProductVariants,
 } from "@/lib/supabase/queries";
 
@@ -25,11 +24,10 @@ export default async function AdminEditProductPage({ params }: AdminEditProductP
   const product = await getDashboardProduct(id, null);
   if (!product) notFound();
 
-  const [categories, categoryAttributes, variants, rules] = await Promise.all([
+  const [categories, categoryAttributes, variants] = await Promise.all([
     listActiveCategories(),
     listAllCategoryAttributes(),
     listProductVariants(id),
-    listDashboardRecommendationRules(),
   ]);
 
   return (
@@ -40,7 +38,6 @@ export default async function AdminEditProductPage({ params }: AdminEditProductP
         categoryAttributes={categoryAttributes}
         product={product}
         variants={variants}
-        rules={rules.filter((rule) => rule.productId === id)}
         area="admin"
       />
     </div>

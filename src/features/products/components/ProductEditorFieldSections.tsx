@@ -3,8 +3,9 @@
 import Link from "next/link";
 
 import { Checkbox } from "@/components/ui/checkbox";
-import { ChoiceGroup } from "@/components/ui/choice-group";
+import { ChoiceGroup, MultiChoiceGroup } from "@/components/ui/choice-group";
 import { FormField } from "@/components/forms/FormField";
+import { OCCASIONS } from "@/constants/occasions";
 import {
   PRODUCT_CONDITION_LABELS,
   PRODUCT_STATUS_LABELS,
@@ -24,6 +25,8 @@ const SPEC_LABELS: Record<ProductAttributeKey, string> = {
   material: "Material",
   dimensions: "Dimensions",
 };
+
+const OCCASION_OPTIONS = OCCASIONS.map((value) => ({ value, label: value.charAt(0).toUpperCase() + value.slice(1) }));
 
 const CONDITION_OPTIONS = (Object.keys(PRODUCT_CONDITION_LABELS) as ProductCondition[]).map((value) => ({
   value,
@@ -166,6 +169,17 @@ export function DetailsSection({
           value={values.condition}
           onChange={(condition) => setValue("condition", condition)}
         />
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <span className="text-sm font-medium text-foreground">Good for (optional)</span>
+        <MultiChoiceGroup
+          label="Good for"
+          options={OCCASION_OPTIONS}
+          value={values.occasions}
+          onChange={(occasions) => setValue("occasions", occasions)}
+        />
+        <p className="text-xs text-muted-foreground">Helps buyers find this when they pick an occasion.</p>
       </div>
 
       {specs.map((spec) => {

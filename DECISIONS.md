@@ -30,6 +30,7 @@ Every decision is a numbered ADR with a fixed shape: **Context → Problem → O
 | [ADR-007](#adr-007-row-level-security-as-the-primary-authorization-boundary) | Row-Level Security as the primary authorization boundary | ✅ Accepted |
 | [ADR-008](#adr-008-manual-payment-verification-cod--qr-receipt-no-gateway) | Manual payment verification (COD + QR receipt), no gateway | ✅ Accepted |
 | [ADR-009](#adr-009-rule-based-guided-product-selection-not-ai) | Rule-based Guided Product Selection, not AI | ✅ Accepted |
+| [ADR-022](#adr-022-guided-selection-matches-straight-from-the-catalog) | Guided Selection matches straight from the catalog (refines ADR-009) | ✅ Accepted |
 | [ADR-010](#adr-010-feature-first-repository-structure) | Feature-first repository structure | ✅ Accepted |
 | [ADR-011](#adr-011-money-stored-as-integer-cents) | Money stored as integer cents | ✅ Accepted |
 | [ADR-012](#adr-012-one-order-per-seller-cart-split-at-checkout) | One order per seller; cart split at checkout | ✅ Accepted |
@@ -588,3 +589,25 @@ Original decision: Option 2. The Stripe code stayed in the repo (real, working c
 
 **Future Revisit:** Setting initial stock per option on the add page (would add an audited stock adjustment per option to the sequence).
 
+---
+
+## ADR-022: Guided Selection matches straight from the catalog
+
+**Context:** Guided Selection (ADR-009) recommended only products a seller had written a `recommendation_rules` row for. A product with no rule never appeared, rule `size` was free of any link to the product's real options, and stock was never checked — so the quiz could miss good matches and recommend sold-out or wrong-size items.
+
+**Problem:** Buyers' answers (category, occasion, size, color, material, dimensions, budget) should be checked against what is actually for sale, without sellers maintaining a second data set.
+
+**Options Considered:**
+1. Keep rules as the only source (status quo).
+2. Keep rules as optional pins on top of automatic matching.
+3. Match automatically from products, options and stock; retire seller rule authoring.
+
+**Decision:** Option 3. `listGuidedSelectionMatches` reads active products (active shops, optional category), their active options and live per-option stock, and `features/assistant/lib/guided-match.ts` (pure, unit-tested) ranks them: only buyable items; size/color/material/dimensions satisfied by one option; budget against the matched option's live price; products just outside the budget returned as "close" matches with a note; Occasion read from product tags (new "Good for" field in the product editor; untagged products still qualify but rank lower; products tagged only for other occasions are excluded). It is still deterministic and explainable — rule-based in the ADR-009 sense, never AI/ML.
+
+**Consequences:**
+- The Guided selection section is removed from the product editor and `rule.actions.ts` is deleted. The `recommendation_rules` table and its rows are kept untouched (no data loss) but are no longer read or written; dropping it is a later, separate migration. The rule CRUD helpers in `queries.ts` remain as unreferenced code (Technical Debt Register).
+- A product with no options matches only when no size/color is asked (it has no such data).
+- The candidate pool is the newest 300 active products per query.
+- Matching on material/dimensions on existing products relies on the products.material/dimensions values being set (see the pending update-grant migration).
+
+**Future Revisit:** Drop `recommendation_rules`; a first-class occasion column instead of tags if tags prove too loose.
