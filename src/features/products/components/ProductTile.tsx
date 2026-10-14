@@ -134,7 +134,13 @@ export function ProductTile({ item, style }: ProductTileProps) {
       if (result.success) {
         setAdded(true);
         window.setTimeout(() => setAdded(false), 2000);
-        showToast({ message: `Added to cart: ${item.name}`, action: { label: "View cart", href: ROUTES.cart } });
+        showToast({
+          message:
+            result.quantityInCart > 1
+              ? `Already in your cart (${result.quantityInCart - 1}). Added 1 more — you now have ${result.quantityInCart}.`
+              : `Added to cart: ${item.name}`,
+          action: { label: "View cart", href: ROUTES.cart },
+        });
       } else {
         showToast({ tone: "error", message: result.error });
       }

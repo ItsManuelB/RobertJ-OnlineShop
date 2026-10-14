@@ -7534,43 +7534,6 @@ export interface AddCartItemInput {
  * two concurrent adds can never create a duplicate row, at worst one retries
  * once as an update.
  */
-/**
- * Refuses a cart add the shop cannot fulfil: the product/option must still be
- * active, and what is already in the cart plus this add must not exceed live
- * stock. The browser also checks this for a fast message, but only this check
- * can be trusted — the cart stored no stock before, so an over-add used to be
- * accepted and only flagged at checkout.
- */
-async function assertCartAddWithinStock(cartId: string, input: AddCartItemInput): Promise<void> {
-  const supabase = await createSupabaseServerClient();
-  const [live] = await checkCartAvailability([
-    { productId: input.productId, variantId: input.variantId },
-  ]);
-  if (!live || live.status !== PRODUCT_STATUS.active) {
-    throw new Error("This item is no longer available.");
-  }
-
-  let existingQuery = supabase
-    .from(DATABASE_TABLES.CART_ITEMS)
-    .select("quantity")
-    .eq("cart_id", cartId)
-    .eq("product_id", input.productId);
-  existingQuery = input.variantId
-    ? existingQuery.eq("variant_id", input.variantId)
-    : existingQuery.is("variant_id", null);
-  const { data: existing } = await existingQuery.maybeSingle();
-  const alreadyInCart = existing?.quantity ?? 0;
-
-  if (live.quantity <= 0) throw new Error("This item is sold out.");
-  if (alreadyInCart + input.quantity > live.quantity) {
-    throw new Error(
-      alreadyInCart > 0
-        ? `You already have ${alreadyInCart} in your cart. Only ${live.quantity} available in total.`
-        : `Only ${live.quantity} available.`,
-    );
-  }
-}
-
 export async function addCartItem(
   userId: string,
   input: AddCartItemInput,
@@ -7578,8 +7541,37 @@ export async function addCartItem(
   options: { enforceStock?: boolean } = {},
 ): Promise<CartLineItem> {
   const supabase = await createSupabaseServerClient();
+
+  // An explicit add is one atomic database step (`add_cart_item`): serialised
+  // per cart, refuses anything beyond live stock, returns the new total. Its
+  // "CART: " messages are written for the buyer and shown as they are.
+  if (options.enforceStock !== false) {
+    const { data: added, error: addError } = await supabase.rpc("add_cart_item", {
+      p_product_id: input.productId,
+      // Explicit null (not omitted): the function has no default for it.
+      p_variant_id: input.variantId ?? null,
+      p_quantity: input.quantity,
+    });
+    if (addError) {
+      if (addError.message.startsWith("CART: ")) {
+        throw new Error(addError.message.slice("CART: ".length));
+      }
+      throw queryError("Failed to add item to cart", addError);
+    }
+    const lineId = added?.[0]?.line_id;
+    if (!lineId) throw new Error("Could not add this item to your cart.");
+    const { data: line, error: lineError } = await supabase
+      .from(DATABASE_TABLES.CART_ITEMS)
+      .select(CART_ITEM_COLUMNS)
+      .eq("id", lineId)
+      .single();
+    if (lineError) throw queryError("Failed to load cart line", lineError);
+    const item = toCartLineItem(line as CartItemRowWithJoins);
+    if (!item) throw new Error("This product is no longer available.");
+    return item;
+  }
+
   const cart = await getOrCreateCart(userId);
-  if (options.enforceStock !== false) await assertCartAddWithinStock(cart.id, input);
 
   const { data: inserted, error: insertError } = await supabase
     .from(DATABASE_TABLES.CART_ITEMS)

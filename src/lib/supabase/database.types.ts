@@ -1655,6 +1655,18 @@ export type Database = {
       }
     }
     Functions: {
+      add_cart_item: {
+        Args: {
+          p_product_id: string
+          p_quantity: number
+          p_variant_id: string | null
+        }
+        Returns: {
+          line_id: string
+          stock_available: number
+          total_quantity: number
+        }[]
+      }
       adjust_stock: {
         Args: {
           p_delta: number

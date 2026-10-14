@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import type { SelectedVariantInfo } from "@/features/cart/components/AddToCartButton";
+import { useCart } from "@/features/cart/hooks/useCart";
 import { useProductSelection } from "@/features/products/components/ProductSelectionProvider";
 import type { CategoryAttribute, ProductAttributeKey } from "@/features/categories/types/category.types";
 import type { Product, ProductVariant } from "@/features/products/types/product.types";
@@ -81,6 +82,7 @@ export function useVariantSelection({
   const [selected, setSelected] = useState<Selection>({});
   const [quantity, setQuantity] = useState(1);
   const productSelection = useProductSelection();
+  const { items: cartItems } = useCart();
 
   // Tell the sibling photo gallery which color is picked (or none).
   const selectedColor = selected.color ?? null;
@@ -143,6 +145,18 @@ export function useVariantSelection({
   const matchingStockTotal = candidates.reduce((sum, variant) => sum + (variantStock[variant.id] ?? 0), 0);
   const isOutOfStock = hasVariants ? !needsSelection && effectiveStock <= 0 : product.quantity <= 0;
 
+  // What the buyer already has in their cart for this choice: the chosen
+  // option's line, or — before an option is chosen — every option of this product.
+  const inCartQuantity = cartItems
+    .filter(
+      (line) =>
+        line.productId === product.id &&
+        (!hasVariants || !selectedVariant || line.variantId === selectedVariant.id),
+    )
+    .reduce((sum, line) => sum + line.quantity, 0);
+  // Everything in stock is already in the cart: another add can only fail.
+  const atCartLimit = !needsSelection && effectiveStock > 0 && inCartQuantity >= effectiveStock;
+
   // Derived, not stored: reclamps automatically when the stock ceiling shrinks.
   const clampedQuantity = Math.min(quantity, Math.max(1, effectiveStock));
 
@@ -191,6 +205,8 @@ export function useVariantSelection({
     maxPriceCents,
     effectiveStock,
     matchingStockTotal,
+    inCartQuantity,
+    atCartLimit,
     isOutOfStock,
     quantity: clampedQuantity,
     setQuantity,
