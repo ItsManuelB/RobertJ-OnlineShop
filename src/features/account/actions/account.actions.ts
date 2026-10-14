@@ -158,11 +158,26 @@ export async function changePasswordAction(
     await queries.requireRateLimit(`changePassword:${user.id}`, 5, 300);
 
     try {
-      await queries.reauthenticateWithPassword(user.email, parsed.data.currentPassword);
-    } catch {
-      return fail("Your current password is incorrect.", {
-        currentPassword: ["Incorrect password."],
-      });
+      await queries.reauthenticateWithPassword(
+        user.email,
+        parsed.data.currentPassword,
+        parsed.data.captchaToken,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      // Only a genuine credential failure means "wrong password" — a captcha
+      // or rate-limit failure must not be reported as one.
+      if (/captcha/i.test(message)) {
+        return fail("Verification failed. Please try again.", {
+          captchaToken: ["Verification failed. Please try again."],
+        });
+      }
+      if (/invalid login credentials/i.test(message)) {
+        return fail("Your current password is incorrect.", {
+          currentPassword: ["Incorrect password."],
+        });
+      }
+      return fail("We couldn't verify your password right now. Please try again in a moment.");
     }
 
     await queries.updatePassword(parsed.data.password);

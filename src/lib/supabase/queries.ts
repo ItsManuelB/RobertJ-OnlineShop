@@ -7063,9 +7063,14 @@ export async function signInWithPassword(
 export async function reauthenticateWithPassword(
   email: string,
   password: string,
+  captchaToken: string,
 ): Promise<void> {
   const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  const { error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+    options: { captchaToken },
+  });
   if (error) throw new Error(error.message);
 }
 

@@ -4,9 +4,9 @@ import type { Metadata } from "next";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { Card, CardContent } from "@/components/ui/card";
 import { ROUTES } from "@/constants/routes";
+import { ChangePasswordForm } from "@/features/account";
 import { SellerAccountForm } from "@/features/seller/components/SellerAccountForm";
-import { SellerSecurityForm } from "@/features/seller/components/SellerSecurityForm";
-import { getMyProfile, getOwnShopId, getShopById, requireSessionUser } from "@/lib/supabase/queries";
+import { getMyProfile, getOwnShopId, getShopById, listUserIdentities, requireSessionUser } from "@/lib/supabase/queries";
 
 export const metadata: Metadata = { title: "Settings — Seller Portal" };
 
@@ -31,7 +31,11 @@ function Section({ title, description, children }: { title: string; description?
  */
 export default async function SellerSettingsPage() {
   const user = await requireSessionUser();
-  const [profile, shopId] = await Promise.all([getMyProfile(), getOwnShopId(user.id)]);
+  const [profile, shopId, identities] = await Promise.all([
+    getMyProfile(),
+    getOwnShopId(user.id),
+    listUserIdentities(),
+  ]);
   const shop = shopId ? await getShopById(shopId) : null;
 
   if (!profile) {
@@ -49,7 +53,7 @@ export default async function SellerSettingsPage() {
       </Section>
 
       <Section title="Security" description="Change the password you sign in with.">
-        <SellerSecurityForm />
+        <ChangePasswordForm themed hasPassword={identities.some((identity) => identity.provider === "email")} />
       </Section>
 
       <Section title="My shop">

@@ -100,6 +100,8 @@ export const changePasswordSchema = z
       .string()
       .min(NEW_PASSWORD_MIN, `Password must be at least ${NEW_PASSWORD_MIN} characters.`),
     confirmPassword: z.string(),
+    /** Cloudflare Turnstile token — the current-password check signs in through Supabase Auth, which enforces captcha. */
+    captchaToken: z.string().min(1, "Verification failed. Please try again."),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords do not match.",
