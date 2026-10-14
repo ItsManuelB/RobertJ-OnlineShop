@@ -20,20 +20,20 @@ export default async function AdminProductsPage({ searchParams }: AdminProductsP
 
   return (
     <div className="flex flex-col gap-6 p-5 lg:p-7">
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex-1">
-            <Suspense fallback={null}>
-              <DashboardProductSearchInput />
-            </Suspense>
-          </div>
+      <div className="flex flex-col gap-3">
+        <div className="min-w-[14rem]">
+          <Suspense fallback={null}>
+            <DashboardProductSearchInput />
+          </Suspense>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
           <Suspense fallback={null}>
             <DashboardCategoryFilter categories={categories} />
           </Suspense>
+          <Suspense fallback={null}>
+            <DashboardProductStatusFilter />
+          </Suspense>
         </div>
-        <Suspense fallback={null}>
-          <DashboardProductStatusFilter />
-        </Suspense>
       </div>
 
       {/* Keyed so a new search/filter restarts the suspense boundary. */}

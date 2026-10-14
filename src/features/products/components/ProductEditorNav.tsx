@@ -24,7 +24,7 @@ export function ProductEditorNav({ sections }: { sections: EditorSection[] }) {
           <li key={section.id} className="shrink-0 lg:shrink">
             <a
               href={`#${section.id}`}
-              className="relative flex min-h-11 items-center gap-2.5 whitespace-nowrap rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 lg:border-transparent"
+              className="relative flex min-h-11 items-center gap-2.5 lg:min-h-9 whitespace-nowrap rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 lg:border-transparent"
             >
               <span
                 aria-hidden="true"

@@ -155,11 +155,11 @@ export function RecommendationRuleRow({
 
           {variants.length > 0 ? (
             <div className="flex flex-col gap-1.5">
-              <span className="text-sm font-medium">Specific variant (optional)</span>
+              <span className="text-sm font-medium">Specific option (optional)</span>
               <ChoiceGroup
-                  label="Specific variant"
+                  label="Specific option"
                   options={[
-                    { value: "", label: "No specific variant" },
+                    { value: "", label: "No specific option" },
                     ...variants.map((variant) => ({
                       value: variant.id,
                       label: [variant.color, variant.size].filter(Boolean).join(" / ") || variant.id,

@@ -34,7 +34,6 @@ import type { Category } from "@/features/categories/types/category.types";
 import { getCoverImage, type Product, type ProductVariant } from "@/features/products/types/product.types";
 import type { Shop } from "@/features/shops/types/shop.types";
 import { formatCurrency } from "@/lib/utils/currency";
-import { formatDate } from "@/lib/utils/date";
 import { cn } from "@/lib/utils/cn";
 
 export interface ProductsDataTableProps {
@@ -45,6 +44,8 @@ export interface ProductsDataTableProps {
   isAdmin: boolean;
   /** Every variant visible to the caller — filtered per row below, no N+1. */
   variants: ProductVariant[];
+  /** variantId -> live stock, for the Stock column of products that have options. */
+  variantStock: Record<string, number>;
   /** Presentation only — defaults to the pre-existing table/card layout. */
   view?: "grid" | "list";
   /** True when the caller filtered to `status=archived` (the Recycle Bin view) — swaps each row's Archive action for Restore and hides the bulk-archive button. */
@@ -56,9 +57,23 @@ function initials(title: string) {
   return `${words[0]?.[0] ?? ""}${words[1]?.[0] ?? ""}`.toUpperCase();
 }
 
-function stockCell(product: Product, hasVariants: boolean) {
-  if (hasVariants) {
-    return <Badge tone="info">Multiple variants</Badge>;
+function stockCell(product: Product, variants: ProductVariant[], variantStock: Record<string, number>) {
+  if (variants.length > 0) {
+    // With options, the product's own quantity is not used: the total is across its options.
+    const stocks = variants.map((variant) => variantStock[variant.id] ?? 0);
+    const total = stocks.reduce((sum, quantity) => sum + quantity, 0);
+    const soldOut = stocks.filter((quantity) => quantity <= 0).length;
+    const tone = total <= 0 ? "danger" : total <= LOW_STOCK_THRESHOLD || soldOut > 0 ? "warning" : "success";
+    const label = total <= 0 ? "Out of stock" : total <= LOW_STOCK_THRESHOLD ? "Low stock" : soldOut > 0 ? "Some sold out" : "In stock";
+    return (
+      <div className="flex flex-col gap-1">
+        <Badge tone={tone}>{label}</Badge>
+        <span className="text-xs text-muted-foreground">
+          {total} in stock · {variants.length} option{variants.length === 1 ? "" : "s"}
+          {soldOut > 0 && total > 0 ? ` · ${soldOut} sold out` : ""}
+        </span>
+      </div>
+    );
   }
   const tone = product.quantity <= 0 ? "danger" : product.quantity <= LOW_STOCK_THRESHOLD ? "warning" : "success";
   const label = product.quantity <= 0 ? "Out of stock" : product.quantity <= LOW_STOCK_THRESHOLD ? "Low stock" : "In stock";
@@ -82,6 +97,7 @@ export function ProductsDataTable({
   shops,
   isAdmin,
   variants,
+  variantStock,
   view = "list",
   isArchivedView = false,
 }: ProductsDataTableProps) {
@@ -331,7 +347,7 @@ export function ProductsDataTable({
               <ProductGridCard
                 key={product.id}
                 product={product}
-                stock={stockCell(product, productVariants.length > 0)}
+                stock={stockCell(product, productVariants, variantStock)}
                 selected={selected.has(product.id)}
                 isAdmin={isAdmin}
                 inventoryHref={inventoryHref}
@@ -385,11 +401,9 @@ export function ProductsDataTable({
                 />
               </th>
               <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Product</th>
-              <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Category</th>
               <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Price</th>
               <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Stock</th>
               <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</th>
-              <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Updated</th>
               <th className="w-10 p-3" />
             </tr>
           </thead>
@@ -423,18 +437,18 @@ export function ProductsDataTable({
                           >
                             {product.title}
                           </Link>
-                          <p className="text-xs text-muted-foreground">{PRODUCT_CONDITION_LABELS[product.condition]}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {product.categoryName ?? "No category"} · {PRODUCT_CONDITION_LABELS[product.condition]}
+                          </p>
                           {product.shopId === null ? <Badge tone="warning">Unassigned</Badge> : null}
                         </div>
                       </div>
                     </td>
-                    <td className="p-3 align-top text-sm text-muted-foreground">{product.categoryName ?? "—"}</td>
                     <td className="p-3 align-top text-sm font-medium text-foreground">
                       {formatCurrency(product.priceCents, product.currency)}
                     </td>
-                    <td className="p-3 align-top">{stockCell(product, productVariants.length > 0)}</td>
+                    <td className="p-3 align-top">{stockCell(product, productVariants, variantStock)}</td>
                     <td className="p-3 align-top"><ProductStatusBadge status={product.status} /></td>
-                    <td className="p-3 align-top text-sm text-muted-foreground">{formatDate(product.updatedAt)}</td>
                     <td className="p-3 align-top text-right">
                       <RowMenu
                         open={openMenuId === product.id}
@@ -601,7 +615,7 @@ export function ProductsDataTable({
                     </p>
                     <div className="mt-2 flex flex-wrap gap-2">
                       <ProductStatusBadge status={product.status} />
-                      {stockCell(product, productVariants.length > 0)}
+                      {stockCell(product, productVariants, variantStock)}
                       {product.shopId === null ? <Badge tone="warning">Unassigned</Badge> : null}
                     </div>
                   </div>

@@ -2,13 +2,14 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
+import { FILTER_CHIP_ACTIVE_THEMED, FILTER_CHIP_IDLE_THEMED } from "@/components/ui/filter-chip";
 import type { Category } from "@/features/categories/types/category.types";
 
 export interface DashboardCategoryFilterProps {
   categories: Category[];
 }
 
-/** Category dropdown for the Products dashboard table — sets `categoryId`, always clears `page`. */
+/** Category chips for the Products dashboard table (same pattern as the status chips) — sets `categoryId`, always clears `page`. */
 export function DashboardCategoryFilter({ categories }: DashboardCategoryFilterProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -25,18 +26,26 @@ export function DashboardCategoryFilter({ categories }: DashboardCategoryFilterP
   }
 
   return (
-    <select
-      value={activeCategoryId}
-      onChange={(event) => updateParams(event.target.value)}
-      aria-label="Filter by category"
-      className="h-9 rounded-full border border-border bg-background px-3 text-xs font-semibold text-foreground outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
-    >
-      <option value="">All categories</option>
+    <div className="flex flex-wrap gap-2" role="group" aria-label="Filter products by category">
+      <button
+        type="button"
+        aria-pressed={!activeCategoryId}
+        className={!activeCategoryId ? FILTER_CHIP_ACTIVE_THEMED : FILTER_CHIP_IDLE_THEMED}
+        onClick={() => updateParams("")}
+      >
+        All categories
+      </button>
       {categories.map((category) => (
-        <option key={category.id} value={category.id}>
+        <button
+          key={category.id}
+          type="button"
+          aria-pressed={activeCategoryId === category.id}
+          className={activeCategoryId === category.id ? FILTER_CHIP_ACTIVE_THEMED : FILTER_CHIP_IDLE_THEMED}
+          onClick={() => updateParams(category.id)}
+        >
           {category.name}
-        </option>
+        </button>
       ))}
-    </select>
+    </div>
   );
 }

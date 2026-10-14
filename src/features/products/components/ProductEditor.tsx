@@ -5,9 +5,11 @@ import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
+import { ConfirmPanel } from "@/components/ui/confirm-panel";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { siteConfig } from "@/config/site";
 import { ROUTES } from "@/constants/routes";
+import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { RecommendationRuleManager, type RecommendationRule } from "@/features/assistant";
 import {
   createProductAction,
@@ -22,7 +24,9 @@ import {
   PriceStockSection,
   VisibilitySection,
 } from "@/features/products/components/ProductEditorFieldSections";
+import { ProductEditorActions } from "@/features/products/components/ProductEditorActions";
 import { ProductEditorNav, type EditorSection } from "@/features/products/components/ProductEditorNav";
+import { ProductEditorPreview, type PreviewCheckItem } from "@/features/products/components/ProductEditorPreview";
 import { ProductEditorSection } from "@/features/products/components/ProductEditorSection";
 import {
   ProductPhotosSection,
@@ -46,7 +50,8 @@ import {
   type SaveProgress,
 } from "@/features/products/lib/product-save-flow";
 import type { Category, CategoryAttribute } from "@/features/categories/types/category.types";
-import type { Product, ProductVariant } from "@/features/products/types/product.types";
+import type { Product, ProductImage, ProductVariant } from "@/features/products/types/product.types";
+import { PRODUCT_STATUS, type ProductStatus } from "@/constants/status";
 import { fromCents, toCents } from "@/lib/utils/currency";
 
 export interface ProductEditorProps {
@@ -110,6 +115,7 @@ function ProductEditorForm({
   const [clientId] = useState(() => crypto.randomUUID());
   const [optionVariants, setOptionVariants] = useState<ProductVariant[]>(variants ?? []);
   const [pendingPhotos, setPendingPhotos] = useState<PendingPhoto[]>([]);
+  const [savedImages, setSavedImages] = useState<ProductImage[]>(product?.images ?? []);
   const [progress, setProgress] = useState<SaveProgress | null>(null);
   const [completed, setCompleted] = useState(false);
 
@@ -120,6 +126,14 @@ function ProductEditorForm({
   const inFlight = useRef(false);
 
   const productSaved = progress?.product === "done";
+  // What "unsaved" is measured against: the loaded product (or a blank form), then the last successful save.
+  const snapshot = JSON.stringify({ values, specs: [...enabledSpecs].sort() });
+  const [baseline, setBaseline] = useState(snapshot);
+  const dirty =
+    !completed &&
+    !productSaved &&
+    (snapshot !== baseline || (!isEdit && (pendingPhotos.length > 0 || optionVariants.length > 0)));
+  const guard = useUnsavedChangesGuard(dirty);
   /** After the product exists, a new product's fields are locked — only the missing parts can still be retried. */
   const locked = !isEdit && productSaved;
 
@@ -170,7 +184,7 @@ function ProductEditorForm({
     );
   }
 
-  function saveNewProduct() {
+  function saveNewProduct(status: ProductStatus = values.status) {
     if (inFlight.current) return;
     if (!values.categoryId) {
       setFieldErrors({ categoryId: ["Select a category."] });
@@ -182,11 +196,14 @@ function ProductEditorForm({
     setFormError(null);
     setFieldErrors({});
     setNotice(null);
+    // Draft or Publish decides the status; it is what the product is created with.
+    const toSave = { ...values, status };
+    setValues(toSave);
 
     let createFieldErrors: Record<string, string[]> | undefined;
     const deps: SaveDeps = {
       createProduct: async () => {
-        const result = await createProductAction(null, toProductFormData(values, specs, enabledSpecs, { clientId }));
+        const result = await createProductAction(null, toProductFormData(toSave, specs, enabledSpecs, { clientId }));
         if (!result.success) {
           createFieldErrors = result.fieldErrors;
           return result;
@@ -234,6 +251,7 @@ function ProductEditorForm({
     setFormError(null);
     setFieldErrors({});
     setNotice(null);
+    const savedSnapshot = snapshot;
     startSaving(async () => {
       try {
         const result = await updateProductAction(null, toProductFormData(values, specs, enabledSpecs, { id: product.id }));
@@ -242,6 +260,7 @@ function ProductEditorForm({
           setFormError(result.error);
           return;
         }
+        setBaseline(savedSnapshot);
         setNotice("Changes saved.");
         router.refresh();
       } finally {
@@ -250,23 +269,56 @@ function ProductEditorForm({
     });
   }
 
-  function handleSave() {
-    if (isEdit) saveExistingProduct();
-    else saveNewProduct();
-  }
 
   // ---- derived view state ----------------------------------------------
 
   const priceNumber = Number(values.price);
   const sections: EditorSection[] = [
     { id: "sec-basics", label: "Basics", state: values.categoryId && values.title.trim().length >= 2 ? "done" : "todo" },
-    { id: "sec-photos", label: "Photos", state: (isEdit ? (product?.images.length ?? 0) : pendingPhotos.length) > 0 ? "done" : "optional" },
+    { id: "sec-photos", label: "Photos", state: (isEdit ? savedImages.length : pendingPhotos.length) > 0 ? "done" : "optional" },
     { id: "sec-price", label: "Price & stock", state: priceNumber > 0 ? "done" : "todo" },
     { id: "sec-options", label: "Options", state: optionVariants.length > 0 ? "done" : "optional" },
     { id: "sec-details", label: "Details", state: "optional" },
     { id: "sec-visibility", label: "Visibility", state: "done" },
     ...(isEdit ? ([{ id: "sec-rules", label: "Guided selection", state: "optional" }] as EditorSection[]) : []),
   ];
+
+  const hasPhoto = (isEdit ? savedImages.length : pendingPhotos.length) > 0;
+  const checklist: PreviewCheckItem[] = [
+    { label: "Category chosen", done: Boolean(values.categoryId), required: true },
+    { label: "Product name added", done: values.title.trim().length >= 2, required: true },
+    { label: "Price set", done: priceNumber > 0, required: true },
+    { label: "At least one photo", done: hasPhoto, required: false },
+  ];
+  const canPublish = checklist.filter((item) => item.required).every((item) => item.done);
+  const optionLabels = optionVariants
+    .map((variant) => [variant.color, variant.size, variant.material, variant.dimensions].filter(Boolean).join(" / "))
+    .filter(Boolean);
+  const preview = (
+    <ProductEditorPreview
+      coverUrl={isEdit ? (savedImages[0]?.url ?? null) : (pendingPhotos[0]?.previewUrl ?? null)}
+      categoryName={categories.find((category) => category.id === values.categoryId)?.name ?? null}
+      title={values.title}
+      priceCents={priceNumber > 0 ? toCents(priceNumber) : null}
+      currency={product?.currency ?? siteConfig.currency}
+      optionLabels={optionLabels}
+      status={values.status}
+      checklist={checklist}
+    />
+  );
+  const actions = (
+    <ProductEditorActions
+      isEdit={isEdit}
+      locked={locked}
+      isSaving={isSaving}
+      canPublish={canPublish}
+      publishHintId="publish-hint"
+      listHref={listHref}
+      onSaveDraft={() => saveNewProduct(PRODUCT_STATUS.draft)}
+      onPublish={() => saveNewProduct(PRODUCT_STATUS.active)}
+      onSave={saveExistingProduct}
+    />
+  );
 
   const photoStatus: Record<string, PhotoSaveStatus> = {};
   for (const photo of progress?.photos ?? []) {
@@ -332,25 +384,34 @@ function ProductEditorForm({
             <ProductStatusBadge status={values.status} />
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Link
-            href={listHref}
-            className="inline-flex min-h-11 items-center rounded-md border border-border px-4 text-sm font-medium hover:bg-muted"
-          >
-            {isEdit ? "Back" : "Discard"}
-          </Link>
-          {locked ? null : (
-            <Button type="button" variant="primary" className="min-h-11" isLoading={isSaving} onClick={handleSave}>
-              {isEdit ? "Save changes" : "Create product"}
-            </Button>
-          )}
-        </div>
+        {actions}
       </header>
+      {!isEdit && !locked && !canPublish ? (
+        <p id="publish-hint" className="-mt-2 text-xs text-muted-foreground">
+          To publish, add a category, a product name and a price. You can save as a draft at any time.
+        </p>
+      ) : null}
 
-      <div className="grid grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-[13.5rem_minmax(0,1fr)]">
-        <ProductEditorNav sections={sections} />
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-[16rem_minmax(0,1fr)]">
+        <aside className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:self-start lg:overflow-y-auto">
+          <ProductEditorNav sections={sections} />
+          <div className="hidden lg:block">{preview}</div>
+        </aside>
 
         <div className="flex min-w-0 flex-col gap-5">
+          {guard.blockedHref ? (
+            <ConfirmPanel
+              label="Leave this page"
+              title="Leave without saving?"
+              description="You have changes that haven't been saved."
+              tone="neutral"
+              confirmVariant="danger"
+              confirmLabel="Leave"
+              cancelLabel="Stay"
+              onConfirm={guard.confirmLeave}
+              onCancel={guard.stay}
+            />
+          ) : null}
           {formError ? <ErrorState title="Couldn't save the product" message={formError} /> : null}
           {notice ? (
             <p role="status" className="rounded-lg border border-border bg-muted px-4 py-3 text-sm text-foreground">
@@ -361,7 +422,7 @@ function ProductEditorForm({
             <ProductSaveProgress
               progress={progress}
               isRetrying={isSaving}
-              onRetry={saveNewProduct}
+              onRetry={() => saveNewProduct()}
               editHref={editHref(progress.productId)}
             />
           ) : null}
@@ -389,6 +450,7 @@ function ProductEditorForm({
                 onPendingChange={setPendingPhotos}
                 disabled={locked}
                 saveStatus={photoStatus}
+                onImagesChange={setSavedImages}
               />
             </ProductEditorSection>
 
@@ -406,8 +468,8 @@ function ProductEditorForm({
               title="Options"
               description={
                 isEdit
-                  ? "Sizes, colors and more. Options save as soon as you change them."
-                  : "Sizes, colors and more. They're saved together with the product when you create it."
+                  ? "Optional. Sizes, colors and more. Options save as soon as you change them."
+                  : "Optional. Sizes, colors and more. They're saved together with the product when you create it."
               }
             >
               {!isEdit && !values.categoryId ? (
@@ -433,7 +495,7 @@ function ProductEditorForm({
               onToggleSpec={toggleSpec}
             />
 
-            <VisibilitySection values={values} setValue={setValue} />
+            <VisibilitySection values={values} setValue={setValue} isEdit={isEdit} />
 
             {isEdit && product ? (
               <ProductEditorSection id="sec-rules" title="Guided selection">
@@ -442,19 +504,12 @@ function ProductEditorForm({
             ) : null}
           </fieldset>
 
-          {locked ? null : (
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="primary" className="min-h-11" isLoading={isSaving} onClick={handleSave}>
-                {isEdit ? "Save changes" : "Create product"}
-              </Button>
-              <Link
-                href={listHref}
-                className="inline-flex min-h-11 items-center rounded-md border border-border px-4 text-sm font-medium hover:bg-muted"
-              >
-                {isEdit ? "Back" : "Discard"}
-              </Link>
-            </div>
-          )}
+          <details className="rounded-xl border border-border bg-background p-3 lg:hidden">
+            <summary className="min-h-11 cursor-pointer py-2 text-sm font-medium text-foreground">Preview and checklist</summary>
+            <div className="mt-2">{preview}</div>
+          </details>
+
+          {actions}
         </div>
       </div>
     </div>

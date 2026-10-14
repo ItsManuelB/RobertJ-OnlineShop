@@ -584,5 +584,7 @@ Original decision: Option 2. The Stripe code stayed in the repo (real, working c
 - No migration, no change to roles, RLS, stock or pricing. Stock for options is still set from Inventory.
 - Known, accepted gaps: photos that were retried after a later one succeeded can only happen after a failure, and a failed photo leaves later ones waiting rather than uploading out of order. A browser closed mid-save leaves the product saved (as whatever status was chosen) with the remaining photos/options unsaved; it can be finished from the edit page.
 
+**Follow-up (step 2):** the add page ends in Save as draft / Publish (which set `status` to `draft` / `active`), a preview and checklist share the left panel, instant saves show a "Saved" note, and in-app navigation with unsaved details is confirmed first. No business rule or stock path changed.
+
 **Future Revisit:** Setting initial stock per option on the add page (would add an audited stock adjustment per option to the sequence).
 

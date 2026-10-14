@@ -11,6 +11,7 @@ import type { Category } from "@/features/categories/types/category.types";
 import type { Product, ProductVariant } from "@/features/products/types/product.types";
 import type { Shop } from "@/features/shops/types/shop.types";
 import {
+  getVariantStock,
   listActiveCategories,
   listDashboardProductVariants,
   listDashboardProductsPage,
@@ -59,6 +60,7 @@ export async function DashboardProductsPanel({
     result: PaginatedResult<Product>;
     categories: Category[];
     variants: ProductVariant[];
+    variantStock: Record<string, number>;
   };
   try {
     const [result, categories, variants] = await Promise.all([
@@ -66,12 +68,20 @@ export async function DashboardProductsPanel({
       listActiveCategories(),
       listDashboardProductVariants(),
     ]);
-    data = { result, categories, variants };
+    // One batched lookup for the options of this page's products, for the Stock column. A failure
+    // only leaves those counts blank (treated as 0); it must not take the whole list down.
+    const pageProductIds = new Set(result.items.map((product) => product.id));
+    const variantStock = Object.fromEntries(
+      await getVariantStock(variants.filter((variant) => pageProductIds.has(variant.productId)).map((variant) => variant.id)).catch(
+        () => new Map<string, number>(),
+      ),
+    );
+    data = { result, categories, variants, variantStock };
   } catch {
     return <ErrorState message="We couldn't load products right now." />;
   }
 
-  const { result, categories, variants } = data;
+  const { result, categories, variants, variantStock } = data;
   const { items, page, totalPages, total } = result;
 
   if (items.length === 0) {
@@ -127,6 +137,7 @@ export async function DashboardProductsPanel({
         shops={shops}
         isAdmin={isAdmin}
         variants={variants}
+        variantStock={variantStock}
         view={view}
         isArchivedView={isArchivedView}
       />

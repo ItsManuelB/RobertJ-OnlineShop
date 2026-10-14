@@ -138,14 +138,14 @@ export function ProductVariantRow({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <FormField
-              label="SKU (optional)"
+              label="Product code (optional)"
               value={values.sku ?? ""}
               onChange={(event) => setValues((prev) => ({ ...prev, sku: event.target.value }))}
               errors={fieldErrors.sku}
               themed
             />
             <FormField
-              label={`Price override (optional — inherits ${formatCurrency(product.priceCents, product.currency)})`}
+              label={`Different price (optional, otherwise ${formatCurrency(product.priceCents, product.currency)})`}
               type="number"
               step="0.01"
               min="0.01"
@@ -160,7 +160,7 @@ export function ProductVariantRow({
               themed
             />
           </div>
-          {formError ? <ErrorState title="Couldn't save variant" message={formError} /> : null}
+          {formError ? <ErrorState title="Couldn't save option" message={formError} /> : null}
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="primary" size="rjSm" isLoading={isSaving} onClick={handleSave}>
               Save
@@ -178,9 +178,9 @@ export function ProductVariantRow({
     return (
       <li className="rounded-xl border border-border p-4">
         <ConfirmPanel
-          label={`Delete ${label} variant`}
+          label={`Delete ${label} option`}
           title={`Delete "${label}"?`}
-          description="This can't be undone. Variants that have already been ordered can't be deleted — archive them instead."
+          description="This can't be undone. Options that have already been ordered can't be deleted."
           tone="danger"
           confirmLabel="Delete"
           pendingLabel="Deleting…"
@@ -190,7 +190,7 @@ export function ProductVariantRow({
         />
         {formError ? (
           <div className="mt-2">
-            <ErrorState title="Couldn't delete variant" message={formError} />
+            <ErrorState title="Couldn't delete option" message={formError} />
           </div>
         ) : null}
       </li>
@@ -205,10 +205,10 @@ export function ProductVariantRow({
           {variant.status !== "active" ? <Badge tone="warning">{variant.status}</Badge> : null}
         </div>
         <p className="mt-0.5 text-xs text-muted-foreground">
-          {variant.sku ? `SKU ${variant.sku} · ` : ""}
+          {variant.sku ? `Code ${variant.sku} · ` : ""}
           {variant.priceCents !== null
             ? formatCurrency(variant.priceCents, product.currency)
-            : `Inherits ${formatCurrency(product.priceCents, product.currency)}`}
+            : `Same as ${formatCurrency(product.priceCents, product.currency)}`}
         </p>
       </div>
       <div className="flex flex-wrap gap-2">

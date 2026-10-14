@@ -215,18 +215,37 @@ export function DetailsSection({
   );
 }
 
-export function VisibilitySection({ values, setValue }: Pick<FieldSectionProps, "values" | "setValue">) {
+const STATUS_DESCRIPTIONS: Record<ProductStatus, string> = {
+  draft: "Hidden from buyers",
+  active: "Visible in the shop",
+  sold: "Shown as sold out",
+  archived: "Hidden; restore it from the products list",
+};
+
+export function VisibilitySection({
+  values,
+  setValue,
+  isEdit,
+}: Pick<FieldSectionProps, "values" | "setValue"> & { isEdit: boolean }) {
   return (
     <ProductEditorSection id="sec-visibility" title="Visibility">
-      <div className="flex flex-col gap-1.5">
-        <span className="text-sm font-medium text-foreground">Status</span>
-        <ChoiceGroup
-          label="Status"
-          options={STATUS_OPTIONS}
-          value={values.status}
-          onChange={(status) => setValue("status", status)}
-        />
-      </div>
+      {isEdit ? (
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium text-foreground">Status</span>
+          <ChoiceGroup
+            label="Status"
+            variant="tile"
+            options={STATUS_OPTIONS.map((option) => ({ ...option, description: STATUS_DESCRIPTIONS[option.value] }))}
+            value={values.status}
+            onChange={(status) => setValue("status", status)}
+          />
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          <span className="font-medium text-foreground">Save as draft</span> keeps it hidden from buyers.{" "}
+          <span className="font-medium text-foreground">Publish</span> makes it visible in the shop.
+        </p>
+      )}
       <label className="flex items-center gap-2.5 text-sm font-medium">
         <Checkbox checked={values.featured} onChange={(event) => setValue("featured", event.target.checked)} />
         Featured on homepage

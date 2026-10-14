@@ -5,6 +5,8 @@ import { useEffect, useRef, useState, useTransition, type DragEvent } from "reac
 import { ImagePlus, X } from "lucide-react";
 
 import { ChoiceGroup } from "@/components/ui/choice-group";
+import { SavedNote } from "@/components/feedback/SavedNote";
+import { useSavedFlash } from "@/hooks/useSavedFlash";
 import {
   deleteProductImageAction,
   setProductImageVariantAction,
@@ -51,6 +53,8 @@ export interface ProductPhotosSectionProps {
   disabled?: boolean;
   /** Create mode, after a save attempt: per-photo outcome keyed by `PendingPhoto.key`. */
   saveStatus?: Record<string, PhotoSaveStatus>;
+  /** Edit mode: called with the saved photos whenever they change, so the rest of the page (preview, checklist) stays current. */
+  onImagesChange?: (images: ProductImage[]) => void;
 }
 
 interface Tile {
@@ -97,6 +101,7 @@ export function ProductPhotosSection({
   onPendingChange,
   disabled = false,
   saveStatus,
+  onImagesChange,
 }: ProductPhotosSectionProps) {
   const isEdit = mode === "edit";
   const [images, setImages] = useState<ProductImage[]>(initialImages);
@@ -104,6 +109,11 @@ export function ProductPhotosSection({
   const [isPending, startTransition] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
+  const { saved, flash } = useSavedFlash();
+
+  useEffect(() => {
+    onImagesChange?.(images);
+  }, [images, onImagesChange]);
 
   // Free the browser's preview memory when the section goes away.
   const pendingRef = useRef(pending);
@@ -136,8 +146,10 @@ export function ProductPhotosSection({
           const formData = new FormData();
           formData.append("image", file);
           const result = await uploadProductImageAction(productId, formData);
-          if (result.success) setImages((current) => [...current, result.data]);
-          else {
+          if (result.success) {
+            setImages((current) => [...current, result.data]);
+            flash();
+          } else {
             setError(result.error);
             break; // keep the order: don't upload later files past a failed one
           }
@@ -168,8 +180,10 @@ export function ProductPhotosSection({
     setError(null);
     startTransition(async () => {
       const result = await deleteProductImageAction(image.id, productId);
-      if (result.success) setImages((current) => current.filter((item) => item.id !== image.id));
-      else setError(result.error);
+      if (result.success) {
+        setImages((current) => current.filter((item) => item.id !== image.id));
+        flash();
+      } else setError(result.error);
     });
   }
 
@@ -177,8 +191,10 @@ export function ProductPhotosSection({
     setError(null);
     startTransition(async () => {
       const result = await setProductImageVariantAction({ imageId: image.id, variantId: variantId || null });
-      if (result.success) setImages((current) => current.map((item) => (item.id === image.id ? result.data : item)));
-      else setError(result.error);
+      if (result.success) {
+        setImages((current) => current.map((item) => (item.id === image.id ? result.data : item)));
+        flash();
+      } else setError(result.error);
     });
   }
 
@@ -254,6 +270,8 @@ export function ProductPhotosSection({
         <p role="status" className="text-xs text-muted-foreground">
           Saving photos…
         </p>
+      ) : isEdit ? (
+        <SavedNote visible={saved} />
       ) : null}
 
       {tiles.length === 0 ? (

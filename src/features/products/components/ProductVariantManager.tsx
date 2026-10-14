@@ -6,6 +6,8 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ErrorState } from "@/components/feedback/ErrorState";
+import { SavedNote } from "@/components/feedback/SavedNote";
+import { useSavedFlash } from "@/hooks/useSavedFlash";
 import { FormField } from "@/components/forms/FormField";
 import { draftVariantOps, liveVariantOps } from "@/features/products/lib/product-variant-ops";
 import { ProductVariantChecklist } from "@/features/products/components/ProductVariantChecklist";
@@ -95,6 +97,9 @@ export function ProductVariantManager({
     onChangeRef.current?.(variants);
   }, [variants, onVariantsChange]);
   const ops = mode === "draft" ? draftVariantOps : liveVariantOps;
+  // Live changes save instantly, so say so; drafts are only saved with the product.
+  const { saved, flash } = useSavedFlash();
+  const confirmSaved = mode === "live" ? flash : () => {};
 
   const categoryConfig = categoryAttributes.filter((a) => a.categoryId === product.categoryId);
   const hasConfig = categoryConfig.length > 0;
@@ -136,7 +141,7 @@ export function ProductVariantManager({
     setAxisError(null);
     if (!checked && axisInUse(variants, key)) {
       setAxisError(
-        `Remove the ${key}-based variants first before turning this off.`,
+        `Remove the ${key} options first before turning this off.`,
       );
       return;
     }
@@ -170,6 +175,7 @@ export function ProductVariantManager({
         return;
       }
       setVariants((prev) => [...prev, result.data]);
+      confirmSaved();
       setValues(emptyInput(product.id));
       setFieldErrors({});
       setIsAdding(false);
@@ -186,11 +192,11 @@ export function ProductVariantManager({
   return (
     <div className="flex flex-col gap-3">
       <div>
-        <p className="text-sm font-semibold text-foreground">Variants (optional)</p>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          Add options, each with their own stock (managed from Inventory). Leave price blank to use
-          this product&apos;s price ({formatCurrency(product.priceCents, product.currency)}).
+        <p className="text-xs text-muted-foreground">
+          Add options such as sizes or colors. Each option has its own stock, set from Inventory. Leave
+          the price blank to use this product&apos;s price ({formatCurrency(product.priceCents, product.currency)}).
         </p>
+        {mode === "live" ? <SavedNote visible={saved} /> : null}
       </div>
 
       {hasConfig ? (
@@ -218,7 +224,7 @@ export function ProductVariantManager({
 
       {variants.length === 0 ? (
         <p className="text-xs text-muted-foreground">
-          No variants yet — this product sells as a single item.
+          No options yet. This product sells as a single item.
         </p>
       ) : (
         <ul className="flex flex-col gap-2">
@@ -230,10 +236,14 @@ export function ProductVariantManager({
               ops={ops}
               siblings={variants}
               activeAxes={axisKeys.filter((key) => enabledAxes.has(key))}
-              onChange={(updated) =>
-                setVariants((prev) => prev.map((v) => (v.id === updated.id ? updated : v)))
-              }
-              onDelete={(id) => setVariants((prev) => prev.filter((v) => v.id !== id))}
+              onChange={(updated) => {
+                setVariants((prev) => prev.map((v) => (v.id === updated.id ? updated : v)));
+                confirmSaved();
+              }}
+              onDelete={(id) => {
+                setVariants((prev) => prev.filter((v) => v.id !== id));
+                confirmSaved();
+              }}
             />
           ))}
         </ul>
@@ -247,8 +257,14 @@ export function ProductVariantManager({
           label={ATTRIBUTE_LABELS[checklistAttribute.attributeKey]}
           allowedValues={checklistValues}
           variants={variants}
-          onCreated={(created) => setVariants((prev) => [...prev, created])}
-          onDeleted={(id) => setVariants((prev) => prev.filter((v) => v.id !== id))}
+          onCreated={(created) => {
+            setVariants((prev) => [...prev, created]);
+            confirmSaved();
+          }}
+          onDeleted={(id) => {
+            setVariants((prev) => prev.filter((v) => v.id !== id));
+            confirmSaved();
+          }}
         />
       ) : isAdding ? (
         <div className="rounded-xl border border-border p-4">
@@ -269,24 +285,24 @@ export function ProductVariantManager({
                 ))}
               {axisKeys.filter((key) => enabledAxes.has(key)).length === 0 ? (
                 <p className="col-span-2 text-xs text-muted-foreground">
-                  Check at least one option above to add a variant.
+                  Tick at least one choice above to add an option.
                 </p>
               ) : null}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <FormField
-                label="SKU (optional)"
+                label="Product code (optional)"
                 value={values.sku ?? ""}
                 onChange={(event) => handleChange("sku", event.target.value)}
                 errors={fieldErrors.sku}
                 themed
               />
               <FormField
-                label="Price override (optional)"
+                label="Different price (optional)"
                 type="number"
                 step="0.01"
                 min="0.01"
-                placeholder={`Inherits ${formatCurrency(product.priceCents, product.currency)}`}
+                placeholder={`Same as ${formatCurrency(product.priceCents, product.currency)}`}
                 value={values.price ?? ""}
                 onChange={(event) =>
                   setValues((prev) => ({
@@ -298,7 +314,7 @@ export function ProductVariantManager({
                 themed
               />
             </div>
-            {formError ? <ErrorState title="Couldn't add variant" message={formError} /> : null}
+            {formError ? <ErrorState title="Couldn't add option" message={formError} /> : null}
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
@@ -308,7 +324,7 @@ export function ProductVariantManager({
                 disabled={axisKeys.filter((key) => enabledAxes.has(key)).length === 0}
                 onClick={handleAdd}
               >
-                Add variant
+                Add option
               </Button>
               <Button
                 type="button"
@@ -330,7 +346,7 @@ export function ProductVariantManager({
           className="self-start"
           onClick={() => setIsAdding(true)}
         >
-          + Add variant
+          + Add option
         </Button>
       )}
     </div>

@@ -87,7 +87,7 @@ export function RecommendationRuleManager({
       <div>
         <p className="text-sm font-semibold text-foreground">Guided Selection rules (optional)</p>
         <p className="mt-0.5 text-xs text-muted-foreground">
-          Recommend this product (optionally a specific variant) for a buyer&apos;s stated occasion
+          Recommend this product (optionally a specific option) for a buyer&apos;s stated occasion
           and/or size. Leave both blank to recommend it for any answer.
         </p>
       </div>
@@ -159,11 +159,11 @@ export function RecommendationRuleManager({
 
             {variants.length > 0 ? (
               <div className="flex flex-col gap-1.5">
-                <span className="text-sm font-medium">Specific variant (optional)</span>
+                <span className="text-sm font-medium">Specific option (optional)</span>
                 <ChoiceGroup
-                  label="Specific variant"
+                  label="Specific option"
                   options={[
-                    { value: "", label: "No specific variant" },
+                    { value: "", label: "No specific option" },
                     ...variants.map((variant) => ({
                       value: variant.id,
                       label: [variant.color, variant.size].filter(Boolean).join(" / ") || variant.id,
