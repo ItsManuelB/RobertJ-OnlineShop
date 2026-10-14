@@ -134,6 +134,8 @@ comment on function public.add_cart_item(uuid, uuid, integer) is
   'Atomic add-to-cart for the signed-in buyer: serialised per cart, refuses anything beyond live stock, returns the new line total. SECURITY INVOKER — RLS on carts/cart_items still applies. Messages prefixed "CART: " are buyer-safe.';
 
 revoke all on function public.add_cart_item(uuid, uuid, integer) from public;
+-- Supabase also grants new functions to anon by default; only signed-in buyers need this one.
+revoke execute on function public.add_cart_item(uuid, uuid, integer) from anon;
 grant execute on function public.add_cart_item(uuid, uuid, integer) to authenticated;
 
 commit;
