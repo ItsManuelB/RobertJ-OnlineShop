@@ -1,8 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 
 import { QuantityStepper } from "@/components/ui/quantity-stepper";
+import { ROUTES } from "@/constants/routes";
 import { AddToCartButton } from "@/features/cart/components/AddToCartButton";
 import { BuyNowButton } from "@/features/cart/components/BuyNowButton";
 import {
@@ -114,6 +116,17 @@ export function ProductQuantityAndAddToCart({
         )}
       </div>
 
+      {canPurchase && selection.inCartQuantity > 0 ? (
+        <p role="status" className="mb-3 text-xs text-rj-gray-600">
+          {selection.atCartLimit
+            ? `You have all ${effectiveStock} available in your cart.`
+            : `${selection.inCartQuantity} in your cart.`}{" "}
+          <Link href={ROUTES.cart} className="font-semibold text-rj-red-dark hover:underline">
+            View cart
+          </Link>
+        </p>
+      ) : null}
+
       {canPurchase ? (
         <div className="flex flex-wrap items-center gap-3">
           <AddToCartButton
@@ -124,6 +137,8 @@ export function ProductQuantityAndAddToCart({
             sellerName={shopName}
             variant={selection.variantInfo}
             onNeedSelection={() => setSheetMode("cart")}
+            inCartQuantity={selection.inCartQuantity}
+            atCartLimit={selection.atCartLimit}
           />
           <BuyNowButton
             product={product}

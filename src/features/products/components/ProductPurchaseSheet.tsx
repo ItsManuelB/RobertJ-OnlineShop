@@ -161,6 +161,7 @@ export function ProductPurchaseSheet({ open, mode, onClose, product, selection, 
             </p>
             <p className="mt-1 text-xs text-rj-gray-600" aria-live="polite">
               {stockText}
+              {selection.inCartQuantity > 0 ? ` · ${selection.inCartQuantity} in your cart` : ""}
             </p>
           </div>
           <button
@@ -206,11 +207,11 @@ export function ProductPurchaseSheet({ open, mode, onClose, product, selection, 
             variant={mode === "cart" ? "rj" : "rjOutline"}
             size="rj"
             className="w-full"
-            disabled={isBusy || (selection.isOutOfStock && !selection.needsSelection)}
+            disabled={isBusy || (selection.isOutOfStock && !selection.needsSelection) || (mode === "cart" && selection.atCartLimit)}
             isLoading={pending === (mode === "cart" ? "cart" : "buy")}
             onClick={() => void confirm()}
           >
-            {confirmLabel}
+            {mode === "cart" && selection.atCartLimit ? "All in your cart" : confirmLabel}
           </Button>
         </div>
       </div>

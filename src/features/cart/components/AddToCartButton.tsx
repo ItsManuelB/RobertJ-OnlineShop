@@ -37,6 +37,10 @@ export interface AddToCartButtonProps {
    * button stays disabled in that state, as it always has.
    */
   onNeedSelection?: () => void;
+  /** How many of this exact choice are already in the cart — the label becomes "Add another". */
+  inCartQuantity?: number;
+  /** All the stock is already in the cart, so adding more can only fail — the button says so and is disabled. */
+  atCartLimit?: boolean;
 }
 
 /**
@@ -53,6 +57,8 @@ export function AddToCartButton({
   sellerName,
   variant,
   onNeedSelection,
+  inCartQuantity = 0,
+  atCartLimit = false,
 }: AddToCartButtonProps) {
   const { addToCart, isBusy, pending } = usePurchaseActions(product, sellerName);
   const hasVariants = variant !== undefined;
@@ -62,7 +68,7 @@ export function AddToCartButton({
   // one to check out with — create_order's is_active guard already refuses
   // it server-side, so this button is disabled up front.
   const hasNoSeller = product.sellerId === null;
-  const blocked = isOutOfStock || hasNoSeller || (needsSelection && !onNeedSelection);
+  const blocked = isOutOfStock || hasNoSeller || atCartLimit || (needsSelection && !onNeedSelection);
 
   function handleClick() {
     if (needsSelection) {
@@ -81,9 +87,13 @@ export function AddToCartButton({
         ? "Adding…"
         : pending === "added"
           ? "Added to cart"
-          : needsSelection && !onNeedSelection
-          ? "Select options"
-          : "Add to cart";
+          : atCartLimit
+            ? "All in your cart"
+            : needsSelection && !onNeedSelection
+              ? "Select options"
+              : inCartQuantity > 0
+                ? "Add another"
+                : "Add to cart";
 
   return (
     <Button

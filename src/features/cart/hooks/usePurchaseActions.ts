@@ -114,8 +114,16 @@ export function usePurchaseActions(product: Product, sellerName?: string | null)
         sellerName: sellerName ?? (product.sellerRole === USER_ROLES.seller ? product.sellerName : null),
       });
       if (result.success) {
+        const stock = variant ? variant.stock : product.quantity;
+        const previous = result.quantityInCart - quantity;
+        const named = `${product.title}${variant?.label ? ` (${variant.label})` : ""}`;
+        // Say what the cart now holds, so a repeat add is never a silent one.
+        const message =
+          previous > 0
+            ? `Already in your cart (${previous}). Added ${quantity} more — you now have ${result.quantityInCart}.`
+            : `Added to cart: ${named} × ${quantity}`;
         showToast({
-          message: `Added to cart: ${product.title}${variant?.label ? ` (${variant.label})` : ""} × ${quantity}`,
+          message: result.quantityInCart >= stock ? `${message} That's all we have.` : message,
           action: { label: "View cart", href: ROUTES.cart },
         });
         // Hold the lock briefly (shown as "Added to cart") instead of releasing at once.
