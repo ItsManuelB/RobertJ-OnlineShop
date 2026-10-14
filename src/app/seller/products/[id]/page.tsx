@@ -10,6 +10,7 @@ import {
   listAllCategoryAttributes,
   listProductVariants,
   requireSessionUser,
+  getVariantStock,
 } from "@/lib/supabase/queries";
 
 export const metadata: Metadata = { title: "Edit product — Seller Portal" };
@@ -41,6 +42,7 @@ export default async function SellerEditProductPage({ params }: SellerEditProduc
         categoryAttributes={categoryAttributes}
         product={product}
         variants={variants}
+        optionStock={Object.fromEntries(await getVariantStock(variants.map((variant) => variant.id)))}
         area="seller"
       />
     </div>

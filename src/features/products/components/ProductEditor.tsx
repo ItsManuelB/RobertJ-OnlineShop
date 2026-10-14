@@ -62,6 +62,8 @@ export interface ProductEditorProps {
   product?: Product;
   /** Edit mode: the product's saved options. */
   variants?: ProductVariant[];
+  /** Edit mode: live stock per saved option id (options not listed count as 0). */
+  optionStock?: Record<string, number>;
   /** Which portal the page is in; decides every link (list, edit page, inventory). A plain string so a Server Component can pass it. */
   area: "seller" | "admin";
 }
@@ -86,6 +88,7 @@ function ProductEditorForm({
   categoryAttributes,
   product,
   variants,
+  optionStock = {},
   area,
   onStartOver,
 }: ProductEditorProps & { onStartOver: () => void }) {
@@ -345,6 +348,12 @@ function ProductEditorForm({
         currency: siteConfig.currency,
       };
 
+  // Options are seeded with 0 stock; a live product whose options are all at 0 can't be bought.
+  const optionsOutOfStock =
+    optionVariants.length > 0 &&
+    (isEdit ? values.status === PRODUCT_STATUS.active : true) &&
+    optionVariants.every((option) => (optionStock[option.id] ?? 0) === 0);
+
   const title = isEdit ? `Edit ${product?.title ?? "product"}` : "Add a product";
   const savedElsewhere = isEdit ? null : progress?.productId;
 
@@ -400,6 +409,16 @@ function ProductEditorForm({
       {!isEdit && !locked && !canPublish ? (
         <p id="publish-hint" className="-mt-2 text-xs text-muted-foreground">
           To publish, add a category, a product name, a price and a quantity above 0. You can save as a draft at any time, with no quantity.
+        </p>
+      ) : null}
+
+      {optionsOutOfStock ? (
+        <p role="status" className="-mt-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-foreground">
+          Every option has 0 stock, so buyers will see this product as sold out. Set each option&apos;s stock in{" "}
+          <Link href={inventoryHref} className="font-medium underline">
+            Inventory
+          </Link>
+          {isEdit ? "." : " after saving."}
         </p>
       ) : null}
 

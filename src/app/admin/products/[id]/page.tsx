@@ -8,6 +8,7 @@ import {
   listActiveCategories,
   listAllCategoryAttributes,
   listProductVariants,
+  getVariantStock,
 } from "@/lib/supabase/queries";
 
 export const metadata: Metadata = { title: "Edit product — Admin Portal" };
@@ -38,6 +39,7 @@ export default async function AdminEditProductPage({ params }: AdminEditProductP
         categoryAttributes={categoryAttributes}
         product={product}
         variants={variants}
+        optionStock={Object.fromEntries(await getVariantStock(variants.map((variant) => variant.id)))}
         area="admin"
       />
     </div>
