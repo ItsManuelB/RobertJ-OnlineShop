@@ -52,6 +52,7 @@ export const ROUTES = {
   seller: "/seller",
   sellerDashboard: "/seller/dashboard",
   sellerShop: "/seller/shop",
+  sellerSettings: "/seller/settings",
   sellerProducts: "/seller/products",
   sellerProductNew: "/seller/products/new",
   sellerProductEdit: (id: string) => `/seller/products/${id}`,

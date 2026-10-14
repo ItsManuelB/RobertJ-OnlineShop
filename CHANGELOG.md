@@ -7,6 +7,9 @@ All notable changes to RoberJ Online Shop are documented here, newest first. For
 
 ## [Unreleased]
 
+### Fixed
+- **Seller "Profile Settings" no longer bounces to the homepage.** The seller top-bar menu and sidebar profile card linked to the buyer-only `/profile`, whose layout redirects sellers and admins. They now open a new **Seller Settings** page at `/seller/settings` with Account (photo, name, phone; email read-only), Security (change password) and a read-only My shop summary linking to branding. Buyer account pages are unchanged and still buyer-only. Fields the form does not show (username, bio, gender, date of birth) are carried as hidden inputs so saving never blanks them.
+
 ### Changed
 - **Zero-stock options warning.** The product editor now shows a notice when a product's options all have 0 stock (options start at 0 until stock is set in Inventory), so a live product is not left unbuyable by accident. It is a warning only; saving and publishing are unchanged.
 - **Guided Selection now matches from the catalog automatically** (ADR-022). Sellers no longer write rules: the quiz checks active products, their options and live stock. Only in-stock items are recommended; size/color/material/dimensions must be satisfied by the same option; budget uses the matched option's live price, and products just over/under budget show as "close" matches with a note. Occasion comes from a new **Good for** field in the product editor (stored as product tags; untagged products still match, tagged-for-other-occasions ones don't). The Guided selection section and rule actions were removed; the `recommendation_rules` table is kept, unused.
