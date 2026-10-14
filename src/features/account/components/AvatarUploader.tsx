@@ -12,6 +12,42 @@ import { cn } from "@/lib/utils/cn";
 import { getInitials } from "@/lib/utils/format";
 
 const IMAGE_INPUT_ACCEPT = "image/jpeg,image/png";
+/** Mirrors `uploadAvatarSchema` (1MB, JPEG/PNG) so a too-large photo is shrunk here instead of being rejected by the server. */
+const MAX_AVATAR_BYTES = 1 * 1024 * 1024;
+const ALLOWED_TYPES = ["image/jpeg", "image/png"];
+
+/**
+ * Shrinks a photo that is over the upload limit to a JPEG under it (a circular
+ * avatar needs far fewer pixels than a phone photo has). Returns the file
+ * unchanged when it is already small enough or can't be decoded, so the
+ * server's own validation still has the final say.
+ */
+async function fitToLimit(file: File): Promise<File> {
+  if (file.size <= MAX_AVATAR_BYTES || !ALLOWED_TYPES.includes(file.type)) return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    let longSide = 1024;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const scale = Math.min(1, longSide / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      const context = canvas.getContext("2d");
+      if (!context) return file;
+      context.fillStyle = "#ffffff"; // JPEG has no transparency
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
+      if (blob && blob.size <= MAX_AVATAR_BYTES) {
+        return new File([blob], `${file.name.replace(/\.[^.]+$/, "")}.jpg`, { type: "image/jpeg" });
+      }
+      longSide = Math.round(longSide * 0.75);
+    }
+  } catch {
+    // Not decodable in this browser — let the server report it.
+  }
+  return file;
+}
 
 export interface AvatarUploaderProps {
   /** Current, real, persisted avatar URL — null when none is set yet. */
@@ -44,12 +80,13 @@ export function AvatarUploader({ currentUrl, name, themed = false }: AvatarUploa
     setError(null);
     startTransition(async () => {
       const formData = new FormData();
-      formData.append("image", file);
+      formData.append("image", await fitToLimit(file));
       const result = await uploadAvatarAction(formData);
       if (result.success) {
         setUrl(result.data);
       } else {
-        setError(result.error);
+        // A validation failure carries the specific reason (type/size) in `fieldErrors`; the generic message alone hides it.
+        setError(result.fieldErrors?.image?.[0] ?? result.error);
       }
     });
   }

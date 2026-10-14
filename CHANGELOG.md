@@ -8,6 +8,7 @@ All notable changes to RoberJ Online Shop are documented here, newest first. For
 ## [Unreleased]
 
 ### Fixed
+- **Profile photo upload.** A rejected photo now shows the real reason (for example "Image must be 1MB or smaller.") instead of only "Please correct the highlighted fields.", and a JPEG/PNG over 1MB is shrunk in the browser to a JPEG under the limit before uploading, so ordinary phone photos work. Applies to the buyer and seller profile photo (`AvatarUploader`); the server-side 1MB/JPEG/PNG checks are unchanged.
 - **Seller "Profile Settings" no longer bounces to the homepage.** The seller top-bar menu and sidebar profile card linked to the buyer-only `/profile`, whose layout redirects sellers and admins. They now open a new **Seller Settings** page at `/seller/settings` with Account (photo, name, phone; email read-only), Security (change password) and a read-only My shop summary linking to branding. Buyer account pages are unchanged and still buyer-only. Fields the form does not show (username, bio, gender, date of birth) are carried as hidden inputs so saving never blanks them.
 
 ### Changed
