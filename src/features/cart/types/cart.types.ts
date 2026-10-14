@@ -61,3 +61,8 @@ export type CartAction =
     } & CartLineRef)
   | { type: "clear" }
   | { type: "hydrate"; state: CartState };
+
+/** Outcome of `addItemChecked` — the buyer-facing message is always safe to display as is. */
+export type CartAddResult =
+  | { success: true; quantityInCart: number }
+  | { success: false; error: string };

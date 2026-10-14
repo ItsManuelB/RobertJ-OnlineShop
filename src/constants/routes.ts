@@ -7,6 +7,12 @@ export const ROUTES = {
   categoryDetail: (slug: string) => `/categories/${slug}`,
   cart: "/cart",
   checkout: "/checkout",
+  /** Checkout for one product only ("Buy now"); the cart is left untouched. Price and stock are re-read server-side. */
+  checkoutBuyNow: (line: { productId: string; variantId?: string; quantity: number }) => {
+    const params = new URLSearchParams({ buyNow: line.productId, qty: String(line.quantity) });
+    if (line.variantId) params.set("variant", line.variantId);
+    return `/checkout?${params.toString()}`;
+  },
   /** Checkout-owned payment workspace for an existing order — retry, resume, or change payment method. The only place buyer payment initiation is allowed to happen; see docs/payment-ux-architecture-audit.md. */
   checkoutResume: (orderId: string) => `/checkout/resume/${orderId}`,
   /** Customer account hub (order tracking + overview). See docs/customer-account-architecture-plan.md. */

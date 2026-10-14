@@ -10,6 +10,7 @@ import { canPurchase } from "@/lib/auth/permissions";
 import { formatCurrency } from "@/lib/utils/currency";
 import {
   getProductSoldCounts,
+  listProductIdsWithVariants,
   getSessionUser,
   getShopNamesBySellerIds,
   listWishlistProductIds,
@@ -76,6 +77,7 @@ function toTileItem(
   shopNames: ReadonlyMap<string, string>,
   soldCounts: ReadonlyMap<string, number>,
   canPurchase: boolean,
+  hasOptions: boolean,
 ): ProductTileItem {
   // Real shop name when the seller belongs to one (see
   // `resolve_shop_membership`); falls back to the seller's own profile
@@ -125,6 +127,7 @@ function toTileItem(
       initialSaved: wishlistedIds.has(product.id),
       isAuthenticated,
     },
+    hasOptions,
     canPurchase,
   };
 }
@@ -182,7 +185,7 @@ export async function ProductGrid({
     ),
   ];
   const productIds = products.map((product) => product.id);
-  const [wishlistedIds, shopNames, soldCounts] = await Promise.all([
+  const [wishlistedIds, shopNames, soldCounts, optionProductIds] = await Promise.all([
     user
       ? listWishlistProductIds(user.id)
           .then((ids) => new Set(ids))
@@ -190,13 +193,15 @@ export async function ProductGrid({
       : Promise.resolve(new Set<string>()),
     getShopNamesBySellerIds(sellerIds).catch(() => new Map<string, string>()),
     getProductSoldCounts(productIds).catch(() => new Map<string, number>()),
+    // Degrades to "no options known" (quick-add as before) if this lookup fails.
+    listProductIdsWithVariants(productIds).catch(() => new Set<string>()),
   ]);
 
   // Guests + buyers can transact; seller/admin browse read-only, so their
   // tiles hide the quick-add and wishlist heart.
   const viewerCanPurchase = user === null || canPurchase(user.role as UserRole);
   const items = products.map((product) =>
-    toTileItem(product, wishlistedIds, user !== null, shopNames, soldCounts, viewerCanPurchase),
+    toTileItem(product, wishlistedIds, user !== null, shopNames, soldCounts, viewerCanPurchase, optionProductIds.has(product.id)),
   );
 
   if (viewMode === "list") {

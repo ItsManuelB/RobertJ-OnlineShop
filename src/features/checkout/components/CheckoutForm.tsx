@@ -12,6 +12,7 @@ import { ROUTES } from "@/constants/routes";
 import { checkCartAvailabilityAction } from "@/features/cart/actions/cart.actions";
 import { useCart } from "@/features/cart/hooks/useCart";
 import { getCartLineKey, getSelectedItems } from "@/features/cart/utils/cart-reducer";
+import type { CartItem } from "@/features/cart/types/cart.types";
 import { createAddressAction } from "@/features/addresses/actions/address.actions";
 import type { Address } from "@/features/addresses/types/address.types";
 import { placeOrderAction } from "@/features/checkout/actions/checkout.actions";
@@ -85,6 +86,12 @@ export interface CheckoutFormProps {
   initialSelectedAddressId?: string | null;
   /** The buyer's saved default payment method (Privacy & Settings), if any — seeds the initial radio selection. Purely a starting value; the buyer can still change it here, same as address. */
   initialMethod?: PaymentMethod;
+  /**
+   * "Buy now": the one line to check out, resolved server-side from live price
+   * and stock (see `getBuyNowLine`). When set, the cart and its selection are
+   * ignored entirely — and left untouched, before and after the order.
+   */
+  buyNowItem?: CartItem;
 }
 
 /**
@@ -103,6 +110,7 @@ export function CheckoutForm({
   initialAddressSource = "empty",
   initialSelectedAddressId = null,
   initialMethod,
+  buyNowItem,
 }: CheckoutFormProps) {
   const router = useRouter();
   const { items, removeMany, selectedIds } = useCart();
@@ -112,9 +120,16 @@ export function CheckoutForm({
   // untouched. `placeOrderAction`/`create_order` are unchanged; this only
   // changes which items are handed to them.
   const checkoutItems = useMemo(
-    () => getSelectedItems(items, selectedIds),
-    [items, selectedIds],
+    () => (buyNowItem ? [buyNowItem] : getSelectedItems(items, selectedIds)),
+    [buyNowItem, items, selectedIds],
   );
+  // After a "Buy now" order the checkout URL must not stay in history, or Back
+  // would offer to place the same order again.
+  const goTo = (url: string) => (buyNowItem ? router.replace(url) : router.push(url));
+  // The cart is only cleared of what the cart checkout placed.
+  const clearPlaced = (lines: Parameters<typeof removeMany>[0]) => {
+    if (!buyNowItem) removeMany(lines);
+  };
   const groups = useMemo(() => groupCartBySeller(checkoutItems), [checkoutItems]);
 
   // F-05: a buyer who deep-links straight to /checkout (skipping /cart) never
@@ -221,13 +236,13 @@ export function CheckoutForm({
           <XenditCardPaymentButton
             orderId={cardPaymentTarget.orderId}
             autoStart
-            onComplete={() => router.push(cardPaymentTarget.ordersUrl)}
+            onComplete={() => goTo(cardPaymentTarget.ordersUrl)}
           />
         ) : (
           <XenditCardPaymentButton
             checkoutGroupId={cardPaymentTarget.checkoutGroupId}
             autoStart
-            onComplete={() => router.push(cardPaymentTarget.ordersUrl)}
+            onComplete={() => goTo(cardPaymentTarget.ordersUrl)}
           />
         )}
         <Link
@@ -240,7 +255,7 @@ export function CheckoutForm({
     );
   }
 
-  if (items.length === 0) {
+  if (!buyNowItem && items.length === 0) {
     return <CheckoutEmptyState reason="empty" />;
   }
   if (checkoutItems.length === 0) {
@@ -386,7 +401,7 @@ export function CheckoutForm({
         // Full success: remove exactly the items that were just ordered —
         // not the whole cart, since deselected lines were never part of
         // this checkout and should stay put.
-        removeMany(checkoutItems);
+        clearPlaced(checkoutItems);
         // Resolved server-side (`resolveRedirectTab`, reading the
         // `buyer_order_lifecycle` view) — never re-derived here, so the tab
         // mapping has exactly one source of truth. `null` means "All".
@@ -397,7 +412,7 @@ export function CheckoutForm({
         // COD (or a channel that can't auto-continue) lands on the orders
         // list — the just-placed order already carries its bucket.
         if (method !== "xendit" || xenditChannel === null) {
-          router.push(ordersUrl);
+          goTo(ordersUrl);
           return;
         }
 
@@ -423,7 +438,7 @@ export function CheckoutForm({
           // row (the eager reservation in `placeOrderAction`), so the "To
           // Pay" order card picks it up on its own — no query param needed.
           console.error("Xendit e-wallet handoff failed after checkout:", payResult.error);
-          router.push(ordersUrl);
+          goTo(ordersUrl);
           return;
         }
 
@@ -447,7 +462,7 @@ export function CheckoutForm({
       }
 
       // Partial success: drop only placed items; keep failed ones to fix/retry.
-      if (placedLines.length > 0) removeMany(placedLines);
+      if (placedLines.length > 0) clearPlaced(placedLines);
     });
   }
 
@@ -472,6 +487,12 @@ export function CheckoutForm({
         handlePlaceOrder();
       }}
     >
+      {buyNowItem ? (
+        <p role="status" className="rounded-xl border border-rj-gray-100 bg-rj-gray-50 px-4 py-3 text-sm text-rj-gray-600">
+          You&apos;re buying this item now. Your cart isn&apos;t part of this order and stays as it is.
+        </p>
+      ) : null}
+
       {result && result.failed.length > 0 ? (
         <div className="flex flex-col gap-3">
           {result.created.length > 0 ? (

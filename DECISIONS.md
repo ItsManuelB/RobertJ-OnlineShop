@@ -31,6 +31,7 @@ Every decision is a numbered ADR with a fixed shape: **Context → Problem → O
 | [ADR-008](#adr-008-manual-payment-verification-cod--qr-receipt-no-gateway) | Manual payment verification (COD + QR receipt), no gateway | ✅ Accepted |
 | [ADR-009](#adr-009-rule-based-guided-product-selection-not-ai) | Rule-based Guided Product Selection, not AI | ✅ Accepted |
 | [ADR-022](#adr-022-guided-selection-matches-straight-from-the-catalog) | Guided Selection matches straight from the catalog (refines ADR-009) | ✅ Accepted |
+| [ADR-023](#adr-023-buy-now-checks-out-one-product-directly-add-to-cart-is-validated-and-confirmed) | Buy Now checks out one product directly; Add to Cart is validated and confirmed | ✅ Accepted |
 | [ADR-010](#adr-010-feature-first-repository-structure) | Feature-first repository structure | ✅ Accepted |
 | [ADR-011](#adr-011-money-stored-as-integer-cents) | Money stored as integer cents | ✅ Accepted |
 | [ADR-012](#adr-012-one-order-per-seller-cart-split-at-checkout) | One order per seller; cart split at checkout | ✅ Accepted |
@@ -611,3 +612,17 @@ Original decision: Option 2. The Stripe code stayed in the repo (real, working c
 - Matching on material/dimensions on existing products relies on the products.material/dimensions values being set (see the pending update-grant migration).
 
 **Future Revisit:** Drop `recommendation_rules`; a first-class occasion column instead of tags if tags prove too loose.
+
+---
+
+## ADR-023: Buy Now checks out one product directly; Add to Cart is validated and confirmed
+
+**Context:** "Buy Now" added the product to the cart (merging into any existing line) and then opened checkout, which places whatever lines are selected in the cart — so it could include other items and the wrong quantity. Add to Cart was fire-and-forget: no confirmation, no error for a signed-in failure, a silent clamp for guests, and the server accepted adds beyond stock. A product with options also left both buttons disabled until everything was picked, with no way to see why.
+
+**Decision:**
+1. A shared selection hook (`useVariantSelection`) and an options sheet (`ProductPurchaseSheet`) let the buyer choose options and quantity before proceeding; the product page's buttons open it when something is missing.
+2. `CartProvider.addItemChecked` returns the outcome. Guests are checked in the browser; signed-in adds are checked on the server (`addCartItem` → live stock plus what is already in the cart). The guest-cart merge on sign-in is exempt (`enforceStock: false`) so it still keeps every line as before.
+3. Buy Now navigates to `/checkout?buyNow=<product>&variant=<option>&qty=<n>`. The checkout page resolves it with `getBuyNowLine` — price, stock, seller and photo come from the database, the quantity is validated against stock, and the cart is neither read nor changed. The URL survives the sign-in redirect for guests.
+4. One in-flight lock is shared by every purchase button, with a short cooldown after a successful add.
+
+**Consequences:** no database change; `create_order` and the cart tables are untouched. A bought-now checkout is not saved anywhere, so reopening its link starts a new checkout for the same item (`router.replace` keeps the post-order Back button from doing that by accident). Adding a quantity beyond stock to a signed-in cart is now refused instead of accepted-and-flagged.

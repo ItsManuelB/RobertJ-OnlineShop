@@ -61,6 +61,8 @@ import type {
   RecommendationSize,
 } from "@/features/assistant/types/assistant.types";
 import { isOccasion } from "@/constants/occasions";
+import { filterImagesForColor } from "@/lib/utils/variant-images";
+import type { CartItem } from "@/features/cart/types/cart.types";
 import { matchCandidates, type MatchOption } from "@/features/assistant/lib/guided-match";
 import {
   ACTIVE_ORDER_STATUSES,
@@ -6235,6 +6237,106 @@ function toProductVariant(row: ProductVariantRow): ProductVariant {
 }
 
 /** A product's own variants, oldest first (creation order). */
+/**
+ * Which of these products have active options (colors, sizes, …). Such a
+ * product can't be added to the cart from a listing tile — the buyer has to
+ * choose an option first — so tiles use this to send them to the product page.
+ */
+export async function listProductIdsWithVariants(productIds: string[]): Promise<Set<string>> {
+  const supabase = await createSupabaseServerClient();
+  const withVariants = new Set<string>();
+  for (let i = 0; i < productIds.length; i += 40) {
+    const { data, error } = await supabase
+      .from(DATABASE_TABLES.PRODUCT_VARIANTS)
+      .select("product_id")
+      .in("product_id", productIds.slice(i, i + 40))
+      .eq("status", "active");
+    if (error) throw queryError("Failed to check product options", error);
+    for (const row of data ?? []) withVariants.add(row.product_id);
+  }
+  return withVariants;
+}
+
+/** One line to check out directly ("Buy now"), resolved from live data — never from what the browser claims. */
+export type BuyNowResult =
+  | { success: true; line: CartItem }
+  | { success: false; error: string };
+
+/**
+ * Resolves a "Buy now" request (`/checkout?buyNow=…`) into a checkout line.
+ * Everything that matters is read here — price, stock, seller, photo — and the
+ * quantity is validated against live stock, so a tampered link can neither
+ * change a price nor order more than exists. A product that has options needs
+ * one chosen. The cart is never touched.
+ */
+export async function getBuyNowLine(input: {
+  productId: string;
+  variantId?: string;
+  quantity: number;
+}): Promise<BuyNowResult> {
+  const supabase = await createSupabaseServerClient();
+  const { data: row, error } = await supabase
+    .from(DATABASE_TABLES.PRODUCTS)
+    .select(PRODUCT_COLUMNS)
+    .eq("id", input.productId)
+    .eq("status", PRODUCT_STATUS.active)
+    .maybeSingle();
+  if (error) throw queryError("Failed to load product", error);
+  if (!row) return { success: false, error: "This product is no longer available." };
+  const product = toProduct(row as ProductRowWithImages);
+  if (!product.sellerId) {
+    return { success: false, error: "This product is no longer available." };
+  }
+
+  const variants = await listProductVariants(product.id);
+  const variant = input.variantId ? variants.find((item) => item.id === input.variantId) : undefined;
+  if (input.variantId && !variant) {
+    return { success: false, error: "That option is no longer available." };
+  }
+  if (!variant && variants.length > 0) {
+    return { success: false, error: "Please choose an option on the product page first." };
+  }
+
+  const [live] = await checkCartAvailability([
+    { productId: product.id, variantId: variant?.id },
+  ]);
+  if (!live || live.status !== PRODUCT_STATUS.active) {
+    return { success: false, error: "This product is no longer available." };
+  }
+  if (live.quantity <= 0) return { success: false, error: "This item is sold out." };
+  if (input.quantity > live.quantity) {
+    return { success: false, error: `Only ${live.quantity} available.` };
+  }
+
+  const shopNames = await getShopNamesBySellerIds([product.sellerId]).catch(
+    () => new Map<string, string>(),
+  );
+  const sellerName =
+    shopNames.get(product.sellerId) ??
+    (product.sellerRole === USER_ROLES.seller ? product.sellerName : null);
+  const images = filterImagesForColor(product.images, variants, variant?.color ?? null);
+
+  return {
+    success: true,
+    line: {
+      productId: product.id,
+      variantId: variant?.id,
+      variantLabel: variant
+        ? [variant.color, variant.size, variant.material, variant.dimensions].filter(Boolean).join(" / ") || null
+        : null,
+      slug: product.slug,
+      title: product.title,
+      imageUrl: images[0]?.url ?? null,
+      unitPriceCents: live.priceCents,
+      currency: product.currency,
+      quantity: input.quantity,
+      maxQuantity: live.quantity,
+      sellerId: product.sellerId,
+      sellerName,
+    },
+  };
+}
+
 export async function listProductVariants(
   productId: string,
 ): Promise<ProductVariant[]> {
@@ -7432,12 +7534,52 @@ export interface AddCartItemInput {
  * two concurrent adds can never create a duplicate row, at worst one retries
  * once as an update.
  */
+/**
+ * Refuses a cart add the shop cannot fulfil: the product/option must still be
+ * active, and what is already in the cart plus this add must not exceed live
+ * stock. The browser also checks this for a fast message, but only this check
+ * can be trusted — the cart stored no stock before, so an over-add used to be
+ * accepted and only flagged at checkout.
+ */
+async function assertCartAddWithinStock(cartId: string, input: AddCartItemInput): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  const [live] = await checkCartAvailability([
+    { productId: input.productId, variantId: input.variantId },
+  ]);
+  if (!live || live.status !== PRODUCT_STATUS.active) {
+    throw new Error("This item is no longer available.");
+  }
+
+  let existingQuery = supabase
+    .from(DATABASE_TABLES.CART_ITEMS)
+    .select("quantity")
+    .eq("cart_id", cartId)
+    .eq("product_id", input.productId);
+  existingQuery = input.variantId
+    ? existingQuery.eq("variant_id", input.variantId)
+    : existingQuery.is("variant_id", null);
+  const { data: existing } = await existingQuery.maybeSingle();
+  const alreadyInCart = existing?.quantity ?? 0;
+
+  if (live.quantity <= 0) throw new Error("This item is sold out.");
+  if (alreadyInCart + input.quantity > live.quantity) {
+    throw new Error(
+      alreadyInCart > 0
+        ? `You already have ${alreadyInCart} in your cart. Only ${live.quantity} available in total.`
+        : `Only ${live.quantity} available.`,
+    );
+  }
+}
+
 export async function addCartItem(
   userId: string,
   input: AddCartItemInput,
+  /** `false` only for the guest-cart merge, which keeps every line (an unavailable one is flagged in the cart, as before) instead of dropping it. */
+  options: { enforceStock?: boolean } = {},
 ): Promise<CartLineItem> {
   const supabase = await createSupabaseServerClient();
   const cart = await getOrCreateCart(userId);
+  if (options.enforceStock !== false) await assertCartAddWithinStock(cart.id, input);
 
   const { data: inserted, error: insertError } = await supabase
     .from(DATABASE_TABLES.CART_ITEMS)
@@ -7616,7 +7758,7 @@ export async function mergeGuestCart(
 
   for (const item of items) {
     try {
-      await addCartItem(userId, item);
+      await addCartItem(userId, item, { enforceStock: false });
       mergedCount++;
     } catch {
       failedCount++;

@@ -9,6 +9,7 @@ import { useState } from "react";
 import { ROUTES } from "@/constants/routes";
 import { formatCurrency } from "@/lib/utils/currency";
 import { useCart } from "@/features/cart/hooks/useCart";
+import { useToast } from "@/providers/ToastProvider";
 import { LOW_STOCK_THRESHOLD } from "@/features/products/constants/product.constants";
 import { WishlistButton } from "@/features/wishlist/components/WishlistButton";
 import type { WishlistState } from "@/features/wishlist/types/wishlist.types";
@@ -46,6 +47,8 @@ export interface ProductTileItem {
     sellerId: string;
     sellerName: string | null;
   } | null;
+  /** True when the product has options to choose (color, size, …): quick-add then opens the product page instead of adding a plain line. */
+  hasOptions?: boolean;
   /** Wishlist heart payload; null hides the button entirely (e.g. a
    * marketing placeholder with no real product behind it yet). */
   wishlist: WishlistState | null;
@@ -74,9 +77,11 @@ export interface ProductTileProps {
  */
 export function ProductTile({ item, style }: ProductTileProps) {
   const router = useRouter();
-  const { addItem } = useCart();
+  const { addItemChecked } = useCart();
+  const { showToast } = useToast();
   const [hovered, setHovered] = useState(false);
   const [added, setAdded] = useState(false);
+  const [adding, setAdding] = useState(false);
 
   const isOutOfStock = item.maxQuantity !== null && item.maxQuantity <= 0;
   const isLowStock =
@@ -95,7 +100,7 @@ export function ProductTile({ item, style }: ProductTileProps) {
     ? Math.round((1 - item.priceCents / (item.originalPriceCents as number)) * 100)
     : null;
 
-  function handleQuickAdd(event: React.MouseEvent) {
+  async function handleQuickAdd(event: React.MouseEvent) {
     // The whole tile is one <Link> (see below) — this button must never
     // trigger that navigation, same reasoning as WishlistButton's handler.
     event.preventDefault();
@@ -105,21 +110,39 @@ export function ProductTile({ item, style }: ProductTileProps) {
       router.push(ROUTES.products);
       return;
     }
-    if (isOutOfStock) return;
-    addItem({
-      productId: item.addToCart.productId,
-      slug: item.addToCart.slug,
-      title: item.name,
-      imageUrl: item.imageUrl,
-      unitPriceCents: item.priceCents,
-      currency: item.currency,
-      quantity: 1,
-      maxQuantity: item.maxQuantity ?? 0,
-      sellerId: item.addToCart.sellerId,
-      sellerName: item.addToCart.sellerName,
-    });
-    setAdded(true);
-    window.setTimeout(() => setAdded(false), 2000);
+    if (isOutOfStock || adding) return;
+    // A product with options (color, size, …) can't be added blind: the buyer
+    // chooses them on the product page, where the options sheet is.
+    if (item.hasOptions) {
+      router.push(item.href);
+      return;
+    }
+    setAdding(true);
+    try {
+      const result = await addItemChecked({
+        productId: item.addToCart.productId,
+        slug: item.addToCart.slug,
+        title: item.name,
+        imageUrl: item.imageUrl,
+        unitPriceCents: item.priceCents,
+        currency: item.currency,
+        quantity: 1,
+        maxQuantity: item.maxQuantity ?? 0,
+        sellerId: item.addToCart.sellerId,
+        sellerName: item.addToCart.sellerName,
+      });
+      if (result.success) {
+        setAdded(true);
+        window.setTimeout(() => setAdded(false), 2000);
+        showToast({ message: `Added to cart: ${item.name}`, action: { label: "View cart", href: ROUTES.cart } });
+      } else {
+        showToast({ tone: "error", message: result.error });
+      }
+    } catch {
+      showToast({ tone: "error", message: "We couldn't add this to your cart. Please try again." });
+    } finally {
+      setAdding(false);
+    }
   }
 
   return (
@@ -198,10 +221,17 @@ export function ProductTile({ item, style }: ProductTileProps) {
             <button
               type="button"
               onClick={handleQuickAdd}
+              disabled={adding}
               className="w-full rounded-full bg-rj-white/95 py-2.5 text-[11px] font-bold text-rj-black backdrop-blur-sm transition-colors hover:bg-rj-red hover:text-white"
             >
               <span aria-live="polite">
-                {added ? "Added to Cart" : "+ Add to Cart"}
+                {item.hasOptions
+                  ? "Choose options"
+                  : adding
+                    ? "Adding…"
+                    : added
+                      ? "Added to Cart"
+                      : "+ Add to Cart"}
               </span>
             </button>
           </div>
