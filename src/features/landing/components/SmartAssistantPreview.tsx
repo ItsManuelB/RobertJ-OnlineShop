@@ -39,7 +39,7 @@ export function SmartAssistantPreview() {
           </h2>
           <p className="mb-8 text-[15px] leading-relaxed text-rj-gray-400">
             Pick your occasion, size, and budget — Guided Selection matches
-            you against explicit, seller-authored rules across every shop.
+            you against what is in stock right now across every shop.
             Deterministic and explainable, never an AI guess.
           </p>
           <ul className="mb-10 space-y-3">
@@ -77,7 +77,7 @@ export function SmartAssistantPreview() {
                 <div className="text-[13px] font-semibold text-rj-white">Guided Selection</div>
                 <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-rj-gray-600">
                   <span className="h-1.5 w-1.5 rounded-full bg-rj-green" />
-                  Deterministic · Rule-based, not AI
+                  Deterministic · In-stock matches, not AI
                 </div>
               </div>
             </div>

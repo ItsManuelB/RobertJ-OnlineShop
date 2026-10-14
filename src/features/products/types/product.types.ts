@@ -7,6 +7,8 @@ export interface ProductImage {
   url: string;
   altText: string | null;
   sortOrder: number;
+  /** Optional variant this photo is tagged to; null = shared across every variant (the default). */
+  variantId: string | null;
 }
 
 /** Domain model returned by the product service to the rest of the app. */

@@ -52,17 +52,18 @@ export interface RecommendationRule {
 }
 
 /**
- * One buyer-facing Guided Selection result: a product the buyer's
- * occasion/size/budget answers matched, via one or more `recommendation_rules`
- * rows. `matchedPriceCents` is always a live read (the variant's price when
- * the matching rule targets one, else the product's own price) — never
- * stored, matching the migration's "budget is a query-time concern" design.
+ * One buyer-facing Guided Selection result, matched straight from the live
+ * catalog (ADR-022). `matchedPriceCents` is a live read: the matched option's
+ * price when it has its own, else the product's.
  */
 export interface GuidedSelectionMatch {
   product: Product;
-  /** Set only when the matching rule recommends one specific variant. */
+  /** The in-stock option that satisfied the buyer's answers; null when none was asked. */
   variantId: string | null;
   /** e.g. "Blue / Medium", or null when the match isn't variant-specific. */
   variantLabel: string | null;
   matchedPriceCents: number;
+  /** "exact" satisfies every answer; "close" misses only the budget, by `note`. */
+  fit: "exact" | "close";
+  note: string | null;
 }

@@ -1,15 +1,9 @@
 import { z } from "zod";
 
+import { OCCASIONS } from "@/constants/occasions";
+
 /** Must match the `recommendation_occasion` Postgres enum exactly. */
-export const OCCASIONS = [
-  "casual",
-  "formal",
-  "work",
-  "sportswear",
-  "party",
-  "wedding",
-  "everyday",
-] as const;
+export { OCCASIONS } from "@/constants/occasions";
 
 export const occasionSchema = z.enum(OCCASIONS);
 

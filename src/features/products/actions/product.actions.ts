@@ -13,8 +13,9 @@ import {
   bulkArchiveProductsSchema,
   bulkAssignProductCategorySchema,
   bulkUpdateProductStatusSchema,
-  createProductSchema,
+  createProductRequestSchema,
   deleteProductImageSchema,
+  setProductImageVariantSchema,
   updateProductSchema,
   uploadProductImageSchema,
 } from "@/features/products/schemas/product.schema";
@@ -55,13 +56,15 @@ export async function createProductAction(
   _prevState: ActionResult<Product> | null,
   formData: FormData,
 ): Promise<ActionResult<Product>> {
-  const parsed = createProductSchema.safeParse(Object.fromEntries(formData));
+  const parsed = createProductRequestSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return fromZodError(parsed.error);
+  const { clientId, ...input } = parsed.data;
 
   try {
     const seller = await queries.requireRole([USER_ROLES.seller]);
     const shopId = await queries.requireOwnShopId();
-    const product = await queries.createProduct(parsed.data, seller.id, shopId);
+    // `clientId` makes a repeated request resolve to the same product (see `createProduct`).
+    const product = await queries.createProduct(input, seller.id, shopId, clientId);
     revalidatePath(ROUTES.adminInventory);
     revalidatePath(ROUTES.sellerInventory);
     revalidatePath(ROUTES.products);
@@ -350,6 +353,39 @@ export async function deleteProductImageAction(
   } catch (error) {
     return fail(
       error instanceof Error ? error.message : "Could not delete the image.",
+    );
+  }
+}
+
+/**
+ * Tags a product photo to one of the product's variants (or clears it with
+ * `variantId: null`). Same role/ownership shape as `deleteProductImageAction`;
+ * the variant-belongs-to-this-product check lives in the service layer.
+ */
+export async function setProductImageVariantAction(
+  input: unknown,
+): Promise<ActionResult<ProductImage>> {
+  const parsed = setProductImageVariantSchema.safeParse(input);
+  if (!parsed.success) return fromZodError(parsed.error);
+
+  try {
+    const seller = await queries.requireRole(DASHBOARD_ROLES);
+    const owner =
+      seller.role === USER_ROLES.admin
+        ? null
+        : { sellerId: seller.id, shopId: await queries.getOwnShopId(seller.id) };
+    const image = await queries.setProductImageVariant(
+      parsed.data.imageId,
+      parsed.data.variantId,
+      owner,
+    );
+    revalidatePath(ROUTES.adminProducts);
+    revalidatePath(ROUTES.sellerProducts);
+    revalidatePath(ROUTES.products);
+    return ok(image);
+  } catch (error) {
+    return fail(
+      error instanceof Error ? error.message : "Could not update the image.",
     );
   }
 }

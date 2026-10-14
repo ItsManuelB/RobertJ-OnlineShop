@@ -5,6 +5,7 @@ import { useState } from "react";
 import { QuantityStepper } from "@/components/ui/quantity-stepper";
 import { AddToCartButton } from "@/features/cart/components/AddToCartButton";
 import { BuyNowButton } from "@/features/cart/components/BuyNowButton";
+import { useProductSelection } from "@/features/products/components/ProductSelectionProvider";
 import { LOW_STOCK_THRESHOLD } from "@/features/products/constants/product.constants";
 import { WishlistButton } from "@/features/wishlist/components/WishlistButton";
 import type { WishlistState } from "@/features/wishlist/types/wishlist.types";
@@ -107,6 +108,8 @@ export function ProductQuantityAndAddToCart({
   const activeAxisKeys = axisKeys.filter((key) => (axisValues.get(key)?.length ?? 0) > 0);
 
   const [selected, setSelected] = useState<Partial<Record<ProductAttributeKey, string>>>({});
+  // Publishes the picked color so the sibling gallery can show that color's photos.
+  const productSelection = useProductSelection();
   const [quantity, setQuantity] = useState(1);
 
   const selectedVariant = hasVariants
@@ -194,7 +197,10 @@ export function ProductQuantityAndAddToCart({
                         key={value}
                         type="button"
                         disabled={!available}
-                        onClick={() => setSelected((prev) => ({ ...prev, [key]: value }))}
+                        onClick={() => {
+                          setSelected((prev) => ({ ...prev, [key]: value }));
+                          if (key === "color") productSelection?.setSelectedColor(value);
+                        }}
                         aria-pressed={isSelected}
                         className={cn(
                           OPTION_BUTTON,

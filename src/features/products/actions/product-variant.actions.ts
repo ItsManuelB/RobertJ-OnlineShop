@@ -66,6 +66,41 @@ export async function createProductVariantAction(
   }
 }
 
+/**
+ * Idempotent counterpart of `createProductVariantAction`, used when a new
+ * product is saved together with its options: the same combination always
+ * returns the one existing variant, so a retry never duplicates or errors.
+ * Same role/ownership gate as the create action.
+ */
+export async function ensureProductVariantAction(
+  input: unknown,
+): Promise<ActionResult<ProductVariant>> {
+  const parsed = productVariantSchema.safeParse(input);
+  if (!parsed.success) return fromZodError(parsed.error);
+
+  try {
+    const owner = await resolveOwner();
+    const product = await queries.getProductOwnerInfo(parsed.data.productId, owner);
+    const variant = await queries.ensureProductVariant(
+      parsed.data.productId,
+      product.sellerId,
+      product.shopId,
+      {
+        sku: parsed.data.sku,
+        color: parsed.data.color,
+        size: parsed.data.size,
+        material: parsed.data.material,
+        dimensions: parsed.data.dimensions,
+        price: parsed.data.price,
+      },
+    );
+    revalidateVariantPaths();
+    return ok(variant);
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "Could not save the option.");
+  }
+}
+
 /** Updates a variant's sku/color/size/price/status. Ownership re-checked beyond RLS, same pattern as `updateProductAction`. */
 export async function updateProductVariantAction(
   input: unknown,

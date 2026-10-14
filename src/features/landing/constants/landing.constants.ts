@@ -1,3 +1,4 @@
+import { CATEGORY_FALLBACK_IMAGES } from "@/constants/category-images";
 import type { LandingStat } from "@/features/landing/types/landing.types";
 
 /** Rotating top-bar promos. Pure marketing copy — not modelled in the DB. */
@@ -44,27 +45,15 @@ export const ABOUT_STATS: LandingStat[] = [
 ];
 
 /**
- * Local fallbacks for categories whose `image_url` is null, matched
- * positionally to the live `categories` rows ordered by `sort_order`
- * (Shirts & Tops, Bottoms, Outerwear, Decors).
- */
-export const CATEGORY_FALLBACK_IMAGES = [
-  "/landing/category-shirts-tops.png",
-  "/landing/category-bottoms.png",
-  "/landing/category-outerwear.png",
-  "/landing/category-decors-v2.jpg",
-] as const;
-
-/**
  * Shown only when the categories table has not been seeded yet. The count
  * labels are an honest "Explore" (the tiles link to the real, working
  * `/products` page) rather than fabricated item counts presented as real.
  */
 export const CATEGORY_PLACEHOLDERS = [
-  { name: "Shirts & Tops", countLabel: "Explore", imageUrl: "/landing/category-shirts-tops.png" },
-  { name: "Bottoms", countLabel: "Explore", imageUrl: "/landing/category-bottoms.png" },
-  { name: "Outerwear", countLabel: "Explore", imageUrl: "/landing/category-outerwear.png" },
-  { name: "Decors", countLabel: "Explore", imageUrl: "/landing/category-decors-v2.jpg" },
+  { name: "Shirts & Tops", countLabel: "Explore", imageUrl: CATEGORY_FALLBACK_IMAGES[0] },
+  { name: "Bottoms", countLabel: "Explore", imageUrl: CATEGORY_FALLBACK_IMAGES[1] },
+  { name: "Outerwear", countLabel: "Explore", imageUrl: CATEGORY_FALLBACK_IMAGES[2] },
+  { name: "Decors", countLabel: "Explore", imageUrl: CATEGORY_FALLBACK_IMAGES[3] },
 ] as const;
 
 /**

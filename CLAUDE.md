@@ -187,7 +187,7 @@ Never:
 ## Testing Expectations
 
 > [!NOTE]
-> There is **no test runner installed** today (no Jest/Vitest/Playwright). Automated coverage is limited to the Node scripts in `scripts/` (`e2e-flow.mjs`, `e2e-stripe.mjs`).
+> There is **no test runner installed** today (no Jest/Vitest/Playwright). Automated coverage is limited to the Node scripts in `scripts/` (`e2e-flow.mjs`, `e2e-stripe.mjs`). Pure logic (no framework imports) can be unit-tested with Node's built-in runner: `npm run test:unit` (see `scripts/test-product-save-flow.mjs`).
 
 - At minimum, every change must pass **`npm run lint`** and **`npm run typecheck`**; run **`npm run build`** for non-trivial work.
 - **Exercise the actual flow** you changed (drive the UI / run the relevant `scripts/*.mjs`), not just typecheck.

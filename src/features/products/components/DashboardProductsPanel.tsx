@@ -3,20 +3,18 @@ import { Archive } from "lucide-react";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { PRODUCT_STATUS } from "@/constants/status";
-import type { RecommendationRule } from "@/features/assistant";
 import { DashboardProductViewToggle } from "@/features/products/components/DashboardProductViewToggle";
 import { PaginationControls } from "@/features/products/components/PaginationControls";
 import { ProductsDataTable } from "@/features/products/components/ProductsDataTable";
 import { dashboardProductListParamsSchema } from "@/features/products/schemas/product.schema";
-import type { Category, CategoryAttribute } from "@/features/categories/types/category.types";
+import type { Category } from "@/features/categories/types/category.types";
 import type { Product, ProductVariant } from "@/features/products/types/product.types";
 import type { Shop } from "@/features/shops/types/shop.types";
 import {
+  getVariantStock,
   listActiveCategories,
-  listAllCategoryAttributes,
   listDashboardProductVariants,
   listDashboardProductsPage,
-  listDashboardRecommendationRules,
 } from "@/lib/supabase/queries";
 import type { PaginatedResult } from "@/types/pagination.types";
 
@@ -61,24 +59,29 @@ export async function DashboardProductsPanel({
   let data: {
     result: PaginatedResult<Product>;
     categories: Category[];
-    categoryAttributes: CategoryAttribute[];
     variants: ProductVariant[];
-    rules: RecommendationRule[];
+    variantStock: Record<string, number>;
   };
   try {
-    const [result, categories, categoryAttributes, variants, rules] = await Promise.all([
+    const [result, categories, variants] = await Promise.all([
       listDashboardProductsPage(owner, parsed.data),
       listActiveCategories(),
-      listAllCategoryAttributes(),
       listDashboardProductVariants(),
-      listDashboardRecommendationRules(),
     ]);
-    data = { result, categories, categoryAttributes, variants, rules };
+    // One batched lookup for the options of this page's products, for the Stock column. A failure
+    // only leaves those counts blank (treated as 0); it must not take the whole list down.
+    const pageProductIds = new Set(result.items.map((product) => product.id));
+    const variantStock = Object.fromEntries(
+      await getVariantStock(variants.filter((variant) => pageProductIds.has(variant.productId)).map((variant) => variant.id)).catch(
+        () => new Map<string, number>(),
+      ),
+    );
+    data = { result, categories, variants, variantStock };
   } catch {
     return <ErrorState message="We couldn't load products right now." />;
   }
 
-  const { result, categories, categoryAttributes, variants, rules } = data;
+  const { result, categories, variants, variantStock } = data;
   const { items, page, totalPages, total } = result;
 
   if (items.length === 0) {
@@ -131,11 +134,10 @@ export async function DashboardProductsPanel({
       <ProductsDataTable
         products={items}
         categories={categories}
-        categoryAttributes={categoryAttributes}
         shops={shops}
         isAdmin={isAdmin}
         variants={variants}
-        rules={rules}
+        variantStock={variantStock}
         view={view}
         isArchivedView={isArchivedView}
       />

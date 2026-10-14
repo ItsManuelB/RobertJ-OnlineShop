@@ -1,20 +1,23 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ErrorState } from "@/components/feedback/ErrorState";
+import { SavedNote } from "@/components/feedback/SavedNote";
+import { useSavedFlash } from "@/hooks/useSavedFlash";
 import { FormField } from "@/components/forms/FormField";
-import { createProductVariantAction } from "@/features/products/actions/product-variant.actions";
+import { draftVariantOps, liveVariantOps } from "@/features/products/lib/product-variant-ops";
+import { ProductVariantChecklist } from "@/features/products/components/ProductVariantChecklist";
 import { ProductVariantRow } from "@/features/products/components/ProductVariantRow";
 import {
   productVariantSchema,
   type ProductVariantFormInput,
 } from "@/features/products/schemas/product-variant.schema";
 import type { CategoryAttribute, ProductAttributeKey } from "@/features/categories/types/category.types";
-import type { Product, ProductVariant } from "@/features/products/types/product.types";
+import type { ProductVariant } from "@/features/products/types/product.types";
 import { formatCurrency } from "@/lib/utils/currency";
 
 type FieldErrors = Record<string, string[] | undefined>;
@@ -37,18 +40,35 @@ function axisInUse(variants: ProductVariant[], key: ProductAttributeKey): boolea
   return variants.some((variant) => Boolean(variant[key]));
 }
 
+/** The slice of a product the option editor needs — a full `Product` satisfies it, and so does the in-progress form of a product that is not saved yet. */
+export interface VariantProductContext {
+  id: string;
+  categoryId: string | null;
+  priceCents: number;
+  currency: string;
+}
+
 export interface ProductVariantManagerProps {
-  product: Product;
+  product: VariantProductContext;
   variants: ProductVariant[];
+  /**
+   * `live` (default): every change is saved immediately — an existing product.
+   * `draft`: changes stay in memory and are reported through
+   * `onVariantsChange`; the caller saves them once the product exists.
+   */
+  mode?: "live" | "draft";
+  /** Called with the full list after every change (and once on mount). */
+  onVariantsChange?: (variants: ProductVariant[]) => void;
   /** Every category's attribute config — filtered internally to `product.categoryId`. */
   categoryAttributes: CategoryAttribute[];
 }
 
 /**
- * Optional variant management for one product — edit-mode only (a variant
- * needs a real product id, so this never appears in create mode). Mirrors
- * the Addresses feature's list/add/edit/delete shape. `ProductForm` itself
- * is untouched; this is a sibling block, not a change to it.
+ * Optional variant management for one product. Mirrors the Addresses
+ * feature's list/add/edit/delete shape. It is a section of
+ * the product editor (`ProductEditor`), used in both modes: `live` saves each
+ * change immediately (existing product), `draft` keeps changes in memory until
+ * the new product is saved.
  *
  * Generalized per docs/plans/product-specifications-and-variants-
  * implementation.md §8.3: which attributes are offered as variant axes is
@@ -64,9 +84,22 @@ export interface ProductVariantManagerProps {
 export function ProductVariantManager({
   product,
   variants: initialVariants,
+  mode = "live",
+  onVariantsChange,
   categoryAttributes,
 }: ProductVariantManagerProps) {
   const [variants, setVariants] = useState<ProductVariant[]>(initialVariants);
+
+  // Reports the list to the parent after every change (and once on mount).
+  const onChangeRef = useRef(onVariantsChange);
+  useEffect(() => {
+    onChangeRef.current = onVariantsChange;
+    onChangeRef.current?.(variants);
+  }, [variants, onVariantsChange]);
+  const ops = mode === "draft" ? draftVariantOps : liveVariantOps;
+  // Live changes save instantly, so say so; drafts are only saved with the product.
+  const { saved, flash } = useSavedFlash();
+  const confirmSaved = mode === "live" ? flash : () => {};
 
   const categoryConfig = categoryAttributes.filter((a) => a.categoryId === product.categoryId);
   const hasConfig = categoryConfig.length > 0;
@@ -83,6 +116,19 @@ export function ProductVariantManager({
       ? new Set(axisKeys.filter((key) => axisInUse(variants, key)))
       : new Set(LEGACY_AXES),
   );
+  // Checklist mode: exactly ONE active axis whose category config carries a
+  // picklist. Two or more active axes (would need a combination matrix) and
+  // free-text axes (`allowedValues` null) keep the manual "Add variant" flow.
+  const activeAxisKeys = axisKeys.filter((key) => enabledAxes.has(key));
+  const checklistAttribute =
+    activeAxisKeys.length === 1
+      ? variantEligible.find((a) => a.attributeKey === activeAxisKeys[0])
+      : undefined;
+  const checklistValues =
+    checklistAttribute?.allowedValues && checklistAttribute.allowedValues.length > 0
+      ? checklistAttribute.allowedValues
+      : null;
+
   const [axisError, setAxisError] = useState<string | null>(null);
 
   const [isAdding, setIsAdding] = useState(false);
@@ -95,7 +141,7 @@ export function ProductVariantManager({
     setAxisError(null);
     if (!checked && axisInUse(variants, key)) {
       setAxisError(
-        `Remove the ${key}-based variants first before turning this off.`,
+        `Remove the ${key} options first before turning this off.`,
       );
       return;
     }
@@ -123,12 +169,13 @@ export function ProductVariantManager({
       return;
     }
     startTransition(async () => {
-      const result = await createProductVariantAction(parsed.data);
+      const result = await ops.create(parsed.data, variants);
       if (!result.success) {
         setFormError(result.error);
         return;
       }
       setVariants((prev) => [...prev, result.data]);
+      confirmSaved();
       setValues(emptyInput(product.id));
       setFieldErrors({});
       setIsAdding(false);
@@ -145,11 +192,11 @@ export function ProductVariantManager({
   return (
     <div className="flex flex-col gap-3">
       <div>
-        <p className="text-sm font-semibold text-foreground">Variants (optional)</p>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          Add options, each with their own stock (managed from Inventory). Leave price blank to use
-          this product&apos;s price ({formatCurrency(product.priceCents, product.currency)}).
+        <p className="text-xs text-muted-foreground">
+          Add options such as sizes or colors. Each option has its own stock, set from Inventory. Leave
+          the price blank to use this product&apos;s price ({formatCurrency(product.priceCents, product.currency)}).
         </p>
+        {mode === "live" ? <SavedNote visible={saved} /> : null}
       </div>
 
       {hasConfig ? (
@@ -177,7 +224,7 @@ export function ProductVariantManager({
 
       {variants.length === 0 ? (
         <p className="text-xs text-muted-foreground">
-          No variants yet — this product sells as a single item.
+          No options yet. This product sells as a single item.
         </p>
       ) : (
         <ul className="flex flex-col gap-2">
@@ -186,17 +233,40 @@ export function ProductVariantManager({
               key={variant.id}
               variant={variant}
               product={product}
+              ops={ops}
+              siblings={variants}
               activeAxes={axisKeys.filter((key) => enabledAxes.has(key))}
-              onChange={(updated) =>
-                setVariants((prev) => prev.map((v) => (v.id === updated.id ? updated : v)))
-              }
-              onDelete={(id) => setVariants((prev) => prev.filter((v) => v.id !== id))}
+              onChange={(updated) => {
+                setVariants((prev) => prev.map((v) => (v.id === updated.id ? updated : v)));
+                confirmSaved();
+              }}
+              onDelete={(id) => {
+                setVariants((prev) => prev.filter((v) => v.id !== id));
+                confirmSaved();
+              }}
             />
           ))}
         </ul>
       )}
 
-      {isAdding ? (
+      {checklistAttribute && checklistValues ? (
+        <ProductVariantChecklist
+          product={product}
+          ops={ops}
+          attributeKey={checklistAttribute.attributeKey}
+          label={ATTRIBUTE_LABELS[checklistAttribute.attributeKey]}
+          allowedValues={checklistValues}
+          variants={variants}
+          onCreated={(created) => {
+            setVariants((prev) => [...prev, created]);
+            confirmSaved();
+          }}
+          onDeleted={(id) => {
+            setVariants((prev) => prev.filter((v) => v.id !== id));
+            confirmSaved();
+          }}
+        />
+      ) : isAdding ? (
         <div className="rounded-xl border border-border p-4">
           <div className="flex flex-col gap-3">
             <div className="grid grid-cols-2 gap-3">
@@ -215,24 +285,24 @@ export function ProductVariantManager({
                 ))}
               {axisKeys.filter((key) => enabledAxes.has(key)).length === 0 ? (
                 <p className="col-span-2 text-xs text-muted-foreground">
-                  Check at least one option above to add a variant.
+                  Tick at least one choice above to add an option.
                 </p>
               ) : null}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <FormField
-                label="SKU (optional)"
+                label="Product code (optional)"
                 value={values.sku ?? ""}
                 onChange={(event) => handleChange("sku", event.target.value)}
                 errors={fieldErrors.sku}
                 themed
               />
               <FormField
-                label="Price override (optional)"
+                label="Different price (optional)"
                 type="number"
                 step="0.01"
                 min="0.01"
-                placeholder={`Inherits ${formatCurrency(product.priceCents, product.currency)}`}
+                placeholder={`Same as ${formatCurrency(product.priceCents, product.currency)}`}
                 value={values.price ?? ""}
                 onChange={(event) =>
                   setValues((prev) => ({
@@ -244,7 +314,7 @@ export function ProductVariantManager({
                 themed
               />
             </div>
-            {formError ? <ErrorState title="Couldn't add variant" message={formError} /> : null}
+            {formError ? <ErrorState title="Couldn't add option" message={formError} /> : null}
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
@@ -254,7 +324,7 @@ export function ProductVariantManager({
                 disabled={axisKeys.filter((key) => enabledAxes.has(key)).length === 0}
                 onClick={handleAdd}
               >
-                Add variant
+                Add option
               </Button>
               <Button
                 type="button"
@@ -276,7 +346,7 @@ export function ProductVariantManager({
           className="self-start"
           onClick={() => setIsAdding(true)}
         >
-          + Add variant
+          + Add option
         </Button>
       )}
     </div>

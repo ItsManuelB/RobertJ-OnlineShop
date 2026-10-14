@@ -18,7 +18,7 @@ export interface ShopFormProps {
   onDone?: () => void;
 }
 
-/** Shared create/edit shop form — mirrors `ProductForm`'s exact shape. */
+/** Shared create/edit shop form — mirrors the product editor's field shape. */
 export function ShopForm({ shop, onDone }: ShopFormProps) {
   const isEdit = Boolean(shop);
   const [state, formAction, isPending] = useActionState<
