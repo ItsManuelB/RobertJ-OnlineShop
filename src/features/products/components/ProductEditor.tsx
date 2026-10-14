@@ -269,7 +269,7 @@ function ProductEditorForm({
     const savedSnapshot = snapshot;
     startSaving(async () => {
       try {
-        const result = await updateProductAction(null, toProductFormData(values, specs, enabledSpecs, { id: product.id }));
+        const result = await updateProductAction(null, toProductFormData(values, specs, enabledSpecs, { id: product.id }, { material: product.material, dimensions: product.dimensions }));
         if (!result.success) {
           setFieldErrors(result.fieldErrors ?? {});
           setFormError(result.error);

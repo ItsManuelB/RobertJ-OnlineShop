@@ -65,12 +65,17 @@ export function getSpecAttributes(attributes: CategoryAttribute[], categoryId: s
  * so saving actually clears a previously set value (an absent field would read
  * as "no change" to the partial update schema). A spec the category does not
  * ask for is not sent at all.
+ *
+ * `saved` (editing): the spec values already stored on the product. A spec
+ * whose value is unchanged is left out of the request, so saving an edit
+ * never rewrites columns the seller did not touch.
  */
 export function toProductFormData(
   values: ProductEditorValues,
   specs: SpecAttribute[],
   enabledSpecs: ReadonlySet<SpecKey>,
   extra: Record<string, string> = {},
+  saved?: Partial<Record<SpecKey, string | null>>,
 ): FormData {
   const formData = new FormData();
   formData.set("title", values.title);
@@ -84,7 +89,9 @@ export function toProductFormData(
   if (values.categoryId) formData.set("categoryId", values.categoryId);
   for (const spec of specs) {
     const active = spec.isRequired || enabledSpecs.has(spec.attributeKey);
-    formData.set(spec.attributeKey, active ? values[spec.attributeKey] : "");
+    const next = active ? values[spec.attributeKey] : "";
+    if (saved && next === (saved[spec.attributeKey] ?? "")) continue;
+    formData.set(spec.attributeKey, next);
   }
   for (const [key, value] of Object.entries(extra)) formData.set(key, value);
   return formData;
