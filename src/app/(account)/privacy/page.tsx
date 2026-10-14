@@ -6,9 +6,11 @@ import { ErrorState } from "@/components/feedback/ErrorState";
 import { ROUTES } from "@/constants/routes";
 import { AccountStatusPanel } from "@/features/account/components/AccountStatusPanel";
 import { ConnectedAccounts } from "@/features/account/components/ConnectedAccounts";
+import { DownloadMyDataPanel } from "@/features/account/components/DownloadMyDataPanel";
 import { DefaultAddressPicker } from "@/features/account/components/DefaultAddressPicker";
 import { DefaultPaymentMethodPicker } from "@/features/account/components/DefaultPaymentMethodPicker";
 import { NotificationPreferencesPanel } from "@/features/account/components/NotificationPreferencesPanel";
+import { SignOutOtherDevicesPanel } from "@/features/account/components/SignOutOtherDevicesPanel";
 import { CatalogHeader } from "@/features/products/components/CatalogHeader";
 import { mapOAuthCallbackError } from "@/features/auth";
 import {
@@ -29,7 +31,7 @@ const SECTION_CLASS = "flex flex-col gap-4 rounded-2xl border border-rj-gray-100
 /**
  * Buyer settings hub, organized Shopee-style into essential sections only —
  * Account (Connected Accounts), Notifications, Orders (default address +
- * payment method), Security (Change Password), and Account Status. Every
+ * payment method), Security (Change Password, sign out of other devices), Your data (download), and Account Status. Every
  * setting here reads/writes a real backend value (see each panel's own
  * comment) — nothing on this page is a hardcoded status or a UI-only toggle.
  */
@@ -99,6 +101,14 @@ export default async function PrivacyPage({ searchParams }: PrivacyPageProps) {
             <span className="flex-1">Change Password</span>
             <ChevronRight className="h-4 w-4 shrink-0" aria-hidden="true" />
           </Link>
+          <SignOutOtherDevicesPanel />
+        </section>
+
+        <section className={SECTION_CLASS} aria-label="Your data">
+          <h2 className="text-[10px] font-bold uppercase tracking-[0.3em] text-rj-gray-500">
+            Your data
+          </h2>
+          <DownloadMyDataPanel />
         </section>
 
         <section className={SECTION_CLASS} aria-label="Account Status">

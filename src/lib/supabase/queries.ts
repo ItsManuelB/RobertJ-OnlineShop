@@ -7231,6 +7231,20 @@ export async function signUpWithPassword(
   }
 }
 
+/**
+ * Ends every session of the signed-in user EXCEPT the current one ("Sign out of
+ * other devices"). Uses the caller's own session, so it can only affect the
+ * caller's own account.
+ */
+export async function signOutOtherSessions(): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.auth.signOut({ scope: "others" });
+  if (error) {
+    console.error("[auth] signOut(others) failed:", error.message);
+    throw new Error("Could not sign out your other devices. Please try again.");
+  }
+}
+
 export async function signOut() {
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.auth.signOut();
