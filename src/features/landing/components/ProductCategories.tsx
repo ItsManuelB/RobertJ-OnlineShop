@@ -1,11 +1,9 @@
+import { resolveCategoryImage } from "@/constants/category-images";
 import { ROUTES } from "@/constants/routes";
 import { listActiveCategories } from "@/lib/supabase/queries";
 import { CategoryTile } from "@/features/categories/components/CategoryTile";
 import { Reveal } from "@/features/landing/components/Reveal";
-import {
-  CATEGORY_FALLBACK_IMAGES,
-  CATEGORY_PLACEHOLDERS,
-} from "@/features/landing/constants/landing.constants";
+import { CATEGORY_PLACEHOLDERS } from "@/features/landing/constants/landing.constants";
 
 interface CategoryTileData {
   key: string;
@@ -33,9 +31,7 @@ export async function ProductCategories() {
             countLabel: `${category.productCount.toLocaleString("en-US")} item${
               category.productCount === 1 ? "" : "s"
             }`,
-            imageUrl:
-              category.imageUrl ??
-              CATEGORY_FALLBACK_IMAGES[i % CATEGORY_FALLBACK_IMAGES.length],
+            imageUrl: resolveCategoryImage(category, i),
             href: ROUTES.categoryDetail(category.slug),
           }))
         : CATEGORY_PLACEHOLDERS.map((placeholder) => ({

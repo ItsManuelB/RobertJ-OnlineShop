@@ -18,9 +18,9 @@ export function CategoryGrid({ categories }: CategoryGridProps) {
 
   return (
     <ul className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
-      {categories.map((category) => (
+      {categories.map((category, index) => (
         <li key={category.id}>
-          <CategoryCard category={category} />
+          <CategoryCard category={category} index={index} />
         </li>
       ))}
     </ul>
