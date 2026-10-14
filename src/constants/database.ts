@@ -16,6 +16,7 @@
 export const DATABASE_TABLES = {
   PROFILES: "profiles",
   CATEGORIES: "categories",
+  CATEGORY_ATTRIBUTES: "category_attributes",
   PRODUCTS: "products",
   PRODUCT_IMAGES: "product_images",
   ORDERS: "orders",

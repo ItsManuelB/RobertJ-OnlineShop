@@ -13,18 +13,22 @@ import { FormField } from "@/components/forms/FormField";
 import { ROUTES } from "@/constants/routes";
 import { formatCurrency } from "@/lib/utils/currency";
 import { useScrollLock } from "@/hooks/useScrollLock";
-import { getGuidedSelectionMatchesAction } from "@/features/assistant/actions/quiz.actions";
 import {
-  GUIDED_SELECTION_SIZES,
-  OCCASION_LABELS,
-} from "@/features/assistant/constants/assistant.constants";
+  getGuidedSelectionAttributeQuestionsAction,
+  getGuidedSelectionCategoriesAction,
+  getGuidedSelectionMatchesAction,
+} from "@/features/assistant/actions/quiz.actions";
+import { OCCASION_LABELS } from "@/features/assistant/constants/assistant.constants";
 import { guidedSelectionQuerySchema } from "@/features/assistant/schemas/quiz.schema";
 import { OCCASIONS } from "@/features/assistant/schemas/rule.schema";
 import type { GuidedSelectionMatch } from "@/features/assistant/types/assistant.types";
+import type { GuidedSelectionCategoryOption, ProductFilterOption } from "@/lib/supabase/queries";
 import { getCoverImage } from "@/features/products/types/product.types";
 
 type View = "form" | "results";
 type FieldErrors = Record<string, string[] | undefined>;
+/** The new, generalized attribute answers — resolved against variant/product data, never a `recommendation_rules` column. `size` is deliberately excluded here; it keeps its own legacy state (see the component doc comment). */
+type AttributeAnswers = Partial<Record<"color" | "material" | "dimensions", string>>;
 
 export interface GuidedSelectorQuizProps {
   /** Renders the trigger — the quiz owns its own open/close state internally,
@@ -43,9 +47,25 @@ function emptyFieldErrors(): FieldErrors {
 
 /**
  * Buyer-facing Guided Product Selection (DECISIONS.md ADR-009 — rule-based,
- * never AI/ML): occasion/size/budget answers, matched against explicit
- * `recommendation_rules` rows via `getGuidedSelectionMatchesAction`. Every
- * criterion is optional — skipping one just means it isn't filtered on.
+ * never AI/ML): category/occasion/size/attribute/budget answers, matched
+ * against explicit `recommendation_rules` rows via
+ * `getGuidedSelectionMatchesAction`. Every criterion is optional — skipping
+ * one just means it isn't filtered on.
+ *
+ * Generalized per docs/plans/product-specifications-and-variants-
+ * implementation.md §6: a category step now comes first, Occasion is
+ * skipped for categories that opt out (`supports_occasion_matching`), and
+ * the Size/Color/Material/Dimensions questions are driven per-category by
+ * `category_attributes` (via `getGuidedSelectionAttributeQuestionsAction`,
+ * the same resolver the catalog's own attribute filters use) instead of a
+ * hardcoded apparel-only vocabulary — so "Any category" now asks only
+ * Occasion + Budget, and the Size/Color/Material/Dimensions questions only
+ * appear once a specific category narrows which of those actually apply.
+ * `size` itself still matches against the rule's own `size` field exactly
+ * as before a live-data audit found no safe way to migrate it onto
+ * variant/product data without breaking existing rules — only the brand
+ * new color/material/dimensions questions use the new resolution path.
+ *
  * Owns its own open/close state (render-prop trigger) so it can be dropped
  * into any page without lifting modal state. Focus/Escape handling mirrors
  * `ProductLightbox`'s established full-screen dialog pattern.
@@ -53,8 +73,15 @@ function emptyFieldErrors(): FieldErrors {
 export function GuidedSelectorQuiz({ trigger }: GuidedSelectorQuizProps) {
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<View>("form");
+
+  const [categories, setCategories] = useState<GuidedSelectionCategoryOption[]>([]);
+  const [categoryId, setCategoryId] = useState<string | undefined>(undefined);
+  const [attributeQuestions, setAttributeQuestions] = useState<ProductFilterOption[]>([]);
+  const [isLoadingQuestions, startLoadingQuestions] = useTransition();
+
   const [occasion, setOccasion] = useState<string | undefined>(undefined);
   const [size, setSize] = useState<string | undefined>(undefined);
+  const [attributeAnswers, setAttributeAnswers] = useState<AttributeAnswers>({});
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>(emptyFieldErrors());
@@ -75,8 +102,11 @@ export function GuidedSelectorQuiz({ trigger }: GuidedSelectorQuizProps) {
 
   function resetQuiz() {
     setView("form");
+    setCategoryId(undefined);
+    setAttributeQuestions([]);
     setOccasion(undefined);
     setSize(undefined);
+    setAttributeAnswers({});
     setMinPrice("");
     setMaxPrice("");
     setMatches(null);
@@ -95,6 +125,31 @@ export function GuidedSelectorQuiz({ trigger }: GuidedSelectorQuizProps) {
     previousFocusRef.current = document.activeElement as HTMLElement | null;
     closeButtonRef.current?.focus();
   }, [open]);
+
+  // Load the category step's options once, the first time the quiz opens.
+  useEffect(() => {
+    if (!open || categories.length > 0) return;
+    getGuidedSelectionCategoriesAction().then((result) => {
+      if (result.success) setCategories(result.data);
+    });
+  }, [open, categories.length]);
+
+  // Re-resolve which attribute questions to show whenever the category
+  // selection changes — "Any category" (undefined) asks none, matching
+  // `resolveFilterableAttributes`'s own "ambiguous across categories" rule.
+  function handleSelectCategory(nextCategoryId: string | undefined) {
+    setCategoryId(nextCategoryId);
+    setSize(undefined);
+    setAttributeAnswers({});
+    if (!nextCategoryId) {
+      setAttributeQuestions([]);
+      return;
+    }
+    startLoadingQuestions(async () => {
+      const result = await getGuidedSelectionAttributeQuestionsAction(nextCategoryId);
+      setAttributeQuestions(result.success ? result.data : []);
+    });
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -127,11 +182,18 @@ export function GuidedSelectorQuiz({ trigger }: GuidedSelectorQuizProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, view]);
 
+  const selectedCategory = categories.find((c) => c.id === categoryId);
+  const showOccasion = !categoryId || selectedCategory?.supportsOccasionMatching !== false;
+
   function handleSearch() {
     setFormError(null);
     const parsed = guidedSelectionQuerySchema.safeParse({
-      occasion: occasion || undefined,
+      occasion: showOccasion ? occasion || undefined : undefined,
       size: size || undefined,
+      categoryId: categoryId || undefined,
+      color: attributeAnswers.color || undefined,
+      material: attributeAnswers.material || undefined,
+      dimensions: attributeAnswers.dimensions || undefined,
       minPrice: minPrice === "" ? undefined : Number(minPrice),
       maxPrice: maxPrice === "" ? undefined : Number(maxPrice),
     });
@@ -184,58 +246,105 @@ export function GuidedSelectorQuiz({ trigger }: GuidedSelectorQuizProps) {
             <div className="flex-1 overflow-y-auto px-6 py-5">
               {view === "form" ? (
                 <div className="flex flex-col gap-5">
-                  <div>
-                    <p className="mb-2 text-sm font-semibold text-rj-black">Occasion</p>
-                    <div className="flex flex-wrap gap-2" role="group" aria-label="Occasion">
-                      <button
-                        type="button"
-                        aria-pressed={!occasion}
-                        className={!occasion ? CHIP_ACTIVE : CHIP_IDLE}
-                        onClick={() => setOccasion(undefined)}
-                      >
-                        Any
-                      </button>
-                      {OCCASIONS.map((value) => (
+                  {categories.length > 0 ? (
+                    <div>
+                      <p className="mb-2 text-sm font-semibold text-rj-black">What are you shopping for?</p>
+                      <div className="flex flex-wrap gap-2" role="group" aria-label="Category">
                         <button
-                          key={value}
                           type="button"
-                          aria-pressed={occasion === value}
-                          className={occasion === value ? CHIP_ACTIVE : CHIP_IDLE}
-                          onClick={() => setOccasion(value)}
+                          aria-pressed={!categoryId}
+                          className={!categoryId ? CHIP_ACTIVE : CHIP_IDLE}
+                          onClick={() => handleSelectCategory(undefined)}
                         >
-                          {OCCASION_LABELS[value]}
+                          Any category
                         </button>
-                      ))}
+                        {categories.map((category) => (
+                          <button
+                            key={category.id}
+                            type="button"
+                            aria-pressed={categoryId === category.id}
+                            className={categoryId === category.id ? CHIP_ACTIVE : CHIP_IDLE}
+                            onClick={() => handleSelectCategory(category.id)}
+                          >
+                            {category.name}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  ) : null}
 
-                  <div>
-                    <p className="mb-2 text-sm font-semibold text-rj-black">Size (optional)</p>
-                    <div className="flex flex-wrap gap-2" role="group" aria-label="Size">
-                      <button
-                        type="button"
-                        aria-pressed={!size}
-                        className={!size ? CHIP_ACTIVE : CHIP_IDLE}
-                        onClick={() => setSize(undefined)}
-                      >
-                        Any
-                      </button>
-                      {GUIDED_SELECTION_SIZES.map((value) => (
+                  {showOccasion ? (
+                    <div>
+                      <p className="mb-2 text-sm font-semibold text-rj-black">Occasion</p>
+                      <div className="flex flex-wrap gap-2" role="group" aria-label="Occasion">
                         <button
-                          key={value}
                           type="button"
-                          aria-pressed={size === value}
-                          className={size === value ? CHIP_ACTIVE : CHIP_IDLE}
-                          onClick={() => setSize(value)}
+                          aria-pressed={!occasion}
+                          className={!occasion ? CHIP_ACTIVE : CHIP_IDLE}
+                          onClick={() => setOccasion(undefined)}
                         >
-                          {value}
+                          Any
                         </button>
-                      ))}
+                        {OCCASIONS.map((value) => (
+                          <button
+                            key={value}
+                            type="button"
+                            aria-pressed={occasion === value}
+                            className={occasion === value ? CHIP_ACTIVE : CHIP_IDLE}
+                            onClick={() => setOccasion(value)}
+                          >
+                            {OCCASION_LABELS[value]}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                    {fieldErrors.size ? (
-                      <p className="mt-1.5 text-xs text-rj-red-dark">{fieldErrors.size[0]}</p>
-                    ) : null}
-                  </div>
+                  ) : null}
+
+                  {isLoadingQuestions ? (
+                    <p className="text-xs text-rj-gray-400">Loading options…</p>
+                  ) : (
+                    attributeQuestions.map((option) => {
+                      const isSize = option.attributeKey === "size";
+                      const current = isSize ? size : attributeAnswers[option.attributeKey as "color" | "material" | "dimensions"];
+                      function select(value: string | undefined) {
+                        if (isSize) setSize(value);
+                        else
+                          setAttributeAnswers((prev) => ({
+                            ...prev,
+                            [option.attributeKey]: value,
+                          }));
+                      }
+                      return (
+                        <div key={option.attributeKey}>
+                          <p className="mb-2 text-sm font-semibold text-rj-black">{option.label} (optional)</p>
+                          <div className="flex flex-wrap gap-2" role="group" aria-label={option.label}>
+                            <button
+                              type="button"
+                              aria-pressed={!current}
+                              className={!current ? CHIP_ACTIVE : CHIP_IDLE}
+                              onClick={() => select(undefined)}
+                            >
+                              Any
+                            </button>
+                            {option.values.map((value) => (
+                              <button
+                                key={value}
+                                type="button"
+                                aria-pressed={current === value}
+                                className={current === value ? CHIP_ACTIVE : CHIP_IDLE}
+                                onClick={() => select(value)}
+                              >
+                                {value}
+                              </button>
+                            ))}
+                          </div>
+                          {isSize && fieldErrors.size ? (
+                            <p className="mt-1.5 text-xs text-rj-red-dark">{fieldErrors.size[0]}</p>
+                          ) : null}
+                        </div>
+                      );
+                    })
+                  )}
 
                   <div>
                     <p className="mb-2 text-sm font-semibold text-rj-black">Budget (optional)</p>
@@ -287,7 +396,7 @@ export function GuidedSelectorQuiz({ trigger }: GuidedSelectorQuizProps) {
                   {!matches || matches.length === 0 ? (
                     <EmptyState
                       title="No matches yet"
-                      description="Try a broader occasion, size, or budget — sellers are still adding Guided Selection rules for more products."
+                      description="Try a broader category, occasion, or budget — sellers are still adding Guided Selection rules for more products."
                     />
                   ) : (
                     <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3">

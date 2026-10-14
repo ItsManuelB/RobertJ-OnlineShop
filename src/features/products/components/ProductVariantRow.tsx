@@ -16,6 +16,7 @@ import {
   updateProductVariantSchema,
   type UpdateProductVariantInput,
 } from "@/features/products/schemas/product-variant.schema";
+import type { ProductAttributeKey } from "@/features/categories/types/category.types";
 import type { Product, ProductVariant } from "@/features/products/types/product.types";
 import { fromCents } from "@/lib/utils/currency";
 import { formatCurrency } from "@/lib/utils/currency";
@@ -23,12 +24,21 @@ import { formatCurrency } from "@/lib/utils/currency";
 type FieldErrors = Record<string, string[] | undefined>;
 type Mode = "view" | "edit" | "delete";
 
+const ATTRIBUTE_FIELD_LABELS: Record<ProductAttributeKey, string> = {
+  color: "Color",
+  size: "Size",
+  material: "Material",
+  dimensions: "Dimensions",
+};
+
 function toInput(variant: ProductVariant): UpdateProductVariantInput {
   return {
     id: variant.id,
     sku: variant.sku ?? "",
     color: variant.color ?? "",
     size: variant.size ?? "",
+    material: variant.material ?? "",
+    dimensions: variant.dimensions ?? "",
     price: variant.priceCents !== null ? fromCents(variant.priceCents) : undefined,
     status: variant.status,
   };
@@ -37,6 +47,8 @@ function toInput(variant: ProductVariant): UpdateProductVariantInput {
 export interface ProductVariantRowProps {
   variant: ProductVariant;
   product: Product;
+  /** The product's currently-enabled variant axes (from `ProductVariantManager`'s checkboxes) — determines which fields this row's edit form shows. */
+  activeAxes: ProductAttributeKey[];
   onChange: (variant: ProductVariant) => void;
   onDelete: (variantId: string) => void;
 }
@@ -45,6 +57,7 @@ export interface ProductVariantRowProps {
 export function ProductVariantRow({
   variant,
   product,
+  activeAxes,
   onChange,
   onDelete,
 }: ProductVariantRowProps) {
@@ -55,7 +68,7 @@ export function ProductVariantRow({
   const [isSaving, startSaving] = useTransition();
   const [isDeleting, startDeleting] = useTransition();
 
-  function handleChange(field: "sku" | "color" | "size", value: string) {
+  function handleChange(field: ProductAttributeKey, value: string) {
     setValues((prev) => ({ ...prev, [field]: value }));
     setFieldErrors((prev) => (prev[field] ? { ...prev, [field]: undefined } : prev));
   }
@@ -100,33 +113,31 @@ export function ProductVariantRow({
     });
   }
 
-  const label = [variant.color, variant.size].filter(Boolean).join(" / ") || "—";
+  const label =
+    [variant.color, variant.size, variant.material, variant.dimensions].filter(Boolean).join(" / ") ||
+    "—";
 
   if (mode === "edit") {
     return (
       <li className="rounded-xl border border-border p-4">
         <div className="flex flex-col gap-3">
           <div className="grid grid-cols-2 gap-3">
-            <FormField
-              label="Color"
-              value={values.color ?? ""}
-              onChange={(event) => handleChange("color", event.target.value)}
-              errors={fieldErrors.color}
-              themed
-            />
-            <FormField
-              label="Size"
-              value={values.size ?? ""}
-              onChange={(event) => handleChange("size", event.target.value)}
-              errors={fieldErrors.size}
-              themed
-            />
+            {activeAxes.map((key) => (
+              <FormField
+                key={key}
+                label={ATTRIBUTE_FIELD_LABELS[key]}
+                value={values[key] ?? ""}
+                onChange={(event) => handleChange(key, event.target.value)}
+                errors={fieldErrors[key]}
+                themed
+              />
+            ))}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <FormField
               label="SKU (optional)"
               value={values.sku ?? ""}
-              onChange={(event) => handleChange("sku", event.target.value)}
+              onChange={(event) => setValues((prev) => ({ ...prev, sku: event.target.value }))}
               errors={fieldErrors.sku}
               themed
             />

@@ -14,6 +14,17 @@ export const guidedSelectionQuerySchema = z
   .object({
     occasion: occasionSchema.optional(),
     size: sizeSchema.optional(),
+    /**
+     * Category scope + the new color/material/dimensions answers (§6 of the
+     * implementation plan) — resolved against variant/product data, not a
+     * `recommendation_rules` column (unlike `size`/`occasion` above). Only
+     * meaningful alongside `categoryId`, same "ambiguous across categories"
+     * rule the catalog's own attribute filters use.
+     */
+    categoryId: z.uuid().optional(),
+    color: z.string().trim().max(60).optional(),
+    material: z.string().trim().max(60).optional(),
+    dimensions: z.string().trim().max(80).optional(),
     /** Major-unit pesos (not cents), same convention as `productListParamsSchema`. */
     minPrice: z.coerce.number().nonnegative().optional(),
     maxPrice: z.coerce.number().positive().optional(),

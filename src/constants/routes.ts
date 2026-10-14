@@ -44,6 +44,7 @@ export const ROUTES = {
   adminUsers: "/admin/users",
   adminUserDetail: (id: string) => `/admin/users/${id}`,
   adminShops: "/admin/shops",
+  adminCategories: "/admin/categories",
   adminAuditLog: "/admin/audit-log",
   adminSettings: "/admin/settings",
   /** Seller Portal — separate from the `/dashboard` tree, mirrors the Admin Portal split. */

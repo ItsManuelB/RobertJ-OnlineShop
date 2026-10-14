@@ -9,6 +9,7 @@ import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useScrollLock } from "@/hooks/useScrollLock";
 import type { Category } from "@/features/categories/types/category.types";
 import type { ProductSort } from "@/features/products/types/product.types";
+import type { ProductFilterOption } from "@/lib/supabase/queries";
 import type { Shop } from "@/features/shops/types/shop.types";
 
 export interface ProductFiltersProps {
@@ -19,6 +20,15 @@ export interface ProductFiltersProps {
   categories?: Category[];
   /** Shop dropdown options. Pass an empty array/omit to hide it. */
   shops?: Shop[];
+  /**
+   * Category-driven attribute filters (§7 of the implementation plan) —
+   * resolved server-side for whichever single category is currently in
+   * effect (the pinned category on a category page, or the URL's
+   * `categoryId` on `/products`). Always `[]` when "All" categories are
+   * shown — attribute filters are ambiguous across categories, so omitting
+   * them is the correct default rather than unioning every category's.
+   */
+  attributeFilters?: ProductFilterOption[];
 }
 
 const SORT_OPTIONS: Array<{ value: ProductSort; label: string }> = [
@@ -28,8 +38,8 @@ const SORT_OPTIONS: Array<{ value: ProductSort; label: string }> = [
   { value: "title-asc", label: "Title: A to Z" },
 ];
 
-/** Category chips + shop + price range + sort control for the product listing. */
-export function ProductFilters({ categories = [], shops = [] }: ProductFiltersProps) {
+/** Category chips + attribute filters + shop + price range + sort control for the product listing. */
+export function ProductFilters({ categories = [], shops = [], attributeFilters = [] }: ProductFiltersProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -113,8 +123,15 @@ export function ProductFilters({ categories = [], shops = [] }: ProductFiltersPr
   }
 
   const hasPriceFilter = minPrice !== "" || maxPrice !== "";
+  const activeAttributeFilterCount = attributeFilters.filter((option) =>
+    Boolean(searchParams.get(option.attributeKey)),
+  ).length;
   const activeAdvancedCount =
-    (onSale ? 1 : 0) + (hasPriceFilter ? 1 : 0) + (activeShopId ? 1 : 0) + (sort !== "newest" ? 1 : 0);
+    (onSale ? 1 : 0) +
+    (hasPriceFilter ? 1 : 0) +
+    (activeShopId ? 1 : 0) +
+    (sort !== "newest" ? 1 : 0) +
+    activeAttributeFilterCount;
 
   return (
     <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center md:justify-between">
@@ -282,6 +299,23 @@ export function ProductFilters({ categories = [], shops = [] }: ProductFiltersPr
             </button>
           ) : null}
         </div>
+
+        {attributeFilters.map((option) => (
+          <select
+            key={option.attributeKey}
+            value={searchParams.get(option.attributeKey) ?? ""}
+            onChange={(event) => updateParams({ [option.attributeKey]: event.target.value || null })}
+            aria-label={`Filter by ${option.label.toLowerCase()}`}
+            className="h-9 rounded-full border-[1.5px] border-rj-gray-200 bg-transparent px-3 text-[11px] font-bold text-rj-black outline-none transition-colors focus-visible:border-rj-black"
+          >
+            <option value="">All {option.label.toLowerCase()}s</option>
+            {option.values.map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
+          </select>
+        ))}
 
         {shops.length > 0 ? (
           <select

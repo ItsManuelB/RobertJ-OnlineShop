@@ -7,7 +7,12 @@ import { DashboardProductSearchInput } from "@/features/products/components/Dash
 import { DashboardProductStatusFilter } from "@/features/products/components/DashboardProductStatusFilter";
 import { DashboardProductsPanel } from "@/features/products/components/DashboardProductsPanel";
 import { DashboardRowsSkeleton } from "@/features/dashboard/components/DashboardRowsSkeleton";
-import { getOwnShopId, listActiveCategories, requireSessionUser } from "@/lib/supabase/queries";
+import {
+  getOwnShopId,
+  listActiveCategories,
+  listAllCategoryAttributes,
+  requireSessionUser,
+} from "@/lib/supabase/queries";
 
 export const metadata: Metadata = { title: "Products — Seller Portal" };
 
@@ -18,9 +23,10 @@ interface SellerProductsPageProps {
 export default async function SellerProductsPage({ searchParams }: SellerProductsPageProps) {
   const params = await searchParams;
   const user = await requireSessionUser();
-  const [owner, categories] = await Promise.all([
+  const [owner, categories, categoryAttributes] = await Promise.all([
     getOwnShopId(user.id).then((shopId) => ({ sellerId: user.id, shopId })),
     listActiveCategories(),
+    listAllCategoryAttributes(),
   ]);
 
   return (
@@ -39,7 +45,7 @@ export default async function SellerProductsPage({ searchParams }: SellerProduct
         <Suspense fallback={null}>
           <DashboardProductStatusFilter />
         </Suspense>
-        <CreateProductToggle categories={categories} />
+        <CreateProductToggle categories={categories} categoryAttributes={categoryAttributes} />
       </div>
 
       {/* Keyed so a new search/filter restarts the suspense boundary. */}

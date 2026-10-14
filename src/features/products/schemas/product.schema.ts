@@ -49,6 +49,17 @@ export const productListParamsSchema = z
     // (queries.ts), matching how createProductSchema's `price` is handled.
     minPrice: z.coerce.number().min(0).optional(),
     maxPrice: z.coerce.number().min(0).optional(),
+    /**
+     * Category-driven attribute filters (§7 of the implementation plan) —
+     * only meaningful alongside a single `categoryId`; matches if ANY of a
+     * product's variants has that value, not necessarily the same variant
+     * row across multiple simultaneous filters (documented simplification,
+     * same as the plan's own wording).
+     */
+    color: z.string().trim().max(60).optional(),
+    size: z.string().trim().max(60).optional(),
+    material: z.string().trim().max(60).optional(),
+    dimensions: z.string().trim().max(80).optional(),
   })
   .refine(
     (value) =>
@@ -107,6 +118,15 @@ export const createProductSchema = z.object({
   location: z.string().trim().max(160).optional(),
   tags: z.array(z.string().trim().min(1).max(30)).max(20).default([]),
   status: productStatusSchema.default(PRODUCT_STATUS.draft),
+  /**
+   * Default/spec values for the two new category-driven attributes (see
+   * docs/plans/product-specifications-and-variants-implementation.md §3–8).
+   * Length caps mirror `products.material`/`products.dimensions`'s own DB
+   * CHECK constraints (`<= 160`). Overridable per variant — see
+   * `product-variant.schema.ts`.
+   */
+  material: z.string().trim().max(160).optional(),
+  dimensions: z.string().trim().max(160).optional(),
   /**
    * Whether this product appears in the homepage's "Picked for You" section
    * (`listFeaturedProducts`). Checkboxes are absent from FormData when

@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { FormField } from "@/components/forms/FormField";
 import { createProductVariantAction } from "@/features/products/actions/product-variant.actions";
@@ -12,35 +13,101 @@ import {
   productVariantSchema,
   type ProductVariantFormInput,
 } from "@/features/products/schemas/product-variant.schema";
+import type { CategoryAttribute, ProductAttributeKey } from "@/features/categories/types/category.types";
 import type { Product, ProductVariant } from "@/features/products/types/product.types";
 import { formatCurrency } from "@/lib/utils/currency";
 
 type FieldErrors = Record<string, string[] | undefined>;
 
+const ATTRIBUTE_LABELS: Record<ProductAttributeKey, string> = {
+  color: "colors",
+  size: "sizes",
+  material: "materials",
+  dimensions: "dimensions",
+};
+
+/** Legacy, category-config-free fallback — exactly today's two-axis behavior, unchanged for any product whose category has no `category_attributes` rows. */
+const LEGACY_AXES: ProductAttributeKey[] = ["color", "size"];
+
 function emptyInput(productId: string): ProductVariantFormInput {
-  return { productId, sku: "", color: "", size: "", price: undefined };
+  return { productId, sku: "", color: "", size: "", material: "", dimensions: "", price: undefined };
+}
+
+function axisInUse(variants: ProductVariant[], key: ProductAttributeKey): boolean {
+  return variants.some((variant) => Boolean(variant[key]));
 }
 
 export interface ProductVariantManagerProps {
   product: Product;
   variants: ProductVariant[];
+  /** Every category's attribute config — filtered internally to `product.categoryId`. */
+  categoryAttributes: CategoryAttribute[];
 }
 
 /**
- * Optional color/size variant management for one product — edit-mode only
- * (a variant needs a real product id, so this never appears in create mode).
- * Mirrors the Addresses feature's list/add/edit/delete shape. `ProductForm`
- * itself is untouched; this is a sibling block, not a change to it.
+ * Optional variant management for one product — edit-mode only (a variant
+ * needs a real product id, so this never appears in create mode). Mirrors
+ * the Addresses feature's list/add/edit/delete shape. `ProductForm` itself
+ * is untouched; this is a sibling block, not a change to it.
+ *
+ * Generalized per docs/plans/product-specifications-and-variants-
+ * implementation.md §8.3: which attributes are offered as variant axes is
+ * driven by the product's category — color/size are no longer hardcoded.
+ * A category with no `category_attributes` configured at all falls back to
+ * exactly today's Color+Size fields, unconditionally (no checkbox, no
+ * behavior change). A configured category instead shows one seller opt-in
+ * checkbox per variant-eligible attribute — unchecked by default on a new
+ * product, derived from existing variant data on an already-populated one —
+ * never auto-applied, and never blocking a product from shipping with zero
+ * variants.
  */
-export function ProductVariantManager({ product, variants: initialVariants }: ProductVariantManagerProps) {
+export function ProductVariantManager({
+  product,
+  variants: initialVariants,
+  categoryAttributes,
+}: ProductVariantManagerProps) {
   const [variants, setVariants] = useState<ProductVariant[]>(initialVariants);
+
+  const categoryConfig = categoryAttributes.filter((a) => a.categoryId === product.categoryId);
+  const hasConfig = categoryConfig.length > 0;
+  const variantEligible = categoryConfig
+    .filter((a) => a.isVariantEligible)
+    .sort((a, b) => a.displayOrder - b.displayOrder);
+  const axisKeys: ProductAttributeKey[] = hasConfig
+    ? variantEligible.map((a) => a.attributeKey)
+    : LEGACY_AXES;
+  const recommendedKeys = new Set(variantEligible.filter((a) => a.isRecommended).map((a) => a.attributeKey));
+
+  const [enabledAxes, setEnabledAxes] = useState<Set<ProductAttributeKey>>(() =>
+    hasConfig
+      ? new Set(axisKeys.filter((key) => axisInUse(variants, key)))
+      : new Set(LEGACY_AXES),
+  );
+  const [axisError, setAxisError] = useState<string | null>(null);
+
   const [isAdding, setIsAdding] = useState(false);
   const [values, setValues] = useState<ProductVariantFormInput>(() => emptyInput(product.id));
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  function handleChange(field: "sku" | "color" | "size", value: string) {
+  function toggleAxis(key: ProductAttributeKey, checked: boolean) {
+    setAxisError(null);
+    if (!checked && axisInUse(variants, key)) {
+      setAxisError(
+        `Remove the ${key}-based variants first before turning this off.`,
+      );
+      return;
+    }
+    setEnabledAxes((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  }
+
+  function handleChange(field: ProductAttributeKey | "sku", value: string) {
     setValues((prev) => ({ ...prev, [field]: value }));
     setFieldErrors((prev) => (prev[field] ? { ...prev, [field]: undefined } : prev));
   }
@@ -80,10 +147,33 @@ export function ProductVariantManager({ product, variants: initialVariants }: Pr
       <div>
         <p className="text-sm font-semibold text-foreground">Variants (optional)</p>
         <p className="mt-0.5 text-xs text-muted-foreground">
-          Add color/size options, each with their own stock (managed from Inventory). Leave price
-          blank to use this product&apos;s price ({formatCurrency(product.priceCents, product.currency)}).
+          Add options, each with their own stock (managed from Inventory). Leave price blank to use
+          this product&apos;s price ({formatCurrency(product.priceCents, product.currency)}).
         </p>
       </div>
+
+      {hasConfig ? (
+        <div className="flex flex-col gap-2 rounded-lg border border-dashed border-border bg-muted/40 p-3">
+          <p className="text-xs font-medium text-muted-foreground">
+            Which options does this item come in?
+          </p>
+          <div className="flex flex-wrap gap-x-5 gap-y-1.5">
+            {axisKeys.map((key) => (
+              <label key={key} className="flex items-center gap-2 text-sm text-foreground">
+                <Checkbox
+                  checked={enabledAxes.has(key)}
+                  onChange={(event) => toggleAxis(key, event.target.checked)}
+                />
+                This item comes in multiple {ATTRIBUTE_LABELS[key]}
+                {recommendedKeys.has(key) && !enabledAxes.has(key) ? (
+                  <span className="text-xs text-muted-foreground">(recommended)</span>
+                ) : null}
+              </label>
+            ))}
+          </div>
+          {axisError ? <p className="text-xs text-danger">{axisError}</p> : null}
+        </div>
+      ) : null}
 
       {variants.length === 0 ? (
         <p className="text-xs text-muted-foreground">
@@ -96,6 +186,7 @@ export function ProductVariantManager({ product, variants: initialVariants }: Pr
               key={variant.id}
               variant={variant}
               product={product}
+              activeAxes={axisKeys.filter((key) => enabledAxes.has(key))}
               onChange={(updated) =>
                 setVariants((prev) => prev.map((v) => (v.id === updated.id ? updated : v)))
               }
@@ -109,22 +200,24 @@ export function ProductVariantManager({ product, variants: initialVariants }: Pr
         <div className="rounded-xl border border-border p-4">
           <div className="flex flex-col gap-3">
             <div className="grid grid-cols-2 gap-3">
-              <FormField
-                label="Color"
-                value={values.color ?? ""}
-                onChange={(event) => handleChange("color", event.target.value)}
-                placeholder="e.g. Blue"
-                errors={fieldErrors.color}
-                themed
-              />
-              <FormField
-                label="Size"
-                value={values.size ?? ""}
-                onChange={(event) => handleChange("size", event.target.value)}
-                placeholder="e.g. Medium"
-                errors={fieldErrors.size}
-                themed
-              />
+              {axisKeys
+                .filter((key) => enabledAxes.has(key))
+                .map((key) => (
+                  <FormField
+                    key={key}
+                    label={key === "color" ? "Color" : key === "size" ? "Size" : key === "material" ? "Material" : "Dimensions"}
+                    value={values[key] ?? ""}
+                    onChange={(event) => handleChange(key, event.target.value)}
+                    placeholder={key === "color" ? "e.g. Blue" : key === "size" ? "e.g. Medium" : undefined}
+                    errors={fieldErrors[key]}
+                    themed
+                  />
+                ))}
+              {axisKeys.filter((key) => enabledAxes.has(key)).length === 0 ? (
+                <p className="col-span-2 text-xs text-muted-foreground">
+                  Check at least one option above to add a variant.
+                </p>
+              ) : null}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <FormField
@@ -153,7 +246,14 @@ export function ProductVariantManager({ product, variants: initialVariants }: Pr
             </div>
             {formError ? <ErrorState title="Couldn't add variant" message={formError} /> : null}
             <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="primary" size="rjSm" isLoading={isPending} onClick={handleAdd}>
+              <Button
+                type="button"
+                variant="primary"
+                size="rjSm"
+                isLoading={isPending}
+                disabled={axisKeys.filter((key) => enabledAxes.has(key)).length === 0}
+                onClick={handleAdd}
+              >
                 Add variant
               </Button>
               <Button

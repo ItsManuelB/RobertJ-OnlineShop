@@ -42,6 +42,10 @@ export interface Product {
   sellerRole: UserRole | null;
   /** Owning shop, or null for a legacy/unassigned product awaiting admin assignment. */
   shopId: string | null;
+  /** Default/spec material (e.g. "100% Combed Cotton"), overridable per variant — see `ProductVariant.material`. */
+  material: string | null;
+  /** Default/spec physical dimensions as free text (e.g. "30 x 20 x 5 cm"), overridable per variant — see `ProductVariant.dimensions`. */
+  dimensions: string | null;
   publishedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -63,6 +67,11 @@ export interface ProductListParams {
   /** Major-unit pesos (not cents) — converted to price_cents inside listProducts. */
   minPrice?: number;
   maxPrice?: number;
+  /** Category-driven attribute filters (§7 of the implementation plan) — matches if ANY of a product's variants has that value. */
+  color?: string;
+  size?: string;
+  material?: string;
+  dimensions?: string;
 }
 
 export type ProductSort = "newest" | "price-asc" | "price-desc" | "title-asc";
@@ -96,13 +105,18 @@ export function getCoverImage(product: Product): ProductImage | null {
 export interface ProductVariant {
   id: string;
   productId: string;
-  sellerId: string;
+  /** Null when the seller account was hard-deleted (order history is preserved; attribution is not) — see `admin_hard_delete_seller_account`. */
+  sellerId: string | null;
   shopId: string | null;
   sku: string | null;
   color: string | null;
   size: string | null;
   /** null = inherits the parent product's price_cents. */
   priceCents: number | null;
+  /** null = inherits the parent product's material. */
+  material: string | null;
+  /** null = inherits the parent product's dimensions. */
+  dimensions: string | null;
   status: ProductStatus;
   createdAt: string;
   updatedAt: string;

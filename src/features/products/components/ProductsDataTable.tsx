@@ -31,7 +31,7 @@ import { LOW_STOCK_THRESHOLD } from "@/features/products/constants/product.const
 import { ProductEditDrawer } from "@/features/products/components/ProductEditDrawer";
 import { ProductGridCard } from "@/features/products/components/ProductGridCard";
 import { ProductStatusBadge } from "@/features/products/components/ProductStatusBadge";
-import type { Category } from "@/features/categories/types/category.types";
+import type { Category, CategoryAttribute } from "@/features/categories/types/category.types";
 import { getCoverImage, type Product, type ProductVariant } from "@/features/products/types/product.types";
 import type { Shop } from "@/features/shops/types/shop.types";
 import { formatCurrency } from "@/lib/utils/currency";
@@ -41,6 +41,8 @@ import { cn } from "@/lib/utils/cn";
 export interface ProductsDataTableProps {
   products: Product[];
   categories: Category[];
+  /** Every category's attribute config, threaded down to `ProductEditDrawer`. */
+  categoryAttributes: CategoryAttribute[];
   /** Populated only for an admin (from `listShops()`); empty for a seller. */
   shops: Shop[];
   isAdmin: boolean;
@@ -83,6 +85,7 @@ function stockCell(product: Product, hasVariants: boolean) {
 export function ProductsDataTable({
   products,
   categories,
+  categoryAttributes,
   shops,
   isAdmin,
   variants,
@@ -664,6 +667,7 @@ export function ProductsDataTable({
       <ProductEditDrawer
         product={editingProduct}
         categories={categories}
+        categoryAttributes={categoryAttributes}
         variants={editingProduct ? variants.filter((v) => v.productId === editingProduct.id) : []}
         rules={editingProduct ? rules.filter((r) => r.productId === editingProduct.id) : []}
         onClose={() => setEditingId(null)}

@@ -4,10 +4,11 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { ProductForm } from "@/features/products/components/ProductForm";
-import type { Category } from "@/features/categories/types/category.types";
+import type { Category, CategoryAttribute } from "@/features/categories/types/category.types";
 
 export interface CreateProductToggleProps {
   categories: Category[];
+  categoryAttributes: CategoryAttribute[];
 }
 
 /**
@@ -17,7 +18,7 @@ export interface CreateProductToggleProps {
  * itself can be a plain server-rendered list; only this toggle needs client
  * state.
  */
-export function CreateProductToggle({ categories }: CreateProductToggleProps) {
+export function CreateProductToggle({ categories, categoryAttributes }: CreateProductToggleProps) {
   const [showForm, setShowForm] = useState(false);
 
   return (
@@ -34,7 +35,11 @@ export function CreateProductToggle({ categories }: CreateProductToggleProps) {
 
       {showForm ? (
         <div className="rounded-2xl border border-border bg-muted p-5">
-          <ProductForm categories={categories} onDone={() => setShowForm(false)} />
+          <ProductForm
+            categories={categories}
+            categoryAttributes={categoryAttributes}
+            onDone={() => setShowForm(false)}
+          />
         </div>
       ) : null}
     </div>

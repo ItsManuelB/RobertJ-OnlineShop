@@ -9,6 +9,7 @@ import {
   Settings,
   ShoppingBag,
   Store,
+  Tags,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -47,6 +48,7 @@ export const ADMIN_NAV_GROUPS: readonly AdminNavGroup[] = [
     items: [
       { href: ROUTES.adminUsers, label: "Users", icon: Users },
       { href: ROUTES.adminShops, label: "Shops", icon: Store },
+      { href: ROUTES.adminCategories, label: "Categories", icon: Tags },
       { href: ROUTES.adminAuditLog, label: "Audit Log", icon: History },
     ],
   },
@@ -67,6 +69,10 @@ export const ADMIN_PAGE_META: Record<string, { title: string; subtitle: string }
   [ROUTES.adminReports]: { title: "Reports", subtitle: "Analytics and performance reports" },
   [ROUTES.adminUsers]: { title: "Users", subtitle: "Manage buyers and sellers" },
   [ROUTES.adminShops]: { title: "Shops", subtitle: "Review and manage marketplace shops" },
+  [ROUTES.adminCategories]: {
+    title: "Categories",
+    subtitle: "Manage categories and their specification/variant rules",
+  },
   [ROUTES.adminAuditLog]: { title: "Audit Log", subtitle: "Track admin actions and system events" },
   [ROUTES.adminSettings]: { title: "Settings", subtitle: "Configure platform settings" },
 };

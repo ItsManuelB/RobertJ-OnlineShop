@@ -54,6 +54,8 @@ export async function createProductVariantAction(
         sku: parsed.data.sku,
         color: parsed.data.color,
         size: parsed.data.size,
+        material: parsed.data.material,
+        dimensions: parsed.data.dimensions,
         price: parsed.data.price,
       },
     );
@@ -77,6 +79,8 @@ export async function updateProductVariantAction(
       sku: parsed.data.sku,
       color: parsed.data.color,
       size: parsed.data.size,
+      material: parsed.data.material,
+      dimensions: parsed.data.dimensions,
       price: parsed.data.price,
       status: parsed.data.status,
     });

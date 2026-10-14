@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.5"
+    PostgrestVersion: "14.15"
   }
   public: {
     Tables: {
@@ -265,6 +265,7 @@ export type Database = {
           parent_id: string | null
           slug: string
           sort_order: number
+          supports_occasion_matching: boolean
           updated_at: string
         }
         Insert: {
@@ -278,6 +279,7 @@ export type Database = {
           parent_id?: string | null
           slug: string
           sort_order?: number
+          supports_occasion_matching?: boolean
           updated_at?: string
         }
         Update: {
@@ -291,12 +293,60 @@ export type Database = {
           parent_id?: string | null
           slug?: string
           sort_order?: number
+          supports_occasion_matching?: boolean
           updated_at?: string
         }
         Relationships: [
           {
             foreignKeyName: "categories_parent_id_fkey"
             columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      category_attributes: {
+        Row: {
+          allowed_values: string[] | null
+          attribute_key: Database["public"]["Enums"]["product_attribute_key"]
+          category_id: string
+          created_at: string
+          display_order: number
+          id: string
+          is_recommended: boolean
+          is_required: boolean
+          is_variant_eligible: boolean
+          updated_at: string
+        }
+        Insert: {
+          allowed_values?: string[] | null
+          attribute_key: Database["public"]["Enums"]["product_attribute_key"]
+          category_id: string
+          created_at?: string
+          display_order?: number
+          id?: string
+          is_recommended?: boolean
+          is_required?: boolean
+          is_variant_eligible?: boolean
+          updated_at?: string
+        }
+        Update: {
+          allowed_values?: string[] | null
+          attribute_key?: Database["public"]["Enums"]["product_attribute_key"]
+          category_id?: string
+          created_at?: string
+          display_order?: number
+          id?: string
+          is_recommended?: boolean
+          is_required?: boolean
+          is_variant_eligible?: boolean
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "category_attributes_category_id_fkey"
+            columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "categories"
             referencedColumns: ["id"]
@@ -354,6 +404,38 @@ export type Database = {
             columns: ["variant_id"]
             isOneToOne: false
             referencedRelation: "product_variants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_idempotency_keys: {
+        Row: {
+          buyer_id: string
+          created_at: string
+          idempotency_key: string
+          order_ids: string[]
+          scope: string
+        }
+        Insert: {
+          buyer_id: string
+          created_at?: string
+          idempotency_key: string
+          order_ids?: string[]
+          scope: string
+        }
+        Update: {
+          buyer_id?: string
+          created_at?: string
+          idempotency_key?: string
+          order_ids?: string[]
+          scope?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_idempotency_keys_buyer_id_fkey"
+            columns: ["buyer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -771,10 +853,12 @@ export type Database = {
         Row: {
           color: string | null
           created_at: string
+          dimensions: string | null
           id: string
+          material: string | null
           price_cents: number | null
           product_id: string
-          seller_id: string
+          seller_id: string | null
           shop_id: string | null
           size: string | null
           sku: string | null
@@ -784,10 +868,12 @@ export type Database = {
         Insert: {
           color?: string | null
           created_at?: string
+          dimensions?: string | null
           id?: string
+          material?: string | null
           price_cents?: number | null
           product_id: string
-          seller_id: string
+          seller_id?: string | null
           shop_id?: string | null
           size?: string | null
           sku?: string | null
@@ -797,10 +883,12 @@ export type Database = {
         Update: {
           color?: string | null
           created_at?: string
+          dimensions?: string | null
           id?: string
+          material?: string | null
           price_cents?: number | null
           product_id?: string
-          seller_id?: string
+          seller_id?: string | null
           shop_id?: string | null
           size?: string | null
           sku?: string | null
@@ -838,9 +926,11 @@ export type Database = {
           created_at: string
           currency: string
           description: string | null
+          dimensions: string | null
           featured: boolean
           id: string
           location: string | null
+          material: string | null
           price_cents: number
           published_at: string | null
           quantity: number
@@ -860,9 +950,11 @@ export type Database = {
           created_at?: string
           currency?: string
           description?: string | null
+          dimensions?: string | null
           featured?: boolean
           id?: string
           location?: string | null
+          material?: string | null
           price_cents: number
           published_at?: string | null
           quantity?: number
@@ -882,9 +974,11 @@ export type Database = {
           created_at?: string
           currency?: string
           description?: string | null
+          dimensions?: string | null
           featured?: boolean
           id?: string
           location?: string | null
+          material?: string | null
           price_cents?: number
           published_at?: string | null
           quantity?: number
@@ -1682,9 +1776,11 @@ export type Database = {
           created_at: string
           currency: string
           description: string | null
+          dimensions: string | null
           featured: boolean
           id: string
           location: string | null
+          material: string | null
           price_cents: number
           published_at: string | null
           quantity: number
@@ -2496,6 +2592,7 @@ export type Database = {
         | "failed"
         | "refunded"
         | "partially_refunded"
+      product_attribute_key: "color" | "size" | "material" | "dimensions"
       product_condition: "new" | "like_new" | "good" | "fair" | "poor"
       product_status: "draft" | "active" | "sold" | "archived"
       recommendation_occasion:
@@ -2669,6 +2766,7 @@ export const Constants = {
         "refunded",
         "partially_refunded",
       ],
+      product_attribute_key: ["color", "size", "material", "dimensions"],
       product_condition: ["new", "like_new", "good", "fair", "poor"],
       product_status: ["draft", "active", "sold", "archived"],
       recommendation_occasion: [

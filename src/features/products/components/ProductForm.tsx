@@ -5,6 +5,7 @@ import { useActionState, useEffect, useRef, useState, useTransition } from "reac
 import { X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { FormField } from "@/components/forms/FormField";
 import { PRODUCT_CONDITION_LABELS, PRODUCT_STATUS_LABELS } from "@/constants/status";
@@ -14,7 +15,7 @@ import {
   updateProductAction,
   uploadProductImageAction,
 } from "@/features/products/actions/product.actions";
-import type { Category } from "@/features/categories/types/category.types";
+import type { Category, CategoryAttribute, ProductAttributeKey } from "@/features/categories/types/category.types";
 import type { Product, ProductImage } from "@/features/products/types/product.types";
 import { fromCents } from "@/lib/utils/currency";
 import type { ActionResult } from "@/types/action.types";
@@ -32,8 +33,17 @@ const selectClasses =
 const textareaClasses =
   "min-h-24 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30";
 
+const SPEC_FIELD_LABELS: Record<ProductAttributeKey, string> = {
+  color: "Color",
+  size: "Size",
+  material: "Material",
+  dimensions: "Dimensions",
+};
+
 export interface ProductFormProps {
   categories: Category[];
+  /** Every category's attribute config — filtered internally to the currently-selected category. See §8.2 of the implementation plan. */
+  categoryAttributes: CategoryAttribute[];
   /** Omit for create mode; pass the product being edited for edit mode. */
   product?: Product;
   onDone?: () => void;
@@ -48,7 +58,7 @@ export interface ProductFormProps {
  * mode, where every field — including "Featured" — is identical regardless
  * of who's using it.
  */
-export function ProductForm({ categories, product, onDone }: ProductFormProps) {
+export function ProductForm({ categories, categoryAttributes, product, onDone }: ProductFormProps) {
   const isEdit = Boolean(product);
   const [state, formAction, isPending] = useActionState<
     ActionResult<Product> | null,
@@ -57,6 +67,40 @@ export function ProductForm({ categories, product, onDone }: ProductFormProps) {
 
   const fieldErrors = state && !state.success ? state.fieldErrors : undefined;
   const formError = state && !state.success && !state.fieldErrors ? state.error : undefined;
+
+  // Category drives which spec-only attributes (material/dimensions, per
+  // category_attributes) show below — the select must be controlled so
+  // changing it re-renders that section. Variant-eligible attributes are
+  // deliberately NOT handled here — they're exclusively a Variant Manager
+  // concern (§8.3), since enabling one is a decision about adding variant
+  // rows, not a plain product field.
+  const [categoryId, setCategoryId] = useState(product?.categoryId ?? "");
+  // Only `material`/`dimensions` have a backing column on `products` (color/
+  // size are variant-only — see the implementation plan §3.2); a category
+  // misconfigured to mark color/size as a spec rather than a variant axis
+  // has nowhere to store that value here, so it's filtered out defensively.
+  const specAttrs = categoryAttributes
+    .filter(
+      (attribute) =>
+        attribute.categoryId === categoryId &&
+        !attribute.isVariantEligible &&
+        (attribute.attributeKey === "material" || attribute.attributeKey === "dimensions"),
+    )
+    .sort((a, b) => a.displayOrder - b.displayOrder) as (CategoryAttribute & {
+    attributeKey: "material" | "dimensions";
+  })[];
+  const [enabledSpecs, setEnabledSpecs] = useState<Set<ProductAttributeKey>>(
+    () => new Set(specAttrs.filter((attribute) => Boolean(product?.[attribute.attributeKey])).map((a) => a.attributeKey)),
+  );
+
+  function toggleSpec(key: ProductAttributeKey, checked: boolean) {
+    setEnabledSpecs((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  }
 
   // Edit mode: images already exist server-side, managed against the live list.
   const [images, setImages] = useState<ProductImage[]>(product?.images ?? []);
@@ -312,7 +356,8 @@ export function ProductForm({ categories, product, onDone }: ProductFormProps) {
         <select
           id="product-category"
           name="categoryId"
-          defaultValue={product?.categoryId ?? ""}
+          value={categoryId}
+          onChange={(event) => setCategoryId(event.target.value)}
           className={selectClasses}
         >
           <option value="">No category</option>
@@ -323,6 +368,55 @@ export function ProductForm({ categories, product, onDone }: ProductFormProps) {
           ))}
         </select>
       </div>
+
+      {specAttrs.length > 0 ? (
+        <div className="flex flex-col gap-3 rounded-lg border border-dashed border-border p-4">
+          <p className="text-xs font-medium text-muted-foreground">Specifications</p>
+          {specAttrs.map((attribute) => {
+            const label = SPEC_FIELD_LABELS[attribute.attributeKey];
+            if (attribute.isRequired) {
+              return (
+                <FormField
+                  key={attribute.id}
+                  name={attribute.attributeKey}
+                  label={label}
+                  defaultValue={product?.[attribute.attributeKey] ?? ""}
+                  errors={fieldErrors?.[attribute.attributeKey]}
+                  required
+                  themed
+                />
+              );
+            }
+            const checked = enabledSpecs.has(attribute.attributeKey);
+            return (
+              <div key={attribute.id} className="flex flex-col gap-2">
+                <label className="flex items-center gap-2 text-sm font-medium">
+                  <Checkbox
+                    checked={checked}
+                    onChange={(event) => toggleSpec(attribute.attributeKey, event.target.checked)}
+                  />
+                  Add {label.toLowerCase()} details
+                </label>
+                {checked ? (
+                  <FormField
+                    name={attribute.attributeKey}
+                    label={label}
+                    defaultValue={product?.[attribute.attributeKey] ?? ""}
+                    errors={fieldErrors?.[attribute.attributeKey]}
+                    themed
+                  />
+                ) : (
+                  // Submitted as an explicit empty value so unchecking and saving
+                  // actually clears a previously-set spec (see §8.2) — an absent
+                  // field would be read as "no change" by the partial update
+                  // schema instead.
+                  <input type="hidden" name={attribute.attributeKey} value="" />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
 
       <FormField
         name="location"

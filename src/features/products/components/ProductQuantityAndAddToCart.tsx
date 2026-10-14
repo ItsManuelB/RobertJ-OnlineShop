@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 import { QuantityStepper } from "@/components/ui/quantity-stepper";
 import { AddToCartButton } from "@/features/cart/components/AddToCartButton";
@@ -8,6 +8,7 @@ import { BuyNowButton } from "@/features/cart/components/BuyNowButton";
 import { LOW_STOCK_THRESHOLD } from "@/features/products/constants/product.constants";
 import { WishlistButton } from "@/features/wishlist/components/WishlistButton";
 import type { WishlistState } from "@/features/wishlist/types/wishlist.types";
+import type { CategoryAttribute, ProductAttributeKey } from "@/features/categories/types/category.types";
 import type { Product, ProductVariant } from "@/features/products/types/product.types";
 import { formatCurrency } from "@/lib/utils/currency";
 import { cn } from "@/lib/utils/cn";
@@ -23,6 +24,8 @@ export interface ProductQuantityAndAddToCartProps {
   variants: ProductVariant[];
   /** variantId -> live stock, from `getVariantStock`. A missing id has 0 stock. */
   variantStock: Record<string, number>;
+  /** This product's category's attribute config — decides which axes beyond legacy color/size are offered. See §9.1 of the implementation plan. */
+  categoryAttributes: CategoryAttribute[];
   /**
    * Whether the viewer may transact. Defaults to `true` (guests + buyers).
    * `false` for seller/admin — the variant selectors and stock still render
@@ -47,11 +50,30 @@ function uniqueInOrder(values: (string | null)[]): string[] {
 const OPTION_BUTTON =
   "rounded-full border-[1.5px] px-3 py-1.5 text-xs font-semibold transition-colors disabled:pointer-events-none";
 
+const AXIS_LABELS: Record<ProductAttributeKey, string> = {
+  color: "Color",
+  size: "Size",
+  material: "Material",
+  dimensions: "Dimensions",
+};
+
+/** Legacy, category-config-free fallback — exactly today's two-axis behavior, unchanged for any product whose category has no `category_attributes` rows. */
+const LEGACY_AXES: ProductAttributeKey[] = ["color", "size"];
+
 /**
  * PDP quantity selector + Add to cart + wishlist, kept together since the
  * cart button needs the live quantity. When the product has variants, this
- * also owns the Color/Size selectors and the reactive price/stock display —
- * the plain (`variants.length === 0`) path renders exactly as before.
+ * also owns the variant-axis selectors and the reactive price/stock display
+ * — the plain (`variants.length === 0`) path renders exactly as before.
+ *
+ * Generalized per docs/plans/product-specifications-and-variants-
+ * implementation.md §9.1 from a hardcoded two-axis (Color/Size) picker to N
+ * axes, driven by the product's category: a category with no
+ * `category_attributes` configured falls back to exactly today's Color/Size
+ * behavior; a configured category instead offers one pill group per
+ * variant-eligible attribute that at least one of this product's variants
+ * actually varies by (an axis with zero distinct values never renders,
+ * same as today's `colors.length > 0` / `sizes.length > 0` guards).
  */
 export function ProductQuantityAndAddToCart({
   product,
@@ -60,27 +82,41 @@ export function ProductQuantityAndAddToCart({
   shopName,
   variants,
   variantStock,
+  categoryAttributes,
   canPurchase = true,
 }: ProductQuantityAndAddToCartProps) {
   const hasVariants = variants.length > 0;
-  const colors = useMemo(() => uniqueInOrder(variants.map((v) => v.color)), [variants]);
-  const sizes = useMemo(() => uniqueInOrder(variants.map((v) => v.size)), [variants]);
 
-  const [selectedColor, setSelectedColor] = useState<string | null>(null);
-  const [selectedSize, setSelectedSize] = useState<string | null>(null);
+  const categoryConfig = categoryAttributes.filter((a) => a.categoryId === product.categoryId);
+  const hasConfig = categoryConfig.length > 0;
+  const axisKeys: ProductAttributeKey[] = hasConfig
+    ? categoryConfig
+        .filter((a) => a.isVariantEligible)
+        .sort((a, b) => a.displayOrder - b.displayOrder)
+        .map((a) => a.attributeKey)
+    : LEGACY_AXES;
+
+  // Cheap enough (at most 4 axes, each a single pass over `variants`) to
+  // recompute on every render rather than memoize — `axisKeys` is itself
+  // freshly derived from props each render, so there'd be nothing stable to
+  // key a `useMemo` on anyway.
+  const axisValues = new Map<ProductAttributeKey, string[]>();
+  for (const key of axisKeys) {
+    axisValues.set(key, uniqueInOrder(variants.map((v) => v[key])));
+  }
+  const activeAxisKeys = axisKeys.filter((key) => (axisValues.get(key)?.length ?? 0) > 0);
+
+  const [selected, setSelected] = useState<Partial<Record<ProductAttributeKey, string>>>({});
   const [quantity, setQuantity] = useState(1);
 
   const selectedVariant = hasVariants
-    ? (variants.find(
-        (v) =>
-          (colors.length === 0 || v.color === selectedColor) &&
-          (sizes.length === 0 || v.size === selectedSize),
+    ? (variants.find((v) =>
+        activeAxisKeys.every((key) => selected[key] === undefined || v[key] === selected[key]),
       ) ?? null)
     : null;
 
   const needsSelection =
-    hasVariants &&
-    ((colors.length > 0 && selectedColor === null) || (sizes.length > 0 && selectedSize === null));
+    hasVariants && activeAxisKeys.some((key) => selected[key] === undefined);
 
   const effectiveStock = hasVariants
     ? needsSelection || !selectedVariant
@@ -102,10 +138,25 @@ export function ProductQuantityAndAddToCart({
       ? null
       : {
           id: selectedVariant.id,
-          label: [selectedVariant.color, selectedVariant.size].filter(Boolean).join(" / "),
+          label: [selectedVariant.color, selectedVariant.size, selectedVariant.material, selectedVariant.dimensions]
+            .filter(Boolean)
+            .join(" / "),
           priceCents: effectivePriceCents,
           stock: effectiveStock,
         };
+
+  /** An option at `axisIndex` is available if some in-stock variant matches it AND every earlier-axis selection already made — same sequential-dependency chain the old Color→Size pairing used, generalized to N axes. */
+  function isOptionAvailable(axisIndex: number, key: ProductAttributeKey, value: string): boolean {
+    return variants.some((v) => {
+      if (v[key] !== value) return false;
+      for (let j = 0; j < axisIndex; j++) {
+        const priorKey = activeAxisKeys[j];
+        const priorSelected = selected[priorKey];
+        if (priorSelected !== undefined && v[priorKey] !== priorSelected) return false;
+      }
+      return (variantStock[v.id] ?? 0) > 0;
+    });
+  }
 
   return (
     <div className={className}>
@@ -115,102 +166,59 @@ export function ProductQuantityAndAddToCart({
             {formatCurrency(effectivePriceCents, product.currency)}
           </p>
 
-          {colors.length > 0 ? (
-            <div>
-              <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.25em] text-rj-gray-600">
-                Color
-                {selectedColor ? (
-                  <span className="ml-1.5 normal-case tracking-normal text-rj-black">
-                    : {selectedColor}
-                  </span>
-                ) : null}
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {colors.map((color) => {
-                  // A color is unavailable once every one of its variant
-                  // rows is out of stock — sold out regardless of size.
-                  const inStock = variants.some(
-                    (v) => v.color === color && (variantStock[v.id] ?? 0) > 0,
-                  );
-                  return (
-                    <button
-                      key={color}
-                      type="button"
-                      disabled={!inStock}
-                      onClick={() => setSelectedColor(color)}
-                      aria-pressed={selectedColor === color}
-                      className={cn(
-                        OPTION_BUTTON,
-                        selectedColor === color
-                          ? "border-rj-black bg-rj-black text-rj-white"
-                          : inStock
-                            ? "border-rj-gray-200 text-rj-black hover:border-rj-black"
-                            : "border-rj-gray-100 text-rj-gray-300 line-through",
-                      )}
-                    >
-                      {color}
-                    </button>
-                  );
-                })}
+          {activeAxisKeys.map((key, axisIndex) => {
+            const values = axisValues.get(key) ?? [];
+            const priorKey = axisIndex > 0 ? activeAxisKeys[axisIndex - 1] : null;
+            const waitingOnPrior = priorKey !== null && selected[priorKey] === undefined;
+            return (
+              <div key={key}>
+                <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.25em] text-rj-gray-600">
+                  {AXIS_LABELS[key]}
+                  {selected[key] ? (
+                    <span className="ml-1.5 normal-case tracking-normal text-rj-black">
+                      : {selected[key]}
+                    </span>
+                  ) : null}
+                  {waitingOnPrior ? (
+                    <span className="ml-1.5 normal-case tracking-normal text-rj-gray-400">
+                      (select {AXIS_LABELS[priorKey as ProductAttributeKey].toLowerCase()} first)
+                    </span>
+                  ) : null}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {values.map((value) => {
+                    const available = isOptionAvailable(axisIndex, key, value);
+                    const isSelected = selected[key] === value;
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        disabled={!available}
+                        onClick={() => setSelected((prev) => ({ ...prev, [key]: value }))}
+                        aria-pressed={isSelected}
+                        className={cn(
+                          OPTION_BUTTON,
+                          isSelected
+                            ? "border-rj-black bg-rj-black text-rj-white"
+                            : available
+                              ? "border-rj-gray-200 text-rj-black hover:border-rj-black"
+                              : "border-rj-gray-100 text-rj-gray-300 line-through",
+                        )}
+                      >
+                        {value}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          ) : null}
-
-          {sizes.length > 0 ? (
-            <div>
-              <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.25em] text-rj-gray-600">
-                Size
-                {selectedSize ? (
-                  <span className="ml-1.5 normal-case tracking-normal text-rj-black">
-                    : {selectedSize}
-                  </span>
-                ) : null}
-                {colors.length > 0 && selectedColor === null ? (
-                  <span className="ml-1.5 normal-case tracking-normal text-rj-gray-400">
-                    (select a color first)
-                  </span>
-                ) : null}
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {sizes.map((size) => {
-                  // A size is only selectable once it's paired with the
-                  // currently chosen color (or there's no color axis at all)
-                  // by a real variant row that still has stock.
-                  const available = variants.some(
-                    (v) =>
-                      v.size === size &&
-                      (colors.length === 0 || v.color === selectedColor) &&
-                      (variantStock[v.id] ?? 0) > 0,
-                  );
-                  return (
-                    <button
-                      key={size}
-                      type="button"
-                      disabled={!available}
-                      onClick={() => setSelectedSize(size)}
-                      aria-pressed={selectedSize === size}
-                      className={cn(
-                        OPTION_BUTTON,
-                        selectedSize === size
-                          ? "border-rj-black bg-rj-black text-rj-white"
-                          : available
-                            ? "border-rj-gray-200 text-rj-black hover:border-rj-black"
-                            : "border-rj-gray-100 text-rj-gray-300 line-through",
-                      )}
-                    >
-                      {size}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ) : null}
+            );
+          })}
         </div>
       ) : null}
 
       {/* Stock status sits right beside Quantity — the buyer has just
-          finished picking Color/Size above, so the number that matters is
-          read next to the stepper it governs, not back up near the price. */}
+          finished picking variant options above, so the number that matters
+          is read next to the stepper it governs, not back up near the price. */}
       <div className="mb-3">
         {hasVariants ? (
           <div className="mb-1.5">

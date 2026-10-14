@@ -16,6 +16,7 @@ import {
   getShopNamesBySellerIds,
   getVariantStock,
   isProductWishlisted,
+  listCategoryAttributes,
   listProductReviews,
   listProductVariants,
 } from "@/lib/supabase/queries";
@@ -77,6 +78,9 @@ export default async function ProductDetailPage({
       : new Map<string, number>();
   const variantStock = Object.fromEntries(variantStockMap);
   const hasVariants = variants.length > 0;
+  const categoryAttributes = product.categoryId
+    ? await listCategoryAttributes(product.categoryId).catch(() => [])
+    : [];
 
   const breadcrumbItems = [
     { label: "Home", href: ROUTES.home },
@@ -192,6 +196,7 @@ export default async function ProductDetailPage({
             shopName={shopName}
             variants={variants}
             variantStock={variantStock}
+            categoryAttributes={categoryAttributes}
             canPurchase={user === null || canPurchase(user.role as UserRole)}
           />
 
@@ -218,6 +223,30 @@ export default async function ProductDetailPage({
               <p className="text-sm leading-relaxed text-rj-gray-600">
                 {product.description}
               </p>
+            ) : null}
+
+            {/* Category-driven specs (§9.1 of the implementation plan) — the
+                product's own material/dimensions are the effective value
+                here because only a *variant-eligible* attribute ever gets a
+                per-variant override, and this block only ever shows an
+                attribute that is NOT variant-eligible for this product's
+                category (the variant-eligible ones are selectable pills
+                above, in ProductQuantityAndAddToCart, instead). */}
+            {product.material || product.dimensions ? (
+              <dl className="flex flex-col gap-1.5 border-t border-rj-gray-100 pt-3">
+                {product.material ? (
+                  <div className="flex gap-2 text-sm">
+                    <dt className="font-semibold text-rj-black">Material</dt>
+                    <dd className="text-rj-gray-600">{product.material}</dd>
+                  </div>
+                ) : null}
+                {product.dimensions ? (
+                  <div className="flex gap-2 text-sm">
+                    <dt className="font-semibold text-rj-black">Dimensions</dt>
+                    <dd className="text-rj-gray-600">{product.dimensions}</dd>
+                  </div>
+                ) : null}
+              </dl>
             ) : null}
           </div>
         </div>

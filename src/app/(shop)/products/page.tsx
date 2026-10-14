@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 
-import { getShopById, listActiveCategories, listShops } from "@/lib/supabase/queries";
+import { getShopById, listActiveCategories, listShops, resolveFilterableAttributes } from "@/lib/supabase/queries";
 import { CatalogHeader } from "@/features/products/components/CatalogHeader";
 import { ProductFilters } from "@/features/products/components/ProductFilters";
 import { ProductGridSkeleton } from "@/features/products/components/ProductGridSkeleton";
@@ -18,13 +18,18 @@ interface ProductsPageProps {
 export default async function ProductsPage({ searchParams }: ProductsPageProps) {
   const params = await searchParams;
   const shopIdParam = typeof params.shopId === "string" ? params.shopId : undefined;
-  // Categories feed the filter chips, shops feed the shop dropdown, and the
-  // filtered shop (if any) feeds its real branding header; any fetch failure
-  // just hides that piece rather than breaking the page.
-  const [categories, shops, shop] = await Promise.all([
+  const categoryIdParam = typeof params.categoryId === "string" ? params.categoryId : undefined;
+  // Categories feed the filter chips, shops feed the shop dropdown, the
+  // filtered shop (if any) feeds its real branding header, and — only when
+  // exactly one category is selected — attributeFilters feed the
+  // category-driven Size/Color/Material/Dimensions controls (§7 of the
+  // implementation plan). Any fetch failure just hides that piece rather
+  // than breaking the page.
+  const [categories, shops, shop, attributeFilters] = await Promise.all([
     listActiveCategories().catch(() => []),
     listShops().catch(() => []),
     shopIdParam ? getShopById(shopIdParam).catch(() => null) : Promise.resolve(null),
+    categoryIdParam ? resolveFilterableAttributes(categoryIdParam).catch(() => []) : Promise.resolve([]),
   ]);
 
   return (
@@ -41,7 +46,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
           <ProductSearchInput />
         </Suspense>
         <Suspense fallback={null}>
-          <ProductFilters categories={categories} shops={shops} />
+          <ProductFilters categories={categories} shops={shops} attributeFilters={attributeFilters} />
         </Suspense>
       </div>
 

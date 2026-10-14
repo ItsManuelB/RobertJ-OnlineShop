@@ -42,7 +42,17 @@ import type {
   ProductListParams,
   ProductVariant,
 } from "@/features/products/types/product.types";
-import type { Category } from "@/features/categories/types/category.types";
+import type {
+  AdminCategory,
+  Category,
+  CategoryAttribute,
+  ProductAttributeKey,
+} from "@/features/categories/types/category.types";
+import type {
+  CreateCategoryInput,
+  UpdateCategoryInput,
+  UpsertCategoryAttributeInput,
+} from "@/features/categories/schemas/category.schema";
 import type { LandingStat } from "@/features/landing/types/landing.types";
 import type {
   GuidedSelectionMatch,
@@ -150,6 +160,7 @@ type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
 const PRODUCT_COLUMNS = `
   id, slug, title, description, price_cents, currency, quantity, condition,
   status, featured, location, tags, category_id, seller_id, shop_id, published_at,
+  material, dimensions,
   created_at, updated_at,
   product_images ( id, url, alt_text, sort_order ),
   seller:profiles!products_seller_id_fkey ( full_name, username, role ),
@@ -217,6 +228,8 @@ function toProduct(row: ProductRowWithImages): Product {
     // "shop" label check this before falling back to `sellerName`.
     sellerRole: (row.seller?.role as UserRole | undefined) ?? null,
     shopId: row.shop_id,
+    material: row.material,
+    dimensions: row.dimensions,
     publishedAt: row.published_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -258,6 +271,41 @@ export async function listProducts(
     .eq("active", false);
   const inactiveShopIds = (inactiveShopRows ?? []).map((row) => row.id);
 
+  // Category-driven attribute filters (§7 of the implementation plan) —
+  // `product_variants` is a separate table, so each filter is resolved to
+  // a set of matching `product_id`s first, then intersected. A product
+  // matches an attribute filter if ANY of its variants has that value —
+  // multiple simultaneous filters need not be satisfied by the same
+  // variant row (documented simplification, see the plan's §7).
+  const attributeFilterCandidates: Array<[string, string | undefined]> = [
+    ["color", params.color],
+    ["size", params.size],
+    ["material", params.material],
+    ["dimensions", params.dimensions],
+  ];
+  const attributeFilters = attributeFilterCandidates.filter(
+    (entry): entry is [string, string] => Boolean(entry[1]),
+  );
+
+  let attributeFilteredProductIds: string[] | null = null;
+  for (const [key, value] of attributeFilters) {
+    const { data: variantRows, error: variantError } = await supabase
+      .from(DATABASE_TABLES.PRODUCT_VARIANTS)
+      .select("product_id")
+      .eq(key, value);
+    if (variantError) {
+      throw queryError("Failed to filter products", variantError);
+    }
+    const ids = Array.from(new Set((variantRows ?? []).map((row) => row.product_id)));
+    attributeFilteredProductIds =
+      attributeFilteredProductIds === null
+        ? ids
+        : attributeFilteredProductIds.filter((id) => ids.includes(id));
+    if (attributeFilteredProductIds.length === 0) {
+      return { items: [], total: 0, page: params.page, pageSize: params.pageSize, totalPages: 1 };
+    }
+  }
+
   // Built via a closure so an out-of-range page can be refetched (below) with
   // the identical filters/sort — a Supabase builder can't be re-ranged once
   // awaited, and duplicating the filter chain would violate DRY. `head` skips
@@ -294,6 +342,9 @@ export async function listProducts(
     }
     if (params.categoryId) {
       query = query.eq("category_id", params.categoryId);
+    }
+    if (attributeFilteredProductIds) {
+      query = query.in("id", attributeFilteredProductIds);
     }
     if (params.onSale) {
       // Same seller-set "sale" tag convention ProductCard/FeaturedProductsGrid
@@ -806,6 +857,8 @@ export async function createProduct(
       seller_id: sellerId,
       shop_id: shopId,
       featured: input.featured ?? false,
+      material: input.material || null,
+      dimensions: input.dimensions || null,
     })
     .select(PRODUCT_COLUMNS)
     .single();
@@ -841,7 +894,7 @@ export async function updateProduct(
   owner: { sellerId: string; shopId: string | null } | null,
 ): Promise<Product> {
   const supabase = await createSupabaseServerClient();
-  const { id, price, categoryId, description, location, quantity, ...rest } = input;
+  const { id, price, categoryId, description, location, quantity, material, dimensions, ...rest } = input;
 
   if (owner) {
     const ownerFilter = owner.shopId
@@ -878,6 +931,8 @@ export async function updateProduct(
       ...(location !== undefined ? { location: location || null } : {}),
       ...(price !== undefined ? { price_cents: toCents(price) } : {}),
       ...(categoryId !== undefined ? { category_id: categoryId ?? null } : {}),
+      ...(material !== undefined ? { material: material || null } : {}),
+      ...(dimensions !== undefined ? { dimensions: dimensions || null } : {}),
     })
     .eq("id", id)
     .select(PRODUCT_COLUMNS)
@@ -1593,6 +1648,310 @@ export async function listActiveCategorySlugsForSitemap(): Promise<
     slug: row.slug,
     updatedAt: row.updated_at,
   }));
+}
+
+// ============================================================================
+// Admin: Categories + Category Attributes
+//
+// Closes Finding F-1 (docs/plans/product-specifications-and-variants-
+// implementation.md): categories previously had zero application-level
+// CRUD — only the admin-gated RLS policies existed in SQL, with nothing in
+// the app calling them. `categories` has full table-level grants for
+// `authenticated` (verified live before writing this — unlike `shops`,
+// which restricts name/active to column-level grants and needs an RPC),
+// so plain `.insert()`/`.update()` calls here are sufficient; `is_admin()`
+// RLS is the actual enforcement, re-checked at the action layer via
+// `requireRole` as defense in depth, same as every other admin write.
+// ============================================================================
+
+const ADMIN_CATEGORY_COLUMNS = `
+  id, name, slug, description, image_url, active, sort_order, products(count)
+`;
+
+type AdminCategoryRow = {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  image_url: string | null;
+  active: boolean;
+  sort_order: number;
+  products: { count: number }[];
+};
+
+function toAdminCategory(row: AdminCategoryRow): AdminCategory {
+  return {
+    id: row.id,
+    name: row.name,
+    slug: row.slug,
+    description: row.description,
+    imageUrl: row.image_url,
+    active: row.active,
+    sortOrder: row.sort_order,
+    productCount: row.products?.[0]?.count ?? 0,
+  };
+}
+
+/** Every category (active and inactive), for `/admin/categories`. */
+export async function listCategoriesForAdmin(): Promise<AdminCategory[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from(DATABASE_TABLES.CATEGORIES)
+    .select(ADMIN_CATEGORY_COLUMNS)
+    .order("sort_order", { ascending: true });
+
+  if (error) {
+    throw queryError("Failed to load categories", error);
+  }
+
+  return (data ?? []).map((row) => toAdminCategory(row as AdminCategoryRow));
+}
+
+/** Admin-only: creates a category. `slug` is derived from `name`; a collision surfaces as a friendly error rather than a raw constraint message. */
+export async function createCategory(input: CreateCategoryInput): Promise<AdminCategory> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from(DATABASE_TABLES.CATEGORIES)
+    .insert({
+      name: input.name,
+      slug: slugify(input.name),
+      description: input.description || null,
+      image_url: input.imageUrl || null,
+      sort_order: input.sortOrder ?? 0,
+    })
+    .select(ADMIN_CATEGORY_COLUMNS)
+    .single();
+
+  if (error) {
+    throw new Error(mapPostgresError(error, "A category with this name already exists."));
+  }
+
+  return toAdminCategory(data as AdminCategoryRow);
+}
+
+/** Admin-only: edits a category's name/description/image/sort order. Active status goes through `toggleCategoryActive` below, not this function. */
+export async function updateCategory(input: UpdateCategoryInput): Promise<AdminCategory> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from(DATABASE_TABLES.CATEGORIES)
+    .update({
+      name: input.name,
+      description: input.description || null,
+      image_url: input.imageUrl || null,
+      sort_order: input.sortOrder ?? 0,
+    })
+    .eq("id", input.id)
+    .select(ADMIN_CATEGORY_COLUMNS)
+    .single();
+
+  if (error) {
+    throw new Error(mapPostgresError(error, "Failed to update category."));
+  }
+
+  return toAdminCategory(data as AdminCategoryRow);
+}
+
+/** Admin-only: activates/deactivates a category (hides it from the buyer catalog's active-only reads without deleting it). */
+export async function toggleCategoryActive(categoryId: string, active: boolean): Promise<AdminCategory> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from(DATABASE_TABLES.CATEGORIES)
+    .update({ active })
+    .eq("id", categoryId)
+    .select(ADMIN_CATEGORY_COLUMNS)
+    .single();
+
+  if (error) {
+    throw queryError("Failed to update category", error);
+  }
+
+  return toAdminCategory(data as AdminCategoryRow);
+}
+
+const CATEGORY_ATTRIBUTE_COLUMNS = `
+  id, category_id, attribute_key, is_required, is_variant_eligible,
+  is_recommended, allowed_values, display_order
+`;
+
+type CategoryAttributeRow = {
+  id: string;
+  category_id: string;
+  attribute_key: ProductAttributeKey;
+  is_required: boolean;
+  is_variant_eligible: boolean;
+  is_recommended: boolean;
+  allowed_values: string[] | null;
+  display_order: number;
+};
+
+function toCategoryAttribute(row: CategoryAttributeRow): CategoryAttribute {
+  return {
+    id: row.id,
+    categoryId: row.category_id,
+    attributeKey: row.attribute_key,
+    isRequired: row.is_required,
+    isVariantEligible: row.is_variant_eligible,
+    isRecommended: row.is_recommended,
+    allowedValues: row.allowed_values,
+    displayOrder: row.display_order,
+  };
+}
+
+/**
+ * A single category's attribute config, ordered for display. Publicly
+ * readable (RLS: `select` to `anon, authenticated`) — consumed by the admin
+ * config panel, the seller product/variant forms (Phase 3), the buyer PDP/
+ * catalog filters (Phases 5–6), and the Guided Selection quiz (Phase 7), not
+ * just here.
+ */
+export async function listCategoryAttributes(categoryId: string): Promise<CategoryAttribute[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from(DATABASE_TABLES.CATEGORY_ATTRIBUTES)
+    .select(CATEGORY_ATTRIBUTE_COLUMNS)
+    .eq("category_id", categoryId)
+    .order("display_order", { ascending: true });
+
+  if (error) {
+    throw queryError("Failed to load category attributes", error);
+  }
+
+  return (data ?? []).map((row) => toCategoryAttribute(row as CategoryAttributeRow));
+}
+
+/** Every category's attribute config in one call — the admin matrix view across all categories, avoiding N+1 round-trips per category row. */
+export async function listAllCategoryAttributes(): Promise<CategoryAttribute[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from(DATABASE_TABLES.CATEGORY_ATTRIBUTES)
+    .select(CATEGORY_ATTRIBUTE_COLUMNS)
+    .order("display_order", { ascending: true });
+
+  if (error) {
+    throw queryError("Failed to load category attributes", error);
+  }
+
+  return (data ?? []).map((row) => toCategoryAttribute(row as CategoryAttributeRow));
+}
+
+/**
+ * Admin-only: creates or replaces one category's config for one attribute
+ * key — `unique (category_id, attribute_key)` backs the upsert target. The
+ * two-layer requiredness invariants are re-validated by the schema
+ * (`upsertCategoryAttributeSchema`) before this is ever called, and by the
+ * DB's own CHECK constraints underneath regardless.
+ */
+export async function upsertCategoryAttribute(
+  input: UpsertCategoryAttributeInput,
+): Promise<CategoryAttribute> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from(DATABASE_TABLES.CATEGORY_ATTRIBUTES)
+    .upsert(
+      {
+        category_id: input.categoryId,
+        attribute_key: input.attributeKey,
+        is_required: input.isRequired,
+        is_variant_eligible: input.isVariantEligible,
+        is_recommended: input.isRecommended,
+        allowed_values: input.allowedValues,
+      },
+      { onConflict: "category_id,attribute_key" },
+    )
+    .select(CATEGORY_ATTRIBUTE_COLUMNS)
+    .single();
+
+  if (error) {
+    throw new Error(
+      mapPostgresError(error, "Failed to save this attribute's configuration."),
+    );
+  }
+
+  return toCategoryAttribute(data as CategoryAttributeRow);
+}
+
+/** Admin-only: removes one category's config for one attribute key (the category simply stops offering it). */
+export async function deleteCategoryAttribute(id: string): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase
+    .from(DATABASE_TABLES.CATEGORY_ATTRIBUTES)
+    .delete()
+    .eq("id", id);
+
+  if (error) {
+    throw queryError("Failed to remove this attribute", error);
+  }
+}
+
+/**
+ * Distinct real values of one attribute, across every active product in
+ * one category — the fallback for a `category_attributes` row whose
+ * `allowed_values` is null (free text, no admin-curated picklist). Used by
+ * `resolveFilterableAttributes` below; never queried per-request without a
+ * category filter (would be an unscoped scan across every variant).
+ */
+async function listDistinctVariantAttributeValues(
+  categoryId: string,
+  attributeKey: ProductAttributeKey,
+): Promise<string[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from(DATABASE_TABLES.PRODUCT_VARIANTS)
+    .select(`${attributeKey}, product:products!inner ( category_id, status )`)
+    .eq("product.category_id", categoryId)
+    .eq("product.status", PRODUCT_STATUS.active)
+    .not(attributeKey, "is", null);
+
+  if (error) {
+    throw queryError("Failed to load filter options", error);
+  }
+
+  const values = new Set<string>();
+  for (const row of data ?? []) {
+    const value = (row as unknown as Record<ProductAttributeKey, string | null>)[attributeKey];
+    if (value) values.add(value);
+  }
+  return Array.from(values).sort((a, b) => a.localeCompare(b));
+}
+
+/** One filterable attribute for the catalog's attribute-filter controls, resolved for a single category. */
+export interface ProductFilterOption {
+  attributeKey: ProductAttributeKey;
+  label: string;
+  values: string[];
+}
+
+const FILTER_OPTION_LABELS: Record<ProductAttributeKey, string> = {
+  color: "Color",
+  size: "Size",
+  material: "Material",
+  dimensions: "Dimensions",
+};
+
+/**
+ * Resolves which attribute filters (`ProductFilters`, §7) to show for one
+ * category: one entry per `is_variant_eligible` row, using `allowed_values`
+ * when the admin curated one, else the real distinct values in use —
+ * skipping an attribute entirely if nothing is actually filterable (an
+ * empty option list would be a dead-end control). Returns `[]` for any
+ * category with no `category_attributes` configured at all — exactly
+ * today's behavior (no attribute filters shown), not an error.
+ */
+export async function resolveFilterableAttributes(categoryId: string): Promise<ProductFilterOption[]> {
+  const attributes = await listCategoryAttributes(categoryId);
+  const variantEligible = attributes
+    .filter((attribute) => attribute.isVariantEligible)
+    .sort((a, b) => a.displayOrder - b.displayOrder);
+
+  const options: ProductFilterOption[] = [];
+  for (const attribute of variantEligible) {
+    const values =
+      attribute.allowedValues ??
+      (await listDistinctVariantAttributeValues(categoryId, attribute.attributeKey));
+    if (values.length === 0) continue;
+    options.push({ attributeKey: attribute.attributeKey, label: FILTER_OPTION_LABELS[attribute.attributeKey], values });
+  }
+  return options;
 }
 
 // ============================================================================
@@ -5704,8 +6063,8 @@ export async function listStockAdjustments(
 // ============================================================================
 
 const PRODUCT_VARIANT_COLUMNS = `
-  id, product_id, seller_id, shop_id, sku, color, size, price_cents, status,
-  created_at, updated_at
+  id, product_id, seller_id, shop_id, sku, color, size, material, dimensions,
+  price_cents, status, created_at, updated_at
 `;
 
 function toProductVariant(row: ProductVariantRow): ProductVariant {
@@ -5718,6 +6077,8 @@ function toProductVariant(row: ProductVariantRow): ProductVariant {
     color: row.color,
     size: row.size,
     priceCents: row.price_cents,
+    material: row.material,
+    dimensions: row.dimensions,
     status: row.status as ProductStatus,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -5764,6 +6125,10 @@ export interface ProductVariantInput {
   sku?: string;
   color?: string;
   size?: string;
+  /** Per-variant override of the parent product's material; omitted/undefined = inherit. */
+  material?: string;
+  /** Per-variant override of the parent product's dimensions; omitted/undefined = inherit. */
+  dimensions?: string;
   /** Major-unit pesos; omitted/undefined = inherit the parent product's price. */
   price?: number;
 }
@@ -5785,6 +6150,8 @@ export async function createProductVariant(
       sku: input.sku || null,
       color: input.color || null,
       size: input.size || null,
+      material: input.material || null,
+      dimensions: input.dimensions || null,
       price_cents: input.price !== undefined ? toCents(input.price) : null,
     })
     .select(PRODUCT_VARIANT_COLUMNS)
@@ -5792,7 +6159,7 @@ export async function createProductVariant(
 
   if (error) {
     if (error.code === "23505") {
-      throw new Error("This color/size combination already exists for this product.");
+      throw new Error("This combination of options already exists for this product.");
     }
     throw queryError("Failed to create variant", error);
   }
@@ -5835,6 +6202,8 @@ export async function updateProductVariant(
       sku: input.sku || null,
       color: input.color || null,
       size: input.size || null,
+      material: input.material || null,
+      dimensions: input.dimensions || null,
       price_cents: input.price !== undefined ? toCents(input.price) : null,
       ...(input.status !== undefined ? { status: input.status } : {}),
     })
@@ -5844,7 +6213,7 @@ export async function updateProductVariant(
 
   if (error) {
     if (error.code === "23505") {
-      throw new Error("This color/size combination already exists for this product.");
+      throw new Error("This combination of options already exists for this product.");
     }
     throw queryError("Failed to update variant", error);
   }
@@ -6627,11 +6996,11 @@ type CartItemRow = Database["public"]["Tables"]["cart_items"]["Row"];
 const CART_ITEM_COLUMNS = `
   id, cart_id, product_id, variant_id, quantity, created_at, updated_at,
   product:products!cart_items_product_id_fkey (
-    title, slug, price_cents, currency, seller_id,
+    title, slug, price_cents, currency, seller_id, material, dimensions,
     product_images ( url ),
     seller:profiles!products_seller_id_fkey ( full_name, username, role )
   ),
-  variant:product_variants!cart_items_variant_id_fkey ( color, size, price_cents )
+  variant:product_variants!cart_items_variant_id_fkey ( color, size, material, dimensions, price_cents )
 `;
 
 type CartItemRowWithJoins = CartItemRow & {
@@ -6641,12 +7010,16 @@ type CartItemRowWithJoins = CartItemRow & {
     price_cents: number;
     currency: string;
     seller_id: string | null;
+    material: string | null;
+    dimensions: string | null;
     product_images: { url: string }[];
     seller: Pick<ProfileRow, "full_name" | "username" | "role"> | null;
   } | null;
   variant: {
     color: string | null;
     size: string | null;
+    material: string | null;
+    dimensions: string | null;
     price_cents: number | null;
   } | null;
 };
@@ -6693,8 +7066,19 @@ function toCartLineItem(row: CartItemRowWithJoins): CartLineItem | null {
     sellerId: row.product.seller_id,
     sellerName: sellerDisplayName(row.product.seller_id, row.product.seller),
     sellerRole: (row.product.seller?.role as UserRole | undefined) ?? null,
+    // Same variant-overrides-product resolution `create_order` uses for its
+    // `order_items.variant_label` snapshot (see
+    // 20261014030000_create_order_generalized_variant_label.sql) — kept in
+    // sync so a cart line and its eventual order line render identically.
     variantLabel: row.variant
-      ? [row.variant.color, row.variant.size].filter(Boolean).join(" / ") || null
+      ? [
+          row.variant.color,
+          row.variant.size,
+          row.variant.material ?? row.product.material,
+          row.variant.dimensions ?? row.product.dimensions,
+        ]
+          .filter(Boolean)
+          .join(" / ") || null
       : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -7177,10 +7561,11 @@ export async function deleteRecommendationRule(
 // longer infer the joined shape.
 const GUIDED_SELECTION_MATCH_COLUMNS = `
   id, variant_id, size,
-  variant:product_variants!recommendation_rules_variant_id_fkey ( color, size, price_cents ),
+  variant:product_variants!recommendation_rules_variant_id_fkey ( color, size, material, dimensions, price_cents ),
   product:products!recommendation_rules_product_id_fkey!inner (
     id, slug, title, description, price_cents, currency, quantity, condition,
     status, featured, location, tags, category_id, seller_id, shop_id, published_at,
+    material, dimensions,
     created_at, updated_at,
     product_images ( id, url, alt_text, sort_order ),
     seller:profiles!products_seller_id_fkey ( full_name, username, role ),
@@ -7191,34 +7576,63 @@ const GUIDED_SELECTION_MATCH_COLUMNS = `
 type GuidedSelectionMatchRow = {
   variant_id: string | null;
   size: string | null;
-  variant: { color: string | null; size: string | null; price_cents: number | null } | null;
+  variant: {
+    color: string | null;
+    size: string | null;
+    material: string | null;
+    dimensions: string | null;
+    price_cents: number | null;
+  } | null;
   product: ProductRowWithImages;
 };
 
 export interface GuidedSelectionMatchInput {
   occasion?: RecommendationOccasion;
   size?: RecommendationSize;
+  /**
+   * Category scope (§6 of the implementation plan). Narrowing to one
+   * category is also what unlocks the color/material/dimensions filters
+   * below — same "ambiguous across categories, so omit" rule
+   * `resolveFilterableAttributes` uses for the catalog filters.
+   */
+  categoryId?: string;
+  /**
+   * New, generalized attribute answers — resolved against each candidate's
+   * variant (if the rule targets one) or product default, NOT a
+   * `recommendation_rules` column. Deliberately NOT extended to `size`:
+   * a live-data audit before this migration found 4 of 5 existing rules
+   * depend on the legacy `size` column with zero `product_variants` rows to
+   * migrate that preference onto, so `size` keeps matching against the
+   * rule's own `size` field, unchanged, below — only color/material/
+   * dimensions use this new resolution path, since they have no legacy
+   * data to break.
+   */
+  color?: string;
+  material?: string;
+  dimensions?: string;
   /** Major-unit pesos (not cents) — converted to price_cents below. */
   minPrice?: number;
   maxPrice?: number;
 }
 
 /**
- * Matches active rules of active products against the buyer's occasion/size
- * answers (an unanswered criterion matches anything) and checks each match's
- * *live* price — the variant's price when the rule targets one, else the
- * product's own price — against the buyer's budget window. Budget is never
- * compared to a stored value (see the `recommendation_rules` migration's
- * header comment).
+ * Matches active rules of active products against the buyer's occasion/size/
+ * category/attribute answers (an unanswered criterion matches anything) and
+ * checks each match's *live* price — the variant's price when the rule
+ * targets one, else the product's own price — against the buyer's budget
+ * window. Budget is never compared to a stored value (see the
+ * `recommendation_rules` migration's header comment).
  *
- * Occasion is filtered in SQL (a fixed enum, safe to interpolate). Size and
- * budget are applied in application code instead: size is free text — unsafe
- * to interpolate into a PostgREST `.or()` filter string, the same concern
- * `listProducts`'s `params.search` sanitizes for — and budget needs the
- * per-row variant-or-product price resolution above, which SQL can't express
- * as a single column filter here. The admin-authored rule table is small, so
- * filtering the fetched rows in memory (rather than a second round trip) is
- * the simplest correct option (KISS).
+ * Occasion and category are filtered in SQL (a fixed enum and a uuid FK,
+ * both safe to interpolate via `.eq()`/`.or()`). Size, the new color/
+ * material/dimensions answers, and budget are applied in application code
+ * instead: free text is unsafe to interpolate into a PostgREST `.or()`
+ * filter string (the same concern `listProducts`'s `params.search`
+ * sanitizes for), and budget needs the per-row variant-or-product price
+ * resolution above, which SQL can't express as a single column filter here.
+ * The admin-authored rule table is small, so filtering the fetched rows in
+ * memory (rather than a second round trip) is the simplest correct option
+ * (KISS) — same rationale as the pre-existing size/budget handling.
  */
 export async function listGuidedSelectionMatches(
   input: GuidedSelectionMatchInput,
@@ -7235,6 +7649,9 @@ export async function listGuidedSelectionMatches(
   if (input.occasion) {
     query = query.or(`occasion.is.null,occasion.eq.${input.occasion}`);
   }
+  if (input.categoryId) {
+    query = query.eq("product.category_id", input.categoryId);
+  }
 
   const { data, error } = await query.order("created_at", { ascending: false });
 
@@ -7243,6 +7660,9 @@ export async function listGuidedSelectionMatches(
   }
 
   const wantedSize = input.size?.trim().toLowerCase();
+  const wantedColor = input.color?.trim().toLowerCase();
+  const wantedMaterial = input.material?.trim().toLowerCase();
+  const wantedDimensions = input.dimensions?.trim().toLowerCase();
   const minCents = input.minPrice !== undefined ? toCents(input.minPrice) : null;
   const maxCents = input.maxPrice !== undefined ? toCents(input.maxPrice) : null;
 
@@ -7252,6 +7672,16 @@ export async function listGuidedSelectionMatches(
   for (const row of (data ?? []) as unknown as GuidedSelectionMatchRow[]) {
     if (!row.product) continue;
     if (row.size && wantedSize && row.size.trim().toLowerCase() !== wantedSize) continue;
+
+    // Variant overrides product default — same resolution `create_order`/
+    // `toCartLineItem` use. Unlike size/occasion, a candidate with no data
+    // for an explicitly-requested attribute is excluded outright (there is
+    // no rule-level wildcard for these — see the type's doc comment).
+    if (wantedColor && row.variant?.color?.trim().toLowerCase() !== wantedColor) continue;
+    const effectiveMaterial = (row.variant?.material ?? row.product.material)?.trim().toLowerCase();
+    if (wantedMaterial && effectiveMaterial !== wantedMaterial) continue;
+    const effectiveDimensions = (row.variant?.dimensions ?? row.product.dimensions)?.trim().toLowerCase();
+    if (wantedDimensions && effectiveDimensions !== wantedDimensions) continue;
 
     const matchedPriceCents = row.variant?.price_cents ?? row.product.price_cents;
     if (minCents !== null && matchedPriceCents < minCents) continue;
@@ -7265,7 +7695,9 @@ export async function listGuidedSelectionMatches(
       product: toProduct(row.product),
       variantId: row.variant_id,
       variantLabel: row.variant
-        ? [row.variant.color, row.variant.size].filter(Boolean).join(" / ") || null
+        ? [row.variant.color, row.variant.size, row.variant.material, row.variant.dimensions]
+            .filter(Boolean)
+            .join(" / ") || null
         : null,
       matchedPriceCents,
     });
@@ -7274,4 +7706,33 @@ export async function listGuidedSelectionMatches(
   }
 
   return matches;
+}
+
+/** One active category's id/name/slug plus whether Guided Selection should ask Occasion for it — see `categories.supports_occasion_matching`. */
+export interface GuidedSelectionCategoryOption {
+  id: string;
+  name: string;
+  slug: string;
+  supportsOccasionMatching: boolean;
+}
+
+/** Active categories for the quiz's category step, ordered the same way as `listActiveCategories`. Public — same guest-accessible precedent as the rest of Guided Selection. */
+export async function listGuidedSelectionCategories(): Promise<GuidedSelectionCategoryOption[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from(DATABASE_TABLES.CATEGORIES)
+    .select("id, name, slug, supports_occasion_matching")
+    .eq("active", true)
+    .order("sort_order", { ascending: true });
+
+  if (error) {
+    throw queryError("Failed to load categories", error);
+  }
+
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    name: row.name,
+    slug: row.slug,
+    supportsOccasionMatching: row.supports_occasion_matching,
+  }));
 }
