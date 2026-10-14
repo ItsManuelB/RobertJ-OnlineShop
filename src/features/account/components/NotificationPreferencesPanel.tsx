@@ -8,35 +8,11 @@ import type { BuyerPreferences } from "@/features/account/types/account.types";
 
 type ToggleKey = "orderUpdates" | "promotions" | "pushEnabled" | "emailEnabled" | "smsEnabled";
 
-const ROWS: { key: ToggleKey; label: string; description: string; comingSoon?: boolean }[] = [
+const ROWS: { key: ToggleKey; label: string; description: string }[] = [
   {
     key: "orderUpdates",
     label: "Order Updates",
     description: "Controls whether your Notifications page shows order/payment activity.",
-  },
-  {
-    key: "promotions",
-    label: "Promotions & Offers",
-    description: "There's no promotional messaging on RobertJ yet.",
-    comingSoon: true,
-  },
-  {
-    key: "pushEnabled",
-    label: "Push notifications",
-    description: "Push delivery isn't available on this platform yet.",
-    comingSoon: true,
-  },
-  {
-    key: "emailEnabled",
-    label: "Email notifications",
-    description: "Email delivery isn't available on this platform yet.",
-    comingSoon: true,
-  },
-  {
-    key: "smsEnabled",
-    label: "SMS notifications",
-    description: "SMS delivery isn't available on this platform yet.",
-    comingSoon: true,
   },
 ];
 
@@ -44,9 +20,9 @@ const ROWS: { key: ToggleKey; label: string; description: string; comingSoon?: b
  * `/privacy`'s Notifications section. Every toggle here is a real,
  * RLS-scoped, persisted `buyer_preferences` column — not local React state.
  * `orderUpdates` is the one wired to something real today (gates
- * `/notifications`'s activity feed); the other four have no delivery mechanism
- * behind them yet, so they're shown as disabled "Coming soon" rows rather than
- * live toggles that would imply a channel this app doesn't have.
+ * `/notifications`'s activity feed). The promotions / push / email / SMS
+ * columns still exist but have no delivery mechanism, so they are hidden
+ * rather than shown as switches implying a channel this app doesn't have.
  */
 export function NotificationPreferencesPanel({
   initialPreferences,
@@ -84,22 +60,20 @@ export function NotificationPreferencesPanel({
           <span className="flex flex-col gap-0.5">
             <span className="flex items-center gap-2">
               <span className="text-sm font-medium text-rj-black">{row.label}</span>
-              {row.comingSoon ? (
-                <span className="rounded-full bg-rj-gray-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-rj-gray-500">
-                  Coming soon
-                </span>
-              ) : null}
             </span>
             <span className="text-xs text-rj-gray-600">{row.description}</span>
           </span>
           <Checkbox
-            checked={row.comingSoon ? false : preferences[row.key]}
-            disabled={row.comingSoon || (isPending && pendingKey === row.key)}
+            checked={preferences[row.key]}
+            disabled={isPending && pendingKey === row.key}
             onChange={(event) => handleToggle(row.key, event.target.checked)}
             className="mt-0.5"
           />
         </label>
       ))}
+      <p className="pt-3 text-xs text-rj-gray-600">
+        Push, email and SMS alerts aren&apos;t available yet — they&apos;ll appear here when they are.
+      </p>
       {error ? (
         <p className="pt-3 text-xs font-semibold text-danger" role="alert">
           {error}

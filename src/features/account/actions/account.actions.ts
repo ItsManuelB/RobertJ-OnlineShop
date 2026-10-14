@@ -15,6 +15,7 @@ import {
   updateProfileSchema,
   uploadAvatarSchema,
 } from "@/features/account/schemas/account.schema";
+import { buildExport, type MyDataExport } from "@/features/account/lib/export-my-data";
 import type { BuyerPreferences, Profile } from "@/features/account/types/account.types";
 
 /** Updates the signed-in user's own profile row. RLS restricts the write to own row. */
@@ -239,4 +240,66 @@ export async function deactivateAccountAction(): Promise<ActionResult<null>> {
   await queries.signOut();
   revalidatePath("/", "layout");
   redirect(ROUTES.signIn);
+}
+
+/** Orders are fetched in pages of this size when building the data export. */
+const EXPORT_ORDER_PAGE_SIZE = 100;
+/** Upper bound so a pathological account can't make one export unbounded. */
+const EXPORT_ORDER_MAX_PAGES = 20;
+
+/**
+ * "Download my data": returns the signed-in buyer's own profile, preferences,
+ * addresses, orders and wishlist size as a plain object the client saves as a
+ * file. Everything is read through the caller's own session (RLS-scoped), and
+ * `buildExport` allow-lists the fields so no internal ids leave the system.
+ */
+export async function exportMyDataAction(): Promise<ActionResult<MyDataExport>> {
+  try {
+    const user = await queries.requireSessionUser();
+    await queries.requireRateLimit(`exportMyData:${user.id}`, 3, 600);
+
+    const [profile, preferences, addresses, wishlist] = await Promise.all([
+      queries.getMyProfile(),
+      queries.getMyBuyerPreferences(user.id),
+      queries.listMyAddresses(user.id),
+      queries.listWishlistProductIds(user.id),
+    ]);
+
+    const orders = [];
+    for (let page = 1; page <= EXPORT_ORDER_MAX_PAGES; page += 1) {
+      const result = await queries.listBuyerOrders(user.id, {
+        page,
+        pageSize: EXPORT_ORDER_PAGE_SIZE,
+      });
+      orders.push(...result.items);
+      if (page >= result.totalPages) break;
+    }
+
+    return ok(
+      buildExport({
+        email: user.email,
+        profile,
+        preferences,
+        addresses,
+        orders,
+        wishlistCount: wishlist.length,
+      }),
+    );
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "Could not prepare your data.");
+  }
+}
+
+/** Ends every other login of the signed-in user; the current device stays signed in. */
+export async function signOutOtherDevicesAction(): Promise<ActionResult<null>> {
+  try {
+    const user = await queries.requireSessionUser();
+    await queries.requireRateLimit(`signOutOthers:${user.id}`, 5, 300);
+    await queries.signOutOtherSessions();
+    return ok(null);
+  } catch (error) {
+    return fail(
+      error instanceof Error ? error.message : "Could not sign out your other devices.",
+    );
+  }
 }
