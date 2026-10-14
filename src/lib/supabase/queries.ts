@@ -6296,6 +6296,60 @@ export async function updateProductVariant(
 }
 
 /**
+ * Re-points photos tagged to `variantId` at another variant of the same color
+ * (same product), so deleting e.g. Blue/Small doesn't untag the "Blue" photo
+ * while Blue/Medium still exists. No sibling (or a color-less variant) = no-op;
+ * the FK then clears the tag as designed. Returns the moved image ids so the
+ * caller can undo the move if the delete fails.
+ */
+async function moveImageTagsToColorSibling(variantId: string): Promise<string[]> {
+  const supabase = await createSupabaseServerClient();
+
+  const { data: images, error: imagesError } = await supabase
+    .from(DATABASE_TABLES.PRODUCT_IMAGES)
+    .select("id")
+    .eq("variant_id", variantId);
+  if (imagesError) {
+    throw queryError("Failed to load tagged photos", imagesError);
+  }
+  if (!images || images.length === 0) return [];
+
+  const { data: variant, error: variantError } = await supabase
+    .from(DATABASE_TABLES.PRODUCT_VARIANTS)
+    .select("product_id, color")
+    .eq("id", variantId)
+    .maybeSingle();
+  if (variantError) {
+    throw queryError("Failed to load variant", variantError);
+  }
+  if (!variant?.color) return [];
+
+  const { data: sibling, error: siblingError } = await supabase
+    .from(DATABASE_TABLES.PRODUCT_VARIANTS)
+    .select("id")
+    .eq("product_id", variant.product_id)
+    .eq("color", variant.color)
+    .neq("id", variantId)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (siblingError) {
+    throw queryError("Failed to find a matching variant", siblingError);
+  }
+  if (!sibling) return [];
+
+  const imageIds = images.map((image) => image.id);
+  const { error: moveError } = await supabase
+    .from(DATABASE_TABLES.PRODUCT_IMAGES)
+    .update({ variant_id: sibling.id })
+    .in("id", imageIds);
+  if (moveError) {
+    throw queryError("Failed to keep photo tags", moveError);
+  }
+  return imageIds;
+}
+
+/**
  * Deletes a variant. `order_items.variant_id` is `ON DELETE RESTRICT`
  * (20260912010000_product_variants.sql) — a variant that has ever been
  * ordered cannot be deleted, by design, to protect historical order data.
@@ -6326,12 +6380,24 @@ export async function deleteProductVariant(
     }
   }
 
+  // Photos tagged to this variant would silently revert to "shared"
+  // (`ON DELETE SET NULL`) even when another variant of the same color
+  // survives. Move them onto a sibling of the same color first; if the delete
+  // is then refused (already ordered), move them back.
+  const movedImageIds = await moveImageTagsToColorSibling(id);
+
   const { error } = await supabase
     .from(DATABASE_TABLES.PRODUCT_VARIANTS)
     .delete()
     .eq("id", id);
 
   if (error) {
+    if (movedImageIds.length > 0) {
+      await supabase
+        .from(DATABASE_TABLES.PRODUCT_IMAGES)
+        .update({ variant_id: id })
+        .in("id", movedImageIds);
+    }
     if (error.code === "23503") {
       throw new Error(
         "This variant has already been ordered and can't be deleted — set it to Archived instead.",

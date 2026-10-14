@@ -61,7 +61,7 @@
 | **Database Tables** | `products`, `product_images` (optional `variant_id` tag), `categories` (FK), `product_variants` (nullable per-product; a variant's stock lives in the existing `inventory` table, keyed by `variant_id`, not a separate table). |
 | **Dependencies** | Marketplace (entry point), Cart (add-to-cart, variant-aware), Inventory (owns stock, including per-variant stock; `products.quantity` is a synced mirror — see [Inventory](#4-inventory)). |
 | **Current Status** | ✅ Completed for browsing/detail and for Shop Owner/Admin management (see [Admin](#11-admin) and [Shop Owner](#12-shop-owner)), including variants. |
-| **Future Work** | Variant-specific photos are tagged per color only (a photo tagged to a color's first variant covers every variant of that color; deleting that variant clears the tag). A full N-axis combination matrix / bulk price-stock grid is deliberately not built. |
+| **Future Work** | Variant-specific photos are tagged per color only (a photo tagged to one variant covers every variant of that color; deleting that variant re-points the tag to another variant of the same color, and only clears it when none is left). A full N-axis combination matrix / bulk price-stock grid is deliberately not built. |
 
 ---
 
