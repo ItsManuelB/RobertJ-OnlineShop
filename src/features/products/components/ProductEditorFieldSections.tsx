@@ -125,7 +125,7 @@ export function PriceStockSection({
           hint={
             hasOptions ? (
               <>
-                This product has options, so each option has its own stock.{" "}
+                This product has options, so each option has its own stock. To publish, the product itself still needs a quantity above 0.{" "}
                 {isEdit ? (
                   <Link href={inventoryHref} className="underline">
                     Manage stock

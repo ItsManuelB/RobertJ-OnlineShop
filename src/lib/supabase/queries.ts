@@ -836,6 +836,18 @@ export async function listActiveProductSlugsForSitemap(): Promise<
  * — never taken from `input.shopId` directly, so a client can't submit an
  * arbitrary shop even though RLS would reject a mismatched one anyway.
  */
+/**
+ * Plain-language text for the product constraints a seller can actually hit
+ * from the editor (the raw database message is logged by `queryError`, never
+ * shown). Today only the stock rule: an active product must have stock above 0
+ * (`products_active_requires_stock`).
+ */
+const ACTIVE_NEEDS_STOCK_MESSAGE =
+  "A product needs a quantity above 0 to be Active. Enter a quantity, or save it as a draft.";
+function friendlyProductError(error: { message?: string } | null): string | null {
+  return /products_active_requires_stock/.test(error?.message ?? "") ? ACTIVE_NEEDS_STOCK_MESSAGE : null;
+}
+
 export async function createProduct(
   input: CreateProductInput,
   sellerId: string,
@@ -877,7 +889,8 @@ export async function createProduct(
       const existing = await getDashboardProduct(clientId, { sellerId, shopId });
       if (existing && existing.sellerId === sellerId) return existing;
     }
-    throw queryError("Failed to create product", error);
+    const logged = queryError("Failed to create product", error);
+    throw friendlyProductError(error) ? new Error(friendlyProductError(error) as string) : logged;
   }
 
   return toProduct(data as ProductRowWithImages);
@@ -982,7 +995,8 @@ export async function updateProduct(
     .single();
 
   if (error) {
-    throw queryError("Failed to update product", error);
+    const logged = queryError("Failed to update product", error);
+    throw friendlyProductError(error) ? new Error(friendlyProductError(error) as string) : logged;
   }
 
   return toProduct(data as ProductRowWithImages);

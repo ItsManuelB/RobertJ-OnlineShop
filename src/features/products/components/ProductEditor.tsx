@@ -192,6 +192,10 @@ function ProductEditorForm({
       document.getElementById("sec-basics")?.scrollIntoView({ block: "start" });
       return;
     }
+    if (status === PRODUCT_STATUS.active && !(Number(values.quantity) > 0)) {
+      showStockRule();
+      return;
+    }
     inFlight.current = true;
     setFormError(null);
     setFieldErrors({});
@@ -245,8 +249,19 @@ function ProductEditorForm({
     });
   }
 
+  /** An Active product must have a quantity above 0 (a database rule); say so next to the field instead of failing the save. */
+  function showStockRule() {
+    setFieldErrors({ quantity: ["Enter a quantity above 0 to make this product Active."] });
+    setFormError("A product needs a quantity above 0 to be Active. Enter a quantity, or save it as a draft.");
+    document.getElementById("sec-price")?.scrollIntoView({ block: "start" });
+  }
+
   function saveExistingProduct() {
     if (!product || inFlight.current) return;
+    if (values.status === PRODUCT_STATUS.active && !(Number(values.quantity) > 0)) {
+      showStockRule();
+      return;
+    }
     inFlight.current = true;
     setFormError(null);
     setFieldErrors({});
@@ -288,6 +303,7 @@ function ProductEditorForm({
     { label: "Category chosen", done: Boolean(values.categoryId), required: true },
     { label: "Product name added", done: values.title.trim().length >= 2, required: true },
     { label: "Price set", done: priceNumber > 0, required: true },
+    { label: "Quantity above 0", done: Number(values.quantity) > 0, required: true },
     { label: "At least one photo", done: hasPhoto, required: false },
   ];
   const canPublish = checklist.filter((item) => item.required).every((item) => item.done);
@@ -388,7 +404,7 @@ function ProductEditorForm({
       </header>
       {!isEdit && !locked && !canPublish ? (
         <p id="publish-hint" className="-mt-2 text-xs text-muted-foreground">
-          To publish, add a category, a product name and a price. You can save as a draft at any time.
+          To publish, add a category, a product name, a price and a quantity above 0. You can save as a draft at any time, with no quantity.
         </p>
       ) : null}
 
