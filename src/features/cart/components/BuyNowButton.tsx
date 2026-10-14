@@ -1,17 +1,9 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState } from "react";
-
 import { Button } from "@/components/ui/button";
-import { ROUTES } from "@/constants/routes";
-import { USER_ROLES } from "@/constants/roles";
-import { useCart } from "@/features/cart/hooks/useCart";
 import type { SelectedVariantInfo } from "@/features/cart/components/AddToCartButton";
-import {
-  getCoverImage,
-  type Product,
-} from "@/features/products/types/product.types";
+import { usePurchaseActions } from "@/features/cart/hooks/usePurchaseActions";
+import type { Product } from "@/features/products/types/product.types";
 
 export interface BuyNowButtonProps {
   product: Product;
@@ -21,14 +13,16 @@ export interface BuyNowButtonProps {
   sellerName?: string | null;
   /** See `AddToCartButton`'s prop of the same name. */
   variant?: SelectedVariantInfo | null;
+  /** See `AddToCartButton`'s prop of the same name. */
+  onNeedSelection?: () => void;
 }
 
 /**
- * Adds the product to the cart, then goes straight to checkout — no new
- * order path, just a shortcut through the existing cart→checkout flow.
- * `/checkout` is already proxy-protected, so a guest lands on sign-in with
- * `redirectTo` preserved, same as clicking "Proceed to checkout" from the
- * cart page; nothing extra to handle here.
+ * Goes straight to checkout for this one product, option and quantity
+ * (`/checkout?buyNow=…`). The cart is not touched, and checkout re-reads price
+ * and stock from the server, so nothing here can change what is charged.
+ * `/checkout` is proxy-protected, so a guest lands on sign-in with the
+ * checkout link preserved and continues there afterwards.
  */
 export function BuyNowButton({
   product,
@@ -36,37 +30,21 @@ export function BuyNowButton({
   className,
   sellerName,
   variant,
+  onNeedSelection,
 }: BuyNowButtonProps) {
-  const router = useRouter();
-  const { addItem } = useCart();
-  const [isPending, setIsPending] = useState(false);
+  const { buyNow, isBusy, pending } = usePurchaseActions(product, sellerName);
   const hasVariants = variant !== undefined;
-  const isOutOfStock = hasVariants
-    ? variant === null || variant.stock <= 0
-    : product.quantity <= 0;
-  // See AddToCartButton's identical guard: a permanently-deleted seller's
-  // product can't be checked out against.
+  const needsSelection = hasVariants && variant === null;
+  const isOutOfStock = hasVariants ? variant !== null && variant.stock <= 0 : product.quantity <= 0;
   const hasNoSeller = product.sellerId === null;
+  const blocked = isOutOfStock || hasNoSeller || (needsSelection && !onNeedSelection);
 
-  function handleBuyNow() {
-    if ((hasVariants && !variant) || !product.sellerId) return;
-    setIsPending(true);
-    addItem({
-      productId: product.id,
-      variantId: variant?.id,
-      variantLabel: variant?.label ?? null,
-      slug: product.slug,
-      title: product.title,
-      imageUrl: getCoverImage(product)?.url ?? null,
-      unitPriceCents: variant ? variant.priceCents : product.priceCents,
-      currency: product.currency,
-      quantity,
-      maxQuantity: variant ? variant.stock : product.quantity,
-      sellerId: product.sellerId,
-      sellerName:
-        sellerName ?? (product.sellerRole === USER_ROLES.seller ? product.sellerName : null),
-    });
-    router.push(ROUTES.checkout);
+  function handleClick() {
+    if (needsSelection) {
+      onNeedSelection?.();
+      return;
+    }
+    buyNow(variant, quantity, { notifyErrors: true });
   }
 
   return (
@@ -75,9 +53,9 @@ export function BuyNowButton({
       variant="rjOutline"
       size="rj"
       className={className}
-      disabled={isOutOfStock || isPending || hasNoSeller}
-      isLoading={isPending}
-      onClick={handleBuyNow}
+      disabled={blocked || isBusy}
+      isLoading={pending === "buy"}
+      onClick={handleClick}
     >
       Buy Now
     </Button>

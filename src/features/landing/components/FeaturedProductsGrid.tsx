@@ -61,6 +61,7 @@ function toTileItem(
       initialSaved: wishlistedIds.has(view.productId),
       isAuthenticated,
     },
+    hasOptions: view.hasOptions,
     canPurchase,
   };
 }

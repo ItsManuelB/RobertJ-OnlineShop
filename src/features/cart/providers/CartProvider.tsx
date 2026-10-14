@@ -28,6 +28,7 @@ import {
   initialCartState,
 } from "@/features/cart/utils/cart-reducer";
 import type {
+  CartAddResult,
   CartItem,
   CartLineRef,
   CartState,
@@ -145,6 +146,13 @@ export interface CartContextValue {
   itemCount: number;
   subtotalCents: number;
   addItem: (item: CartItem) => void;
+  /**
+   * Like `addItem`, but waits for the outcome and validates stock first (the
+   * quantity already in the cart counts toward the limit), so the caller can
+   * show a precise message instead of the cart silently clamping or ignoring
+   * the request. The signed-in path is validated again on the server.
+   */
+  addItemChecked: (item: CartItem) => Promise<CartAddResult>;
   removeItem: (ref: CartLineRef) => void;
   /** Removes several lines at once — used by checkout to clear only placed items. */
   removeMany: (refs: CartLineRef[]) => void;
@@ -405,6 +413,44 @@ export function CartProvider({ children }: { children: ReactNode }) {
           return;
         }
         dispatch({ type: "add", item });
+      },
+      addItemChecked: async (item) => {
+        // The signed-in cart is validated against live stock by the server (the
+        // caller's `maxQuantity` is only a hint there), so only a guest line,
+        // which lives in the browser, is checked here.
+        if (!isAuthenticated) {
+          const existing = state.items.find(
+            (line) => line.productId === item.productId && line.variantId === item.variantId,
+          );
+          const alreadyInCart = existing?.quantity ?? 0;
+          if (item.maxQuantity <= 0) {
+            return { success: false, error: "This item is sold out." };
+          }
+          if (alreadyInCart + item.quantity > item.maxQuantity) {
+            return {
+              success: false,
+              error:
+                alreadyInCart > 0
+                  ? `You already have ${alreadyInCart} in your cart. Only ${item.maxQuantity} available in total.`
+                  : `Only ${item.maxQuantity} available.`,
+            };
+          }
+        }
+        if (isAuthenticated) {
+          const result = await addToCartAction({
+            productId: item.productId,
+            variantId: item.variantId,
+            quantity: item.quantity,
+          });
+          if (!result.success) return { success: false, error: result.error };
+          await refreshAuthenticatedCart();
+          return { success: true, quantityInCart: result.data.quantity };
+        }
+        dispatch({ type: "add", item });
+        const inCart = state.items.find(
+          (line) => line.productId === item.productId && line.variantId === item.variantId,
+        )?.quantity ?? 0;
+        return { success: true, quantityInCart: inCart + item.quantity };
       },
       removeItem: (ref) => {
         if (isAuthenticated) {

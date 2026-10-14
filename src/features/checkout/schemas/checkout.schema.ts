@@ -111,6 +111,13 @@ export const placeOrderSchema = z
     },
   );
 
+/** `/checkout?buyNow=<productId>&variant=<variantId>&qty=<n>` — validated before anything is read from the database. */
+export const buyNowParamsSchema = z.object({
+  buyNow: uuidSchema,
+  variant: uuidSchema.optional(),
+  qty: z.coerce.number().int().min(1).max(999).default(1),
+});
+
 export type ShippingAddressInput = z.infer<typeof shippingAddressSchema>;
 export type CheckoutItemInput = z.infer<typeof checkoutItemSchema>;
 export type CheckoutGroupInput = z.infer<typeof checkoutGroupSchema>;
