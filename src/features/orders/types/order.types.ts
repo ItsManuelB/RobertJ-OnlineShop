@@ -25,6 +25,18 @@ export interface ShippingAddress {
 }
 
 /**
+ * Barangay/city/province/region joined for display on a single line,
+ * skipping whichever are blank — shared by `ShippingLabel` and
+ * `OrderReceipt` so the two printable documents can never drift on how an
+ * address is formatted.
+ */
+export function formatAddressCityLine(address: ShippingAddress): string {
+  return [address.barangay, address.city, address.province, address.region]
+    .filter(Boolean)
+    .join(", ");
+}
+
+/**
  * One immutable line item. `productTitle`, `unitPriceCents`, and `subtotalCents`
  * are snapshots taken at checkout; `productSlug`/`imageUrl` are joined live from
  * the product when RLS still exposes it (a sold/archived product resolves to null

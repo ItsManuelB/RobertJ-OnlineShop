@@ -1,6 +1,6 @@
 import { formatDate } from "@/lib/utils/date";
 import { Barcode128 } from "@/features/orders/components/Barcode128";
-import type { Order, OrderShipment } from "@/features/orders/types/order.types";
+import { formatAddressCityLine, type Order, type OrderShipment } from "@/features/orders/types/order.types";
 
 export interface ShippingLabelProps {
   order: Order;
@@ -19,11 +19,7 @@ export interface ShippingLabelProps {
  */
 export function ShippingLabel({ order, shipment, shopName }: ShippingLabelProps) {
   const address = order.shippingAddress;
-  const cityLine = address
-    ? [address.barangay, address.city, address.province, address.region]
-        .filter(Boolean)
-        .join(", ")
-    : "";
+  const cityLine = address ? formatAddressCityLine(address) : "";
 
   return (
     <div className="mx-auto w-full max-w-[420px] rounded-lg border-2 border-black bg-white p-6 text-black">

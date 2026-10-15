@@ -100,25 +100,35 @@ export function OrderStatusControl({
       ? otherText.trim()
       : (SELLER_CANCELLATION_REASONS.find((reason) => reason.value === selectedReason)?.label ?? "");
 
+  /**
+   * Returns whether the transition actually succeeded server-side —
+   * needed by the scan-to-confirm flow (`ItemVerificationChecklist`), which
+   * must not report success (and let the scanner close) until this really
+   * resolves, not merely once `startTransition` has been scheduled.
+   */
   function advance(
     target: OrderStatus,
     shipment?: { courier: string; trackingNumber: string },
     reason?: string,
-  ) {
+  ): Promise<boolean> {
     setError(null);
-    startTransition(async () => {
-      const result = await advanceOrderStatusAction(orderId, target, shipment, reason);
-      if (!result.success) {
-        setError(result.error);
-        return;
-      }
-      if (target === "cancelled") {
-        setConfirmingCancel(false);
-        setSelectedReason(null);
-        setOtherText("");
-      }
-      if (target === "processing") setVerifying(false);
-      if (target === "shipped") setCapturingShipment(false);
+    return new Promise<boolean>((resolveAdvance) => {
+      startTransition(async () => {
+        const result = await advanceOrderStatusAction(orderId, target, shipment, reason);
+        if (!result.success) {
+          setError(result.error);
+          resolveAdvance(false);
+          return;
+        }
+        if (target === "cancelled") {
+          setConfirmingCancel(false);
+          setSelectedReason(null);
+          setOtherText("");
+        }
+        if (target === "processing") setVerifying(false);
+        if (target === "shipped") setCapturingShipment(false);
+        resolveAdvance(true);
+      });
     });
   }
 

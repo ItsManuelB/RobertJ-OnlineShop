@@ -1,6 +1,6 @@
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate } from "@/lib/utils/date";
-import type { Order } from "@/features/orders/types/order.types";
+import { formatAddressCityLine, type Order } from "@/features/orders/types/order.types";
 
 export interface OrderReceiptProps {
   order: Order;
@@ -22,11 +22,7 @@ export interface OrderReceiptProps {
  */
 export function OrderReceipt({ order, shopName, paymentLabel }: OrderReceiptProps) {
   const address = order.shippingAddress;
-  const cityLine = address
-    ? [address.barangay, address.city, address.province, address.region]
-        .filter(Boolean)
-        .join(", ")
-    : "";
+  const cityLine = address ? formatAddressCityLine(address) : "";
 
   return (
     <div className="mx-auto w-full max-w-[420px] rounded-lg border-2 border-black bg-white p-6 text-black">

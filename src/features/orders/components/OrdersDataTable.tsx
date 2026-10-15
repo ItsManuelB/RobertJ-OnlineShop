@@ -29,6 +29,8 @@ import { formatDate } from "@/lib/utils/date";
 import { cn } from "@/lib/utils/cn";
 
 const CANCELLABLE = new Set(["pending", "confirmed", "processing"]);
+/** Shared with the bulk shipping-labels page, which imports this instead of duplicating the number. */
+export const MAX_SELECTION = 100;
 
 export interface OrdersDataTableProps {
   orders: Order[];
@@ -60,7 +62,6 @@ export function OrdersDataTable({ orders, isAdmin }: OrdersDataTableProps) {
   const [isPending, startTransition] = useTransition();
   const cancelTriggerRef = useRef<HTMLButtonElement>(null);
 
-  const MAX_SELECTION = 100;
   const allSelected = orders.length > 0 && orders.every((o) => selected.has(o.id));
   const someSelected = orders.some((o) => selected.has(o.id));
   const selectedCount = selected.size;

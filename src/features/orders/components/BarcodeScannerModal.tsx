@@ -31,6 +31,18 @@ export interface BarcodeScannerModalProps {
    * `{ success: false, error }` shows the error with a "Scan again" retry.
    */
   onDecode: (decoded: string) => Promise<BarcodeDecodeResult>;
+  /**
+   * Escape hatch for a camera that is confirmed unavailable (permission
+   * denied, no device, or unsupported browser) — called instead of
+   * `onClose` when the bottom button is pressed in one of those three
+   * phases. Omitted: the button always just closes the modal, in every
+   * phase (today's behavior, unchanged for callers that don't need an
+   * escape hatch). Scanning-while-available is never affected by this —
+   * only reached once the camera has already failed to start.
+   */
+  onNoCameraFallback?: () => void;
+  /** Button text shown only while `onNoCameraFallback` is about to be invoked — defaults to `fallbackLabel` if omitted. */
+  noCameraFallbackLabel?: string;
   /** Copy overrides for the caller's specific scan purpose. */
   title?: string;
   instructions?: string;
@@ -49,6 +61,8 @@ export interface BarcodeScannerModalProps {
 export function BarcodeScannerModal({
   onClose,
   onDecode,
+  onNoCameraFallback,
+  noCameraFallbackLabel,
   title = "Scan order barcode",
   instructions = "Point the camera at the Code 128 barcode on the shipping label.",
   resolvingLabel = "Looking up the order…",
@@ -171,6 +185,20 @@ export function BarcodeScannerModal({
   }
 
   const showVideo = phase === "starting" || phase === "scanning" || phase === "resolving";
+  // Only reached once the camera has already failed to start — never
+  // short-circuits a scan that's still possible.
+  const cameraUnavailable = phase === "denied" || phase === "no-camera" || phase === "unsupported";
+  const effectiveFallbackLabel =
+    cameraUnavailable && onNoCameraFallback ? (noCameraFallbackLabel ?? fallbackLabel) : fallbackLabel;
+
+  function handleFallbackClick() {
+    stopCamera();
+    if (cameraUnavailable && onNoCameraFallback) {
+      onNoCameraFallback();
+    } else {
+      onClose();
+    }
+  }
 
   return (
     <div
@@ -216,15 +244,16 @@ export function BarcodeScannerModal({
 
           {phase === "denied" ? (
             <p className="mt-1 text-sm text-rj-gray-700">
-              Camera access was blocked. Enable camera permission for this site, or {fallbackLabel.toLowerCase()}.
+              Camera access was blocked. Enable camera permission for this site, or{" "}
+              {effectiveFallbackLabel.toLowerCase()}.
             </p>
           ) : null}
           {phase === "no-camera" ? (
-            <p className="mt-1 text-sm text-rj-gray-700">No camera was found. {fallbackLabel} instead.</p>
+            <p className="mt-1 text-sm text-rj-gray-700">No camera was found. {effectiveFallbackLabel} instead.</p>
           ) : null}
           {phase === "unsupported" ? (
             <p className="mt-1 text-sm text-rj-gray-700">
-              Camera scanning isn&apos;t available in this browser. {fallbackLabel} instead.
+              Camera scanning isn&apos;t available in this browser. {effectiveFallbackLabel} instead.
             </p>
           ) : null}
           {phase === "error" ? (
@@ -240,10 +269,10 @@ export function BarcodeScannerModal({
           ) : null}
           <button
             type="button"
-            onClick={handleClose}
+            onClick={handleFallbackClick}
             className={cn(buttonVariants({ variant: "outline", size: "rjSm" }))}
           >
-            {fallbackLabel}
+            {effectiveFallbackLabel}
           </button>
         </div>
       </div>

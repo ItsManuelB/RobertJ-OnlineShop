@@ -5,6 +5,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ROUTES } from "@/constants/routes";
 import { cn } from "@/lib/utils/cn";
+import { MAX_SELECTION } from "@/features/orders/components/OrdersDataTable";
 import { PrintLabelButton } from "@/features/orders/components/PrintLabelButton";
 import { ShippingLabel } from "@/features/orders/components/ShippingLabel";
 import { isShippingLabelEligible, type Order } from "@/features/orders/types/order.types";
@@ -21,10 +22,6 @@ export const metadata: Metadata = { title: "Shipping labels — Seller Portal" }
 interface SellerOrderLabelsPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
-
-// Mirrors OrdersDataTable's own MAX_SELECTION — a bulk print job is already
-// capped at selection time; this just guards a hand-edited/replayed URL too.
-const MAX_BULK_LABELS = 100;
 
 /**
  * Bulk shipping-label print view — one print job covering every selected
@@ -47,10 +44,19 @@ export default async function SellerOrderLabelsPage({ searchParams }: SellerOrde
         .map((id) => id.trim())
         .filter(Boolean),
     ),
-  ).slice(0, MAX_BULK_LABELS);
+  ).slice(0, MAX_SELECTION);
 
   const resolvedOrders = await Promise.all(
-    requestedIds.map((id) => getDashboardOrder(id, owner).catch(() => null)),
+    requestedIds.map((id) =>
+      getDashboardOrder(id, owner).catch((error) => {
+        // Logged, not swallowed — an id that's simply not this seller's own
+        // (or doesn't exist) is an expected, routine skip, but a real
+        // DB/RLS failure here would otherwise look identical to one in the
+        // "aren't eligible for a label" notice below.
+        console.error("[seller-labels] Failed to load order", id, error);
+        return null;
+      }),
+    ),
   );
   const orders = resolvedOrders.filter(
     (order): order is Order => order !== null && isShippingLabelEligible(order),
@@ -75,10 +81,20 @@ export default async function SellerOrderLabelsPage({ searchParams }: SellerOrde
   const shipments = await Promise.all(
     orders.map((order) => getOrderShipment(order.id).catch(() => null)),
   );
-  const membership = await getShopMembershipBySellerIds([user.id]).catch(
+  // Resolved per order's own seller (a shop can have co-sellers — see
+  // "Enable shop-based multi-seller access"), not once for the whole batch:
+  // a shared viewer-keyed name would be wrong for any order belonging to a
+  // different co-seller. One batched lookup for every distinct seller in
+  // the selection, same shape as the single-label page's per-order fallback.
+  const distinctSellerIds = Array.from(
+    new Set(orders.map((order) => order.sellerId).filter((id): id is string => id !== null)),
+  );
+  const membership = await getShopMembershipBySellerIds(distinctSellerIds).catch(
     () => new Map<string, { shopId: string; shopName: string }>(),
   );
-  const shopName = membership.get(user.id)?.shopName ?? orders[0]?.sellerName ?? null;
+  const shopNames = orders.map(
+    (order) => (order.sellerId ? membership.get(order.sellerId)?.shopName : null) ?? order.sellerName ?? null,
+  );
 
   return (
     <div className="flex flex-col items-center gap-6 p-5 lg:p-7">
@@ -102,7 +118,7 @@ export default async function SellerOrderLabelsPage({ searchParams }: SellerOrde
             key={order.id}
             className={cn("w-full", index < orders.length - 1 && "print-page-break")}
           >
-            <ShippingLabel order={order} shipment={shipments[index] ?? null} shopName={shopName} />
+            <ShippingLabel order={order} shipment={shipments[index] ?? null} shopName={shopNames[index] ?? null} />
           </div>
         ))}
       </div>

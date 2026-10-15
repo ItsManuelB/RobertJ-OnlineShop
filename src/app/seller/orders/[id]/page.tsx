@@ -74,6 +74,12 @@ export default async function SellerOrderDetailPage({ params, searchParams }: Se
       <OrderHeader order={order} themed />
       <OrderTimeline status={order.status} themed />
       <OrderStatusControl
+        // Forces a remount per order — otherwise a client-side navigation
+        // between two different "processing" orders (both via the barcode
+        // scanner's `?scan=ship`) could reuse the same component instance,
+        // and autoOpenShipment's lazy useState initializer would never
+        // re-run for the second scan in the same session.
+        key={order.id}
         orderId={order.id}
         orderNumber={order.orderNumber}
         status={order.status}

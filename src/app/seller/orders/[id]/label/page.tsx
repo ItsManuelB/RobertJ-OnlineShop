@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { PrintLabelButton } from "@/features/orders/components/PrintLabelButton";
 import { ShippingLabel } from "@/features/orders/components/ShippingLabel";
+import { isShippingLabelEligible } from "@/features/orders/types/order.types";
 import {
   getDashboardOrder,
   getOrderShipment,
@@ -35,7 +36,11 @@ export default async function SellerOrderLabelPage({ params }: SellerOrderLabelP
   const user = await requireSessionUser();
   const order = await getDashboardOrder(id, { sellerId: user.id, shopId: await getOwnShopId(user.id) });
 
-  if (!order) notFound();
+  // Ownership alone isn't enough — a direct URL visit must be gated by the
+  // same eligibility rule the links pointing here already enforce, so this
+  // page is genuinely "the single source for label-visibility" (MODULES.md),
+  // not just the UI that happens to link to it.
+  if (!order || !isShippingLabelEligible(order)) notFound();
 
   const shipment = await getOrderShipment(order.id).catch(() => null);
   const membership = await getShopMembershipBySellerIds(

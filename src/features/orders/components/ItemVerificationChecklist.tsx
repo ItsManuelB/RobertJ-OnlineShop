@@ -27,8 +27,14 @@ export interface ItemVerificationChecklistProps {
   orderNumber: string;
   isPending: boolean;
   themed?: boolean;
-  /** Called once every line has been checked and the seller scans this order's label. */
-  onConfirm: () => void;
+  /**
+   * Called once every line has been checked and the seller scans this
+   * order's label (or confirms without scanning, camera unavailable).
+   * Resolves to whether the status actually advanced server-side — the
+   * scanner is only closed as a success once this really settles, never
+   * merely once the call was started.
+   */
+  onConfirm: () => Promise<boolean>;
   onCancel: () => void;
 }
 
@@ -64,7 +70,13 @@ export function ItemVerificationChecklist({
         error: "That's a different order's label — scan this order's label instead.",
       };
     }
-    onConfirm();
+    const advanced = await onConfirm();
+    if (!advanced) {
+      return {
+        success: false,
+        error: "Couldn't mark this order ready for pickup. Please try again.",
+      };
+    }
     return { success: true };
   }
 
@@ -136,6 +148,15 @@ export function ItemVerificationChecklist({
         <BarcodeScannerModal
           onClose={() => setScanning(false)}
           onDecode={handleDecode}
+          // Camera confirmed unavailable (denied/no device/unsupported): let
+          // the seller confirm packing without a scan rather than being
+          // permanently blocked. Camera-available scanning is unaffected —
+          // this is only reached once the camera has already failed to start.
+          onNoCameraFallback={() => {
+            setScanning(false);
+            void onConfirm();
+          }}
+          noCameraFallbackLabel="Confirm without scanning"
           title="Scan this order's shipping label"
           resolvingLabel="Confirming…"
           fallbackLabel="Cancel"
