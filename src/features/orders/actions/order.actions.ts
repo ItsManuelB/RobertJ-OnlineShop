@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
-import { ORDER_STATUS } from "@/constants/status";
+import { ORDER_STATUS, type OrderStatus } from "@/constants/status";
 import { DASHBOARD_ROLES, USER_ROLES } from "@/constants/roles";
 import { ROUTES } from "@/constants/routes";
 import { fail, fromZodError, ok } from "@/lib/utils/result";
@@ -383,7 +383,7 @@ export async function exportOrdersAction(
  */
 export async function resolveSellerOrderByNumberAction(
   orderNumber: string,
-): Promise<ActionResult<{ orderId: string }>> {
+): Promise<ActionResult<{ orderId: string; status: OrderStatus }>> {
   const parsed = scanOrderNumberSchema.safeParse({ orderNumber });
   if (!parsed.success) return fromZodError(parsed.error);
 
@@ -398,7 +398,7 @@ export async function resolveSellerOrderByNumberAction(
     if (!order) {
       return fail("Order not found, or it isn't in your shop.");
     }
-    return ok({ orderId: order.id });
+    return ok({ orderId: order.id, status: order.status });
   } catch {
     return fail("Could not look up that order. Please try again.");
   }

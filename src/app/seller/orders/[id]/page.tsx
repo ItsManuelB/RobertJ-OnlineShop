@@ -6,7 +6,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { THEMED_CARD } from "@/components/ui/card";
 import { ROUTES } from "@/constants/routes";
 import { cn } from "@/lib/utils/cn";
-import { getBuyerDisplayName } from "@/features/orders/types/order.types";
+import { getBuyerDisplayName, isShippingLabelEligible } from "@/features/orders/types/order.types";
 import { OrderHeader } from "@/features/orders/components/OrderHeader";
 import { OrderItemsList } from "@/features/orders/components/OrderItemsList";
 import { OrderStatusControl } from "@/features/orders/components/OrderStatusControl";
@@ -30,6 +30,7 @@ import { RETURN_STATUS } from "@/constants/status";
 
 interface SellerOrderDetailPageProps {
   params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
 export async function generateMetadata({
@@ -42,12 +43,20 @@ export async function generateMetadata({
 }
 
 /** Seller Portal order detail — same composition as the Admin Portal's order detail page. */
-export default async function SellerOrderDetailPage({ params }: SellerOrderDetailPageProps) {
+export default async function SellerOrderDetailPage({ params, searchParams }: SellerOrderDetailPageProps) {
   const { id } = await params;
+  const { scan } = await searchParams;
   const user = await requireSessionUser();
   const order = await getDashboardOrder(id, { sellerId: user.id, shopId: await getOwnShopId(user.id) });
 
   if (!order) notFound();
+
+  // `?scan=ship` is set by the barcode scanner when it resolved a Ready for
+  // Pickup order — pre-opens the ship-confirmation form so the seller lands
+  // straight on "enter courier + tracking" instead of an extra click. Only
+  // honored when the order is actually still "processing" (a stale/replayed
+  // link on an order that moved on in the meantime is a no-op, not an error).
+  const autoOpenShipment = scan === "ship" && order.status === "processing";
 
   // Same signal `advanceOrderStatus` uses server-side: a not-yet-paid order
   // only blocks fulfilment advancement if it's actually a Xendit order (COD
@@ -64,26 +73,27 @@ export default async function SellerOrderDetailPage({ params }: SellerOrderDetai
     <article className="flex flex-col gap-8 p-5 lg:p-7">
       <OrderHeader order={order} themed />
       <OrderTimeline status={order.status} themed />
-      <div className="flex flex-col gap-3">
-        <OrderStatusControl
-          orderId={order.id}
-          orderNumber={order.orderNumber}
-          status={order.status}
-          items={order.items}
-          themed
-          paymentRequired={paymentRequired}
-        />
-        {["processing", "shipped", "delivered"].includes(order.status) ? (
-          <Link
-            href={ROUTES.sellerOrderLabel(order.id)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={cn(buttonVariants({ variant: "outline", size: "rjSm" }), "w-fit")}
-          >
-            Print shipping label
-          </Link>
-        ) : null}
-      </div>
+      <OrderStatusControl
+        orderId={order.id}
+        orderNumber={order.orderNumber}
+        status={order.status}
+        items={order.items}
+        themed
+        paymentRequired={paymentRequired}
+        autoOpenShipment={autoOpenShipment}
+        extraActions={
+          isShippingLabelEligible(order) ? (
+            <Link
+              href={ROUTES.sellerOrderLabel(order.id)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={cn(buttonVariants({ variant: "outline", size: "rjSm" }))}
+            >
+              Print shipping label
+            </Link>
+          ) : null
+        }
+      />
 
       {returnRequest ? (
         <div className="flex flex-col gap-3">

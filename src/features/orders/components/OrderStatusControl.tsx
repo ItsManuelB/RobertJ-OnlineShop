@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useRef, useState, useTransition, type ReactNode } from "react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import { ConfirmPanel } from "@/components/ui/confirm-panel";
@@ -41,6 +41,22 @@ export interface OrderStatusControlProps {
    * Omitted/false for COD orders and already-paid Xendit orders.
    */
   paymentRequired?: boolean;
+  /**
+   * Set when the seller arrived here via a barcode scan of a Ready for
+   * Pickup order's label — pre-opens the ship-confirmation form so they land
+   * directly on "enter courier + tracking" instead of an extra click.
+   * Courier/tracking are still required input; this only skips navigating
+   * the panel open.
+   */
+  autoOpenShipment?: boolean;
+  /**
+   * Extra buttons/links rendered in the same row as the primary status
+   * action (e.g. "Print shipping label") — keeps every top-level order
+   * action grouped on one line instead of scattered across separate rows.
+   * Hidden while a verification/shipment/cancel panel is open, same as the
+   * primary row itself.
+   */
+  extraActions?: ReactNode;
 }
 
 /**
@@ -60,6 +76,8 @@ export function OrderStatusControl({
   items,
   themed = false,
   paymentRequired = false,
+  autoOpenShipment = false,
+  extraActions,
 }: OrderStatusControlProps) {
   const allowed = ORDER_STATUS_TRANSITIONS[status];
   const nextStatus = allowed.find((candidate) => candidate !== "cancelled") ?? null;
@@ -68,7 +86,9 @@ export function OrderStatusControl({
 
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [verifying, setVerifying] = useState(false);
-  const [capturingShipment, setCapturingShipment] = useState(false);
+  const [capturingShipment, setCapturingShipment] = useState(
+    () => autoOpenShipment && nextStatus === "shipped" && !blockedByPayment,
+  );
   const [selectedReason, setSelectedReason] = useState<string | null>(null);
   const [otherText, setOtherText] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -102,7 +122,7 @@ export function OrderStatusControl({
     });
   }
 
-  if (!nextStatus && !canCancel) return null;
+  if (!nextStatus && !canCancel && !extraActions) return null;
 
   const panelOpen = confirmingCancel || verifying || capturingShipment;
 
@@ -147,12 +167,15 @@ export function OrderStatusControl({
               {status === "shipped" ? "Report failed delivery" : "Cancel order"}
             </button>
           ) : null}
+
+          {extraActions}
         </div>
       ) : null}
 
       {verifying ? (
         <ItemVerificationChecklist
           items={items}
+          orderNumber={orderNumber}
           isPending={isPending}
           themed={themed}
           onConfirm={() => advance("processing")}

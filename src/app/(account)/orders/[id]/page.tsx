@@ -166,6 +166,14 @@ export default async function OrderDetailPage({
             View Cancellation Details
           </Link>
         ) : null}
+        <Link
+          href={ROUTES.orderReceipt(order.id)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={cn(buttonVariants({ variant: "rjOutline", size: "rjSm" }))}
+        >
+          Print Receipt
+        </Link>
         <BuyAgainButton order={order} sellerName={shopName} />
       </div>
 

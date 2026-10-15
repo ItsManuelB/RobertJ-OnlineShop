@@ -20,6 +20,7 @@ export const ROUTES = {
   orders: "/orders",
   orderDetail: (id: string) => `/orders/${id}`,
   orderCancellation: (id: string) => `/orders/${id}/cancellation`,
+  orderReceipt: (id: string) => `/orders/${id}/receipt`,
   profile: "/profile",
   addresses: "/addresses",
   wishlist: "/wishlist",
@@ -66,6 +67,8 @@ export const ROUTES = {
   sellerOrders: "/seller/orders",
   sellerOrderDetail: (id: string) => `/seller/orders/${id}`,
   sellerOrderLabel: (id: string) => `/seller/orders/${id}/label`,
+  /** Bulk print: one print job covering every id's shipping label, in order. */
+  sellerOrderLabels: (ids: string[]) => `/seller/orders/labels?ids=${ids.join(",")}`,
   sellerPayments: "/seller/payments",
   sellerReports: "/seller/reports",
   notifications: "/notifications",

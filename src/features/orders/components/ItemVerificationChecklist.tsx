@@ -1,40 +1,72 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RJ_CARD, THEMED_CARD } from "@/components/ui/card";
 import { cn } from "@/lib/utils/cn";
+import type { BarcodeDecodeResult } from "@/features/orders/components/BarcodeScannerModal";
 import type { OrderItem } from "@/features/orders/types/order.types";
+
+// Client-only + code-split: only fetched once the seller has checked every
+// item and taps through to scan (mirrors ScanBarcodeButton's lazy import).
+const BarcodeScannerModal = dynamic(
+  () =>
+    import("@/features/orders/components/BarcodeScannerModal").then(
+      (mod) => mod.BarcodeScannerModal,
+    ),
+  { ssr: false },
+);
 
 export interface ItemVerificationChecklistProps {
   items: OrderItem[];
+  /** This order's own `order_number` — the scan must match it (defense
+   * against confirming this order with a different order's label). */
+  orderNumber: string;
   isPending: boolean;
   themed?: boolean;
-  /** Called once every line has been checked and the seller confirms. */
+  /** Called once every line has been checked and the seller scans this order's label. */
   onConfirm: () => void;
   onCancel: () => void;
 }
 
 /**
  * The To Pack → Ready for Pickup gate: the seller ticks off every line
- * (product + variant + quantity) before the order can advance. Purely a
- * client-side transition gate — which lines were ticked is never stored; only
- * a `packed_at` audit timestamp is recorded server-side once the transition
- * succeeds. No warehouse-management, no per-item records.
+ * (product + variant + quantity) — purely a client-side gate, which lines
+ * were ticked is never stored — then scans the order's own shipping-label
+ * barcode (attached to the sealed box) to confirm. The checklist is what
+ * catches a wrong item/quantity; the scan only proves this specific order's
+ * label was read, so it replaces the old plain "confirm" button rather than
+ * the checklist itself. Only a `packed_at` audit timestamp is recorded
+ * server-side once the transition succeeds. No warehouse-management, no
+ * per-item records.
  */
 export function ItemVerificationChecklist({
   items,
+  orderNumber,
   isPending,
   themed = false,
   onConfirm,
   onCancel,
 }: ItemVerificationChecklistProps) {
   const [checked, setChecked] = useState<Record<string, boolean>>({});
+  const [scanning, setScanning] = useState(false);
   const allChecked = items.length > 0 && items.every((item) => checked[item.id]);
   const ink = themed ? "text-foreground" : "text-rj-black";
   const muted = themed ? "text-muted-foreground" : "text-rj-gray-600";
+
+  async function handleDecode(decoded: string): Promise<BarcodeDecodeResult> {
+    if (decoded !== orderNumber) {
+      return {
+        success: false,
+        error: "That's a different order's label — scan this order's label instead.",
+      };
+    }
+    onConfirm();
+    return { success: true };
+  }
 
   return (
     <section
@@ -44,7 +76,8 @@ export function ItemVerificationChecklist({
       <div>
         <h3 className={cn("text-sm font-bold", ink)}>Verify items before packing</h3>
         <p className={cn("mt-1 text-xs", muted)}>
-          Confirm every item is packed. All items must be checked to mark this order ready for pickup.
+          Confirm every item is packed, then scan this order&apos;s shipping label to mark it ready
+          for pickup.
         </p>
       </div>
 
@@ -85,9 +118,9 @@ export function ItemVerificationChecklist({
           size="rjSm"
           isLoading={isPending}
           disabled={!allChecked}
-          onClick={onConfirm}
+          onClick={() => setScanning(true)}
         >
-          Mark ready for pickup
+          Scan label to confirm
         </Button>
         <button
           type="button"
@@ -98,6 +131,16 @@ export function ItemVerificationChecklist({
           Cancel
         </button>
       </div>
+
+      {scanning ? (
+        <BarcodeScannerModal
+          onClose={() => setScanning(false)}
+          onDecode={handleDecode}
+          title="Scan this order's shipping label"
+          resolvingLabel="Confirming…"
+          fallbackLabel="Cancel"
+        />
+      ) : null}
     </section>
   );
 }

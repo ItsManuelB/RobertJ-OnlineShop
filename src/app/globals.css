@@ -318,4 +318,10 @@ body {
   .no-print {
     display: none !important;
   }
+  /* Bulk label printing: one page per label (all but the last). Legacy
+   * property included alongside the modern one for older WebKit/print engines. */
+  .print-page-break {
+    break-after: page;
+    page-break-after: always;
+  }
 }

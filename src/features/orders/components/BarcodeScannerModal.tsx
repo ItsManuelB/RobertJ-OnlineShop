@@ -1,12 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
-import { ROUTES } from "@/constants/routes";
-import { resolveSellerOrderByNumberAction } from "@/features/orders/actions/order.actions";
 import { cn } from "@/lib/utils/cn";
 
 /** Minimal shape of ZXing's IScannerControls we use — kept inline so the
@@ -22,20 +19,41 @@ type Phase =
   | "no-camera"
   | "unsupported";
 
+export type BarcodeDecodeResult = { success: true } | { success: false; error: string };
+
 export interface BarcodeScannerModalProps {
   onClose: () => void;
+  /**
+   * Called with the decoded Code 128 text once a symbol is read. The modal
+   * is purely a camera/decode shell — what a scan *means* (look up and
+   * navigate to an order, or confirm the order already on screen) is entirely
+   * up to the caller. Resolving `{ success: true }` closes the modal;
+   * `{ success: false, error }` shows the error with a "Scan again" retry.
+   */
+  onDecode: (decoded: string) => Promise<BarcodeDecodeResult>;
+  /** Copy overrides for the caller's specific scan purpose. */
+  title?: string;
+  instructions?: string;
+  resolvingLabel?: string;
+  fallbackLabel?: string;
 }
 
 /**
- * Camera-based Code 128 scanner for the seller. Dynamically imports
- * `@zxing/browser` only when opened, restricts decoding to Code 128, prefers
- * the rear camera on mobile (integrated webcam on desktop), decodes the
- * `order_number`, and navigates to the existing seller order-detail page.
- * Read-only: it never changes any order/fulfilment state. Cleans up the camera
- * stream on success, close, and unmount, and guards against duplicate scans.
+ * Camera-based Code 128 scanner — dynamically imports `@zxing/browser` only
+ * when opened, restricts decoding to Code 128, prefers the rear camera on
+ * mobile (integrated webcam on desktop), and hands the decoded text to
+ * `onDecode`. Writes nothing itself; every write path belongs to whatever
+ * `onDecode` the caller supplies. Cleans up the camera stream on success,
+ * close, and unmount, and guards against duplicate scans.
  */
-export function BarcodeScannerModal({ onClose }: BarcodeScannerModalProps) {
-  const router = useRouter();
+export function BarcodeScannerModal({
+  onClose,
+  onDecode,
+  title = "Scan order barcode",
+  instructions = "Point the camera at the Code 128 barcode on the shipping label.",
+  resolvingLabel = "Looking up the order…",
+  fallbackLabel = "Use manual search",
+}: BarcodeScannerModalProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const controlsRef = useRef<ScannerControls | null>(null);
   const hasScannedRef = useRef(false);
@@ -60,15 +78,15 @@ export function BarcodeScannerModal({ onClose }: BarcodeScannerModalProps) {
   const resolve = useCallback(
     async (decoded: string) => {
       setPhase("resolving");
-      const result = await resolveSellerOrderByNumberAction(decoded);
+      const result = await onDecode(decoded);
       if (result.success) {
-        router.push(ROUTES.sellerOrderDetail(result.data.orderId));
+        onClose();
         return;
       }
       setErrorMessage(result.error);
       setPhase("error");
     },
-    [router],
+    [onDecode, onClose],
   );
 
   useEffect(() => {
@@ -158,12 +176,12 @@ export function BarcodeScannerModal({ onClose }: BarcodeScannerModalProps) {
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Scan order barcode"
+      aria-label={title}
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4"
     >
       <div className="w-full max-w-md rounded-xl bg-rj-white p-5 shadow-xl">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-bold text-rj-black">Scan order barcode</h2>
+          <h2 className="text-sm font-bold text-rj-black">{title}</h2>
           <button
             type="button"
             onClick={handleClose}
@@ -190,27 +208,23 @@ export function BarcodeScannerModal({ onClose }: BarcodeScannerModalProps) {
             <p className="mt-3 text-sm text-rj-gray-600">Starting camera…</p>
           ) : null}
           {phase === "scanning" ? (
-            <p className="mt-3 text-sm text-rj-gray-600">
-              Point the camera at the Code 128 barcode on the shipping label.
-            </p>
+            <p className="mt-3 text-sm text-rj-gray-600">{instructions}</p>
           ) : null}
           {phase === "resolving" ? (
-            <p className="mt-3 text-sm text-rj-gray-600">Opening order…</p>
+            <p className="mt-3 text-sm text-rj-gray-600">{resolvingLabel}</p>
           ) : null}
 
           {phase === "denied" ? (
             <p className="mt-1 text-sm text-rj-gray-700">
-              Camera access was blocked. Enable camera permission for this site, or use manual search.
+              Camera access was blocked. Enable camera permission for this site, or {fallbackLabel.toLowerCase()}.
             </p>
           ) : null}
           {phase === "no-camera" ? (
-            <p className="mt-1 text-sm text-rj-gray-700">
-              No camera was found. Use manual search instead.
-            </p>
+            <p className="mt-1 text-sm text-rj-gray-700">No camera was found. {fallbackLabel} instead.</p>
           ) : null}
           {phase === "unsupported" ? (
             <p className="mt-1 text-sm text-rj-gray-700">
-              Camera scanning isn&apos;t available in this browser. Use manual search instead.
+              Camera scanning isn&apos;t available in this browser. {fallbackLabel} instead.
             </p>
           ) : null}
           {phase === "error" ? (
@@ -229,7 +243,7 @@ export function BarcodeScannerModal({ onClose }: BarcodeScannerModalProps) {
             onClick={handleClose}
             className={cn(buttonVariants({ variant: "outline", size: "rjSm" }))}
           >
-            Use manual search
+            {fallbackLabel}
           </button>
         </div>
       </div>

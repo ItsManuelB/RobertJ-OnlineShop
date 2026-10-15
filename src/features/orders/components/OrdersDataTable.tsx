@@ -16,14 +16,19 @@ import { advanceOrderStatusAction, bulkCancelOrdersAction, bulkConfirmOrdersActi
 import { OrderStatusBadge } from "@/features/orders/components/OrderStatusBadge";
 import { PaymentStatusBadge } from "@/features/orders/components/PaymentStatusBadge";
 import { OrderItemThumbs } from "@/features/orders/components/OrderItemThumbs";
-import { getBuyerDisplayName, isOrderNeedingAttention, summarizeOrderItems, type Order } from "@/features/orders/types/order.types";
+import {
+  getBuyerDisplayName,
+  isOrderNeedingAttention,
+  isShippingLabelEligible,
+  summarizeOrderItems,
+  type Order,
+} from "@/features/orders/types/order.types";
 import { downloadCsv } from "@/lib/utils/csv";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate } from "@/lib/utils/date";
 import { cn } from "@/lib/utils/cn";
 
 const CANCELLABLE = new Set(["pending", "confirmed", "processing"]);
-const LABEL_ELIGIBLE = new Set(["processing", "shipped", "delivered"]);
 
 export interface OrdersDataTableProps {
   orders: Order[];
@@ -60,6 +65,7 @@ export function OrdersDataTable({ orders, isAdmin }: OrdersDataTableProps) {
   const someSelected = orders.some((o) => selected.has(o.id));
   const selectedCount = selected.size;
   const selectedOrders = orders.filter((o) => selected.has(o.id));
+  const labelEligibleSelectedIds = selectedOrders.filter(isShippingLabelEligible).map((o) => o.id);
 
   function toggleAll(checked: boolean) {
     if (!checked) {
@@ -228,6 +234,26 @@ export function OrdersDataTable({ orders, isAdmin }: OrdersDataTableProps) {
                 <Button type="button" variant="outline" size="rjSm" onClick={runExportSelected}>
                   Export selected
                 </Button>
+                {!isAdmin ? (
+                  labelEligibleSelectedIds.length > 0 ? (
+                    <Link
+                      href={ROUTES.sellerOrderLabels(labelEligibleSelectedIds)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={cn(buttonVariants({ variant: "outline", size: "rjSm" }))}
+                    >
+                      Print labels ({labelEligibleSelectedIds.length})
+                    </Link>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled
+                      className={cn(buttonVariants({ variant: "outline", size: "rjSm" }))}
+                    >
+                      Print labels
+                    </button>
+                  )
+                ) : null}
                 <Button
                   type="button"
                   variant="primary"
@@ -368,7 +394,7 @@ export function OrdersDataTable({ orders, isAdmin }: OrdersDataTableProps) {
                             Confirm order
                           </button>
                         ) : null}
-                        {!isAdmin && LABEL_ELIGIBLE.has(order.status) ? (
+                        {!isAdmin && isShippingLabelEligible(order) ? (
                           <Link
                             href={ROUTES.sellerOrderLabel(order.id)}
                             target="_blank"
@@ -460,7 +486,7 @@ export function OrdersDataTable({ orders, isAdmin }: OrdersDataTableProps) {
                     Confirm
                   </Button>
                 ) : null}
-                {!isAdmin && LABEL_ELIGIBLE.has(order.status) ? (
+                {!isAdmin && isShippingLabelEligible(order) ? (
                   <Link href={ROUTES.sellerOrderLabel(order.id)} target="_blank" rel="noopener noreferrer" className={cn(buttonVariants({ variant: "outline", size: "rjSm" }))}>
                     Print label
                   </Link>

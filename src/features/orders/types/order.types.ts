@@ -174,6 +174,25 @@ export function isOrderNeedingAttention(order: Pick<Order, "status" | "paymentMe
 }
 
 /**
+ * Whether a printed shipping label is relevant for this order — available
+ * from `confirmed` (To Pack) onward, so it can double as the picking/packing
+ * ticket the seller attaches to the box while packing, through the normal
+ * forward flow (`confirmed` → `processing` → `shipped` → `delivered`), plus
+ * a `cancelled` order that reached `shipped` first (a failed/returned
+ * delivery — `shippedAt` is stamped once and never cleared, so it's the
+ * durable signal). A `cancelled` order that never shipped never had a label.
+ */
+export function isShippingLabelEligible(order: Pick<Order, "status" | "shippedAt">): boolean {
+  if (order.status === "cancelled") return order.shippedAt !== null;
+  return (
+    order.status === "confirmed" ||
+    order.status === "processing" ||
+    order.status === "shipped" ||
+    order.status === "delivered"
+  );
+}
+
+/**
  * Name to show for an order's buyer on the dashboards. A seller can only read a
  * buyer's profile for orders addressed to them, so `buyerName` can be null for
  * a shop co-member's order; the delivery name captured on the order itself is

@@ -2,12 +2,18 @@
 
 import { Button } from "@/components/ui/button";
 
+export interface PrintLabelButtonProps {
+  /** Button copy — the seller's shipping label and the buyer's receipt share this one trigger. */
+  label?: string;
+}
+
 /**
- * Triggers the browser's native print dialog for the shipping label. Marked
- * `.no-print` so the button itself never appears on the printed page. No PDF
- * library — the label is plain HTML printed via `window.print()`.
+ * Triggers the browser's native print dialog for whatever `data-print-root`
+ * is on the page (shipping label or buyer receipt). Marked `.no-print` so the
+ * button itself never appears on the printout. No PDF library — plain HTML
+ * printed via `window.print()`.
  */
-export function PrintLabelButton() {
+export function PrintLabelButton({ label = "Print label" }: PrintLabelButtonProps) {
   return (
     <Button
       type="button"
@@ -16,7 +22,7 @@ export function PrintLabelButton() {
       className="no-print"
       onClick={() => window.print()}
     >
-      Print label
+      {label}
     </Button>
   );
 }
