@@ -1559,6 +1559,55 @@ export type Database = {
           },
         ]
       }
+      xendit_card_session_failures: {
+        Row: {
+          checkout_group_id: string | null
+          created_at: string
+          error_message: string
+          id: string
+          order_id: string
+          payment_id: string
+        }
+        Insert: {
+          checkout_group_id?: string | null
+          created_at?: string
+          error_message: string
+          id?: string
+          order_id: string
+          payment_id: string
+        }
+        Update: {
+          checkout_group_id?: string | null
+          created_at?: string
+          error_message?: string
+          id?: string
+          order_id?: string
+          payment_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "xendit_card_session_failures_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "xendit_card_session_failures_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "buyer_order_lifecycle"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "xendit_card_session_failures_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       xendit_refunds: {
         Row: {
           amount_cents: number
@@ -2261,6 +2310,10 @@ export type Database = {
       is_shop_member: { Args: { p_shop_id: string }; Returns: boolean }
       log_unrecognized_xendit_webhook_payload: {
         Args: { p_event_type: string; p_raw_payload: Json }
+        Returns: undefined
+      }
+      log_xendit_card_session_failure: {
+        Args: { p_error_message: string; p_payment_id: string }
         Returns: undefined
       }
       mark_cod_payment_collected: {

@@ -181,6 +181,7 @@ export async function createXenditCardSessionAction(
   const otherAttempts = await queries.getOtherFinalizedPendingXenditPayments(parsed.data.orderId, "CARD");
   if (findFreshOtherChannelAttempt(otherAttempts)) return fail(CHANNEL_SWITCH_BLOCKED_MESSAGE);
 
+  let attempt: Awaited<ReturnType<typeof queries.beginXenditPaymentAttempt>> | undefined;
   try {
     // Card sessions carry a short-lived components_sdk_key that can't be
     // meaningfully reused across requests, so every call here mints a
@@ -188,7 +189,7 @@ export async function createXenditCardSessionAction(
     // ruled out a still-valid existing session for this exact attempt.
     // Still reserved against the same idempotently-reserved `payments`
     // row either way, so no duplicate row is ever created for one intent.
-    const attempt = await queries.beginXenditPaymentAttempt(parsed.data.orderId, "CARD");
+    attempt = await queries.beginXenditPaymentAttempt(parsed.data.orderId, "CARD");
 
     // Bounces back into Checkout's payment workspace, never Orders — the
     // only place buyer payment initiation/retry is allowed to happen.
@@ -220,7 +221,17 @@ export async function createXenditCardSessionAction(
 
     return ok({ paymentId: attempt.id, componentsSdkKey: session.components_sdk_key });
   } catch (error) {
-    return fail(error instanceof Error ? error.message : "Could not start this payment.");
+    const message = error instanceof Error ? error.message : "Could not start this payment.";
+    // Forensic capture for the next occurrence of a Card session-creation
+    // failure (see docs/xendit-multishop-card-payment-failure-audit.md root
+    // cause #2) — only possible once the attempt row itself exists; a
+    // failure before that point (e.g. beginXenditPaymentAttempt's own RPC
+    // call) has no payment_id to log against and is DB-side, not a Xendit
+    // API failure anyway.
+    if (attempt) {
+      await queries.logXenditCardSessionFailure(attempt.id, message);
+    }
+    return fail(message);
   }
 }
 
@@ -385,8 +396,9 @@ export async function createXenditGroupCardSessionAction(
   );
   if (findFreshOtherChannelAttempt(otherAttempts)) return fail(CHANNEL_SWITCH_BLOCKED_MESSAGE);
 
+  let attempt: Awaited<ReturnType<typeof queries.beginXenditGroupPaymentAttempt>> | undefined;
   try {
-    const attempt = await queries.beginXenditGroupPaymentAttempt(parsed.data.checkoutGroupId, "CARD");
+    attempt = await queries.beginXenditGroupPaymentAttempt(parsed.data.checkoutGroupId, "CARD");
     const { amountCents, currency } = await queries.getXenditGroupPaymentTotal(
       parsed.data.checkoutGroupId,
       "CARD",
@@ -418,6 +430,12 @@ export async function createXenditGroupCardSessionAction(
       componentsSdkKey: session.components_sdk_key,
     });
   } catch (error) {
-    return fail(error instanceof Error ? error.message : "Could not start this payment.");
+    const message = error instanceof Error ? error.message : "Could not start this payment.";
+    // See the single-order Card action above for why this only fires once
+    // `attempt` exists.
+    if (attempt) {
+      await queries.logXenditCardSessionFailure(attempt.id, message);
+    }
+    return fail(message);
   }
 }

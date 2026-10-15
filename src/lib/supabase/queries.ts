@@ -2921,11 +2921,11 @@ export const getDashboardOrder = cache(
 export async function getDashboardOrderByNumber(
   orderNumber: string,
   owner: { sellerId: string; shopId: string | null } | null,
-): Promise<{ id: string } | null> {
+): Promise<{ id: string; status: OrderStatus } | null> {
   const supabase = await createSupabaseServerClient();
   let query = supabase
     .from(DATABASE_TABLES.ORDERS)
-    .select("id")
+    .select("id, order_status")
     .eq("order_number", orderNumber);
 
   if (owner) {
@@ -2942,7 +2942,7 @@ export async function getDashboardOrderByNumber(
     throw queryError("Failed to look up order", error);
   }
 
-  return data ? { id: data.id } : null;
+  return data ? { id: data.id, status: data.order_status } : null;
 }
 
 /**
@@ -3930,6 +3930,25 @@ export async function finalizeXenditGroupPaymentRequest(input: {
     throw rpcError("Could not confirm this payment request.", error);
   }
   return toPaymentAttempt(data as PaymentRow);
+}
+
+/**
+ * Best-effort forensic log for a failed Xendit Card `/sessions` creation
+ * call, via `log_xendit_card_session_failure` — the outbound counterpart to
+ * the inbound `log_unrecognized_xendit_webhook_payload`. Called only from
+ * `createXenditCardSessionAction`/`createXenditGroupCardSessionAction`'s own
+ * catch blocks, so a logging failure here must never mask or replace the
+ * original error the buyer already sees — swallowed, not thrown.
+ */
+export async function logXenditCardSessionFailure(paymentId: string, errorMessage: string): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc("log_xendit_card_session_failure", {
+    p_payment_id: paymentId,
+    p_error_message: errorMessage,
+  });
+  if (error) {
+    console.error("[queries] Failed to log Xendit Card session failure", error);
+  }
 }
 
 /**
