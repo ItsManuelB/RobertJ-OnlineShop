@@ -5016,6 +5016,33 @@ export async function getShopNamesBySellerIds(
 }
 
 /**
+ * `shopId -> shopName` for buyer-facing surfaces whose product/order rows
+ * carry `shop_id` directly (post-TD-1) but whose `seller_id` is null — e.g. a
+ * product whose original seller account was hard-deleted
+ * (`admin_hard_delete_seller_account` sets `products.seller_id` to null while
+ * leaving `shop_id` untouched). `getShopNamesBySellerIds` can't resolve these
+ * (it has no seller id to key off), silently falling through to the generic
+ * "RobertJ Seller" label even though the product's real shop is known. Reads
+ * `shops` directly (public SELECT per `20260821010000_public_shop_readability.sql`)
+ * rather than the seller-keyed RPC. Empty input short-circuits without a round trip.
+ */
+export async function getShopNamesByIds(
+  shopIds: string[],
+): Promise<Map<string, string>> {
+  if (shopIds.length === 0) return new Map();
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from(DATABASE_TABLES.SHOPS)
+    .select("id, name")
+    .in("id", shopIds);
+
+  if (error) {
+    throw queryError("Failed to resolve shop names", error);
+  }
+  return new Map((data ?? []).map((row) => [row.id as string, row.name as string]));
+}
+
+/**
  * Like `getShopNamesBySellerIds`, but also returns each seller's `shop_id` —
  * for "View Shop" links that need to filter `/products?shopId=` rather than
  * just display a name. Same RPC, same empty-input short-circuit; kept as a
