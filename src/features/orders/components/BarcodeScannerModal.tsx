@@ -89,19 +89,27 @@ export function BarcodeScannerModal({
     if (videoRef.current) videoRef.current.srcObject = null;
   }, []);
 
-  const resolve = useCallback(
-    async (decoded: string) => {
-      setPhase("resolving");
-      const result = await onDecode(decoded);
-      if (result.success) {
-        onClose();
-        return;
-      }
-      setErrorMessage(result.error);
-      setPhase("error");
-    },
-    [onDecode, onClose],
-  );
+  // Callers pass fresh inline callbacks every render (and re-render while the
+  // decode is being acted on). Reading the latest ones through a ref keeps
+  // `resolve` — and therefore the camera-start effect — stable, so a parent
+  // re-render can never tear down and restart a live scan.
+  const onDecodeRef = useRef(onDecode);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onDecodeRef.current = onDecode;
+    onCloseRef.current = onClose;
+  }, [onDecode, onClose]);
+
+  const resolve = useCallback(async (decoded: string) => {
+    setPhase("resolving");
+    const result = await onDecodeRef.current(decoded);
+    if (result.success) {
+      onCloseRef.current();
+      return;
+    }
+    setErrorMessage(result.error);
+    setPhase("error");
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
