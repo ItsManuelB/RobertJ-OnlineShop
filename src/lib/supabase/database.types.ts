@@ -1184,7 +1184,12 @@ export type Database = {
           order_id: string
           order_item_id: string | null
           reason: string
+          reason_code: Database["public"]["Enums"]["return_reason_code"]
           refund_amount_cents: number | null
+          replacement_courier: string | null
+          replacement_shipped_at: string | null
+          replacement_tracking_number: string | null
+          request_type: Database["public"]["Enums"]["return_request_type"]
           restocked_at: string | null
           seller_decided_at: string | null
           seller_decided_by: string | null
@@ -1208,7 +1213,12 @@ export type Database = {
           order_id: string
           order_item_id?: string | null
           reason: string
+          reason_code?: Database["public"]["Enums"]["return_reason_code"]
           refund_amount_cents?: number | null
+          replacement_courier?: string | null
+          replacement_shipped_at?: string | null
+          replacement_tracking_number?: string | null
+          request_type?: Database["public"]["Enums"]["return_request_type"]
           restocked_at?: string | null
           seller_decided_at?: string | null
           seller_decided_by?: string | null
@@ -1232,7 +1242,12 @@ export type Database = {
           order_id?: string
           order_item_id?: string | null
           reason?: string
+          reason_code?: Database["public"]["Enums"]["return_reason_code"]
           refund_amount_cents?: number | null
+          replacement_courier?: string | null
+          replacement_shipped_at?: string | null
+          replacement_tracking_number?: string | null
+          request_type?: Database["public"]["Enums"]["return_request_type"]
           restocked_at?: string | null
           seller_decided_at?: string | null
           seller_decided_by?: string | null
@@ -2085,7 +2100,12 @@ export type Database = {
         Returns: Database["public"]["Enums"]["user_role"]
       }
       decide_return: {
-        Args: { p_decision: string; p_note?: string; p_return_id: string }
+        Args: {
+          p_decision: string
+          p_note?: string
+          p_resolution_type?: Database["public"]["Enums"]["return_request_type"]
+          p_return_id: string
+        }
         Returns: {
           admin_decided_at: string | null
           admin_decided_by: string | null
@@ -2100,7 +2120,12 @@ export type Database = {
           order_id: string
           order_item_id: string | null
           reason: string
+          reason_code: Database["public"]["Enums"]["return_reason_code"]
           refund_amount_cents: number | null
+          replacement_courier: string | null
+          replacement_shipped_at: string | null
+          replacement_tracking_number: string | null
+          request_type: Database["public"]["Enums"]["return_request_type"]
           restocked_at: string | null
           seller_decided_at: string | null
           seller_decided_by: string | null
@@ -2547,12 +2572,53 @@ export type Database = {
           units_sold: number
         }[]
       }
+      record_return_replacement_shipment: {
+        Args: { p_courier: string; p_return_id: string; p_tracking_number: string }
+        Returns: {
+          admin_decided_at: string | null
+          admin_decided_by: string | null
+          admin_decision_note: string | null
+          buyer_id: string
+          condition_note: string | null
+          condition_recorded_by: string | null
+          created_at: string
+          evidence_path: string | null
+          id: string
+          marked_unsellable_at: string | null
+          order_id: string
+          order_item_id: string | null
+          reason: string
+          reason_code: Database["public"]["Enums"]["return_reason_code"]
+          refund_amount_cents: number | null
+          replacement_courier: string | null
+          replacement_shipped_at: string | null
+          replacement_tracking_number: string | null
+          request_type: Database["public"]["Enums"]["return_request_type"]
+          restocked_at: string | null
+          seller_decided_at: string | null
+          seller_decided_by: string | null
+          seller_decision_note: string | null
+          seller_id: string | null
+          shop_id: string | null
+          status: Database["public"]["Enums"]["return_status"]
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "return_requests"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       request_return: {
         Args: {
           p_evidence_path?: string
+          p_explanation?: string
           p_order_id: string
           p_order_item_id?: string
           p_reason?: string
+          p_reason_code?: Database["public"]["Enums"]["return_reason_code"]
+          p_request_type?: Database["public"]["Enums"]["return_request_type"]
         }
         Returns: {
           admin_decided_at: string | null
@@ -2568,7 +2634,12 @@ export type Database = {
           order_id: string
           order_item_id: string | null
           reason: string
+          reason_code: Database["public"]["Enums"]["return_reason_code"]
           refund_amount_cents: number | null
+          replacement_courier: string | null
+          replacement_shipped_at: string | null
+          replacement_tracking_number: string | null
+          request_type: Database["public"]["Enums"]["return_request_type"]
           restocked_at: string | null
           seller_decided_at: string | null
           seller_decided_by: string | null
@@ -2678,12 +2749,24 @@ export type Database = {
         | "party"
         | "wedding"
         | "everyday"
+      return_reason_code:
+        | "damaged_item"
+        | "defective_item"
+        | "wrong_item"
+        | "missing_item"
+        | "item_not_received"
+        | "other"
+      return_request_type:
+        | "money_refund"
+        | "return_and_refund"
+        | "replacement_exchange"
       return_status:
         | "pending"
         | "seller_accepted"
         | "seller_rejected"
         | "admin_rejected"
         | "refunded"
+        | "replacement_approved"
       stock_adjustment_reason:
         | "initial_stock"
         | "restock"
@@ -2853,12 +2936,22 @@ export const Constants = {
         "wedding",
         "everyday",
       ],
+      return_reason_code: [
+        "damaged_item",
+        "defective_item",
+        "wrong_item",
+        "missing_item",
+        "item_not_received",
+        "other",
+      ],
+      return_request_type: ["money_refund", "return_and_refund", "replacement_exchange"],
       return_status: [
         "pending",
         "seller_accepted",
         "seller_rejected",
         "admin_rejected",
         "refunded",
+        "replacement_approved",
       ],
       stock_adjustment_reason: [
         "initial_stock",

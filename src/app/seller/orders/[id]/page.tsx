@@ -7,6 +7,7 @@ import { THEMED_CARD } from "@/components/ui/card";
 import { ROUTES } from "@/constants/routes";
 import { cn } from "@/lib/utils/cn";
 import { getBuyerDisplayName, isShippingLabelEligible } from "@/features/orders/types/order.types";
+import { BuyerReceiptConfirmation } from "@/features/orders/components/BuyerReceiptConfirmation";
 import { OrderHeader } from "@/features/orders/components/OrderHeader";
 import { OrderItemsList } from "@/features/orders/components/OrderItemsList";
 import { OrderStatusControl } from "@/features/orders/components/OrderStatusControl";
@@ -127,6 +128,11 @@ export default async function SellerOrderDetailPage({ params, searchParams }: Se
             <p className="mt-2 text-sm font-semibold text-foreground">
               {getBuyerDisplayName(order)}
             </p>
+            {order.buyerConfirmedReceivedAt ? (
+              <div className="mt-3">
+                <BuyerReceiptConfirmation confirmedAt={order.buyerConfirmedReceivedAt} />
+              </div>
+            ) : null}
             <div className="mt-3 border-t border-border pt-3">
               <h2 className="text-[10px] font-bold uppercase tracking-[0.3em] text-muted-foreground">
                 Payment

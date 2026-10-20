@@ -3,18 +3,20 @@ import Image from "next/image";
 import { Badge } from "@/components/ui/badge";
 import { RJ_CARD, THEMED_CARD } from "@/components/ui/card";
 import { RETURN_STATUS, RETURN_STATUS_LABELS, type ReturnStatus } from "@/constants/status";
+import { RETURN_REQUEST_TYPE_LABELS } from "@/features/returns/constants/return.constants";
 import type { ReturnRequest } from "@/features/returns/types/return.types";
 import { formatCurrency } from "@/lib/utils/currency";
-import { formatDate } from "@/lib/utils/date";
+import { formatDate, formatDateTime } from "@/lib/utils/date";
 import { cn } from "@/lib/utils/cn";
 import { getPendingXenditRefundForReturn } from "@/lib/supabase/queries";
 
-const RETURN_STATUS_TONE: Record<ReturnStatus, "neutral" | "info" | "success" | "danger"> = {
+const RETURN_STATUS_TONE: Record<ReturnStatus, "neutral" | "info" | "success" | "danger" | "warning"> = {
   pending: "neutral",
   seller_accepted: "info",
   seller_rejected: "danger",
   admin_rejected: "danger",
   refunded: "success",
+  replacement_approved: "warning",
 };
 
 export interface ReturnRequestStatusCardProps {
@@ -66,9 +68,23 @@ export async function ReturnRequestStatusCard({
 
       <p className={cn("mt-2 text-xs", muted)}>
         Requested {formatDate(request.createdAt)}
-        {request.buyerName ? ` by ${request.buyerName}` : ""}
+        {request.buyerName ? ` by ${request.buyerName}` : ""} —{" "}
+        {RETURN_REQUEST_TYPE_LABELS[request.requestType]}
       </p>
       <p className={cn("mt-2 text-sm", ink)}>{request.reason}</p>
+
+      {themed &&
+      request.orderPaymentMethod === "cod" &&
+      request.orderPaymentStatus !== "paid" &&
+      (request.status === RETURN_STATUS.pending ||
+        request.status === RETURN_STATUS.sellerAccepted ||
+        request.status === RETURN_STATUS.sellerRejected) ? (
+        <p className={cn("mt-3 rounded-md border border-warning/40 bg-warning/10 p-2.5 text-xs", muted)}>
+          <span className="font-semibold text-warning">Refund approval will fail right now:</span> this
+          order&apos;s COD cash hasn&apos;t been recorded as collected yet. Mark it collected on the order
+          first.
+        </p>
+      ) : null}
 
       {evidenceUrl ? (
         <a
@@ -123,6 +139,15 @@ export async function ReturnRequestStatusCard({
       ) : request.markedUnsellableAt ? (
         <p className={cn("mt-2 text-xs", muted)}>
           <span className={cn("font-semibold", ink)}>Item condition:</span> not sellable — stock not restored.
+        </p>
+      ) : null}
+
+      {request.status === RETURN_STATUS.replacementApproved ? (
+        <p className={cn("mt-3 text-xs", muted)}>
+          <span className={cn("font-semibold", ink)}>Replacement:</span>{" "}
+          {request.replacementShippedAt
+            ? `shipped via ${request.replacementCourier} — tracking ${request.replacementTrackingNumber} (${formatDateTime(request.replacementShippedAt)})`
+            : "approved — awaiting shipment"}
         </p>
       ) : null}
     </section>

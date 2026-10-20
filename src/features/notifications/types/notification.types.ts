@@ -6,10 +6,16 @@ export type BuyerActivityEventType =
   | "payment_confirmed"
   | "order_shipped"
   | "order_delivered"
+  | "receipt_confirmed"
   | "order_cancelled"
   | "receipt_submitted"
   | "payment_verified"
-  | "payment_failed";
+  | "payment_failed"
+  | "return_filed"
+  | "return_rejected_by_seller"
+  | "return_rejected"
+  | "return_refunded"
+  | "return_replacement_approved";
 
 /** One row of the derived, read-only buyer activity feed. */
 export interface BuyerActivityEvent {

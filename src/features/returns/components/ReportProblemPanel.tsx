@@ -1,11 +1,22 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useId, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { RJ_CARD } from "@/components/ui/card";
+import { ChoiceGroup } from "@/components/ui/choice-group";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { requestReturnAction } from "@/features/returns/actions/return.actions";
+import {
+  RETURN_EXPLANATION_MAX_LENGTH,
+  RETURN_REASON_CODE_LABELS,
+  RETURN_REASON_CODE_OPTIONS,
+  RETURN_REQUEST_TYPE,
+  RETURN_REQUEST_TYPE_DESCRIPTIONS,
+  RETURN_REQUEST_TYPE_LABELS,
+  SHIPPED_ELIGIBLE_REASON_CODE,
+} from "@/features/returns/constants/return.constants";
+import type { ReturnReasonCode, ReturnRequestType } from "@/features/returns/types/return.types";
 import { cn } from "@/lib/utils/cn";
 import type { ActionResult } from "@/types/action.types";
 
@@ -13,79 +24,60 @@ export interface ReportProblemPanelProps {
   orderId: string;
   /** Shown when this panel is presented as one of two side-by-side choices (paired with `ConfirmReceivedButton`) rather than the only option on the page. */
   onCancel?: () => void;
+  /**
+   * Fulfillment/returns audit finding A3: true for an order still
+   * `shipped` (not yet `delivered`) — `request_return` only accepts that
+   * status for `item_not_received`, so every other reason would just fail
+   * server-side. Narrows the dropdown to the one reason that actually
+   * applies instead of offering choices that can't be submitted yet.
+   */
+  onlyItemNotReceived?: boolean;
 }
 
-const ISSUE_OPTIONS = [
-  { value: "non_delivery", label: "Non-delivery" },
-  { value: "wrong_item", label: "Wrong item" },
-  { value: "damaged_item", label: "Damaged item" },
-  { value: "missing_item", label: "Missing item" },
-  { value: "other", label: "Other" },
-] as const;
-
-type IssueValue = (typeof ISSUE_OPTIONS)[number]["value"];
-
-/** Mirrors `requestReturnSchema`'s `reason` cap (`return.schema.ts`) — the
- * composed string below must never exceed it, or a maxed-out "Other"
- * description combined with several checked issues would fail server-side
- * validation after the buyer already submitted. */
-const REASON_MAX_LENGTH = 500;
-const DETAILS_PREFIX = "Details: ";
+const REQUEST_TYPE_OPTIONS = (
+  Object.values(RETURN_REQUEST_TYPE) as ReturnRequestType[]
+).map((value) => ({
+  value,
+  label: RETURN_REQUEST_TYPE_LABELS[value],
+  description: RETURN_REQUEST_TYPE_DESCRIPTIONS[value],
+}));
 
 /**
  * Buyer's "something's wrong" path — the counterpart to
- * `ConfirmReceivedButton`'s "everything arrived as expected" path. Replaces
- * the old single free-text `RequestReturnPanel` with a checkbox issue list;
- * submits through the exact same `requestReturnAction`/`request_return` RPC
- * as before (no schema/backend change) by composing the checked issues (plus
- * the "Other" detail, if given) into that action's existing `reason` field.
- * Filing this creates a `return_requests` row your seller (then an admin, if
- * escalated) must resolve — the order is not treated as done in the
+ * `ConfirmReceivedButton`'s "everything arrived as expected" path. A radio
+ * group for the requested resolution, a single-select dropdown for the
+ * reason, and (only for "Other") a required, length-counted explanation —
+ * submits through `requestReturnAction`/`request_return`, which re-derives
+ * every one of these checks server-side rather than trusting this form.
+ * Filing this creates a `return_requests` row your seller (then an admin,
+ * if escalated) must resolve — the order is not treated as done in the
  * meantime.
  */
-export function ReportProblemPanel({ orderId, onCancel }: ReportProblemPanelProps) {
+export function ReportProblemPanel({ orderId, onCancel, onlyItemNotReceived = false }: ReportProblemPanelProps) {
   const [state, formAction, isPending] = useActionState<
     ActionResult<null> | null,
     FormData
   >(requestReturnAction, null);
 
-  const [selected, setSelected] = useState<Set<IssueValue>>(new Set());
-  const [otherText, setOtherText] = useState("");
+  const reasonOptions = useMemo(
+    () =>
+      onlyItemNotReceived
+        ? [SHIPPED_ELIGIBLE_REASON_CODE]
+        : RETURN_REASON_CODE_OPTIONS,
+    [onlyItemNotReceived],
+  );
+
+  const [requestType, setRequestType] = useState<ReturnRequestType>(RETURN_REQUEST_TYPE.moneyRefund);
+  const [reasonCode, setReasonCode] = useState<ReturnReasonCode>(reasonOptions[0]);
+  const [explanation, setExplanation] = useState("");
+  const explanationId = useId();
+  const reasonSelectId = useId();
 
   const fieldErrors = state && !state.success ? state.fieldErrors : undefined;
   const formError = state && !state.success && !state.fieldErrors ? state.error : undefined;
 
-  const otherChecked = selected.has("other");
-  const canSubmit = selected.size > 0 && (!otherChecked || otherText.trim().length > 0);
-
-  function toggle(value: IssueValue, checked: boolean) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (checked) next.add(value);
-      else next.delete(value);
-      return next;
-    });
-  }
-
-  const issueLabels = ISSUE_OPTIONS.filter(
-    (option) => option.value !== "other" && selected.has(option.value),
-  ).map((option) => option.label);
-  const issuesPrefix = issueLabels.length > 0 ? `Reported issues: ${issueLabels.join(", ")}.` : "";
-
-  // Budget left for the "Other" description once the issue-list prefix (and
-  // the space joining it to "Details: ") is accounted for, so the composed
-  // reason below can never exceed REASON_MAX_LENGTH regardless of how many
-  // boxes are checked.
-  const otherOverhead = (issuesPrefix ? issuesPrefix.length + 1 : 0) + DETAILS_PREFIX.length;
-  const maxOtherLength = Math.max(0, REASON_MAX_LENGTH - otherOverhead);
-
-  function composeReason(): string {
-    const parts: string[] = [];
-    if (issuesPrefix) parts.push(issuesPrefix);
-    const trimmedOther = otherText.trim().slice(0, maxOtherLength);
-    if (otherChecked && trimmedOther) parts.push(`${DETAILS_PREFIX}${trimmedOther}`);
-    return parts.join(" ");
-  }
+  const trimmedExplanation = explanation.trim();
+  const canSubmit = reasonCode !== "other" || trimmedExplanation.length > 0;
 
   return (
     <section aria-label="Report a problem with this order" className={cn(RJ_CARD, "p-5")}>
@@ -93,57 +85,83 @@ export function ReportProblemPanel({ orderId, onCancel }: ReportProblemPanelProp
         Report a Problem
       </h2>
       <p className="mt-1 text-xs text-rj-gray-600">
-        Select every issue that applies. Your seller will review it first; if they
+        Tell us what you&apos;d like, then what happened. Your seller will review it first; if they
         can&apos;t resolve it, an administrator will step in.
       </p>
 
-      <form action={formAction} className="mt-4 flex flex-col gap-3" aria-busy={isPending}>
+      <form action={formAction} className="mt-4 flex flex-col gap-4" aria-busy={isPending}>
         <input type="hidden" name="orderId" value={orderId} />
-        <input type="hidden" name="reason" value={composeReason()} />
-
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {ISSUE_OPTIONS.map((option) => {
-            const checked = selected.has(option.value);
-            return (
-              <label
-                key={option.value}
-                className={cn(
-                  "flex cursor-pointer items-center gap-2.5 rounded-md border p-3 text-sm font-medium transition-colors",
-                  checked ? "border-rj-black bg-rj-gray-50" : "border-rj-gray-200",
-                )}
-              >
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={(event) => toggle(option.value, event.target.checked)}
-                  className="h-4 w-4 shrink-0 accent-rj-red"
-                />
-                {option.label}
-              </label>
-            );
-          })}
-        </div>
-        {fieldErrors?.reason ? (
-          <p role="alert" className="text-xs text-rj-red-dark">
-            {fieldErrors.reason[0]}
-          </p>
+        <input type="hidden" name="requestType" value={requestType} />
+        <input type="hidden" name="reasonCode" value={reasonCode} />
+        {reasonCode === "other" ? (
+          <input type="hidden" name="explanation" value={trimmedExplanation} />
         ) : null}
 
-        {otherChecked ? (
+        <fieldset className="flex flex-col gap-2">
+          <legend className="text-sm font-medium text-rj-black">What would you like?</legend>
+          <ChoiceGroup
+            label="What would you like?"
+            variant="tile"
+            options={REQUEST_TYPE_OPTIONS}
+            value={requestType}
+            onChange={setRequestType}
+            className="sm:grid sm:grid-cols-3 sm:gap-2"
+          />
+        </fieldset>
+
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor={reasonSelectId} className="text-sm font-medium text-rj-black">
+            Reason
+          </label>
+          <select
+            id={reasonSelectId}
+            value={reasonCode}
+            onChange={(event) => setReasonCode(event.target.value as ReturnReasonCode)}
+            className="h-10 rounded-md border border-rj-gray-200 bg-rj-white px-3 text-sm text-rj-black outline-none transition-colors focus-visible:border-rj-black focus-visible:ring-2 focus-visible:ring-rj-red/30"
+          >
+            {reasonOptions.map((value) => (
+              <option key={value} value={value}>
+                {RETURN_REASON_CODE_LABELS[value]}
+              </option>
+            ))}
+          </select>
+          {onlyItemNotReceived ? (
+            <p className="text-xs text-rj-gray-500">
+              This order hasn&apos;t been marked delivered yet, so only &ldquo;Item Not
+              Received&rdquo; can be reported right now.
+            </p>
+          ) : null}
+          {fieldErrors?.reasonCode ? (
+            <p role="alert" className="text-xs text-rj-red-dark">
+              {fieldErrors.reasonCode[0]}
+            </p>
+          ) : null}
+        </div>
+
+        {reasonCode === "other" ? (
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="other-detail" className="text-sm font-medium text-rj-black">
+            <label htmlFor={explanationId} className="text-sm font-medium text-rj-black">
               Describe the problem
             </label>
             <textarea
-              id="other-detail"
-              value={otherText}
-              onChange={(event) => setOtherText(event.target.value)}
+              id={explanationId}
+              value={explanation}
+              onChange={(event) => setExplanation(event.target.value.slice(0, RETURN_EXPLANATION_MAX_LENGTH))}
               required
-              maxLength={maxOtherLength}
+              maxLength={RETURN_EXPLANATION_MAX_LENGTH}
               rows={3}
               className="rounded-md border border-rj-gray-200 bg-rj-white px-3 py-2 text-sm text-rj-black outline-none transition-colors focus-visible:border-rj-black focus-visible:ring-2 focus-visible:ring-rj-red/30"
               placeholder="Tell us specifically what happened…"
+              aria-describedby={`${explanationId}-count`}
             />
+            <p id={`${explanationId}-count`} className="text-right text-[11px] text-rj-gray-500">
+              {explanation.length}/{RETURN_EXPLANATION_MAX_LENGTH} characters
+            </p>
+            {fieldErrors?.explanation ? (
+              <p role="alert" className="text-xs text-rj-red-dark">
+                {fieldErrors.explanation[0]}
+              </p>
+            ) : null}
           </div>
         ) : null}
 
@@ -186,11 +204,7 @@ export function ReportProblemPanel({ orderId, onCancel }: ReportProblemPanelProp
           ) : null}
         </div>
         {!canSubmit ? (
-          <p className="text-xs text-rj-gray-500">
-            {selected.size === 0
-              ? "Select at least one issue."
-              : "Describe the problem before submitting."}
-          </p>
+          <p className="text-xs text-rj-gray-500">Describe the problem before submitting.</p>
         ) : null}
       </form>
     </section>

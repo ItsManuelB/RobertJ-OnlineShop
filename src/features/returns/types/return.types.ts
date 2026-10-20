@@ -1,16 +1,30 @@
-import type { ReturnStatus } from "@/constants/status";
+import type { PaymentStatus, ReturnStatus } from "@/constants/status";
+import type { Enums } from "@/lib/supabase/database.types";
+
+/** The buyer-selected reason category — drives both the server-authored `reason` label and the `shipped`-order non-delivery carve-out (only `item_not_received` may be filed before `delivered`). */
+export type ReturnReasonCode = Enums<"return_reason_code">;
+/** The resolution the BUYER asked for. Independent of what the seller/admin actually decide — see `AdminReturnDecision`/`decide_return`'s `p_resolution_type`. */
+export type ReturnRequestType = Enums<"return_request_type">;
 
 /**
  * Domain model for one return/refund request. See `decide_return`'s doc
  * comment (`supabase/migrations/20260826000000_returns_and_refunds.sql`) for
- * the full state machine — there is no separate "admin approved" state;
- * approval and the refund are one atomic transition to `refunded`.
+ * the full state machine — there is no separate "admin approved" state for a
+ * refund; approval and the refund are one atomic transition to `refunded`.
+ * A `replacement_exchange` decision is the one exception — it moves to
+ * `replacement_approved` instead, with no payment/order_status change.
  */
 export interface ReturnRequest {
   id: string;
   orderId: string;
   orderNumber: string;
   currency: string;
+  /** Fulfillment/returns audit finding B4: lets the UI warn when a COD
+   * refund approval would fail because the order's cash was never recorded
+   * as collected (`payment_status` still `pending`) — without weakening
+   * `decide_return`'s own payment-integrity check, which stays strict. */
+  orderPaymentMethod: "cod" | "xendit" | null;
+  orderPaymentStatus: PaymentStatus | null;
   /** Null = whole-order return. */
   orderItemId: string | null;
   orderItemTitle: string | null;
@@ -18,7 +32,10 @@ export interface ReturnRequest {
   buyerName: string | null;
   /** Null when the seller account has since been permanently deleted (see `admin_hard_delete_seller_account`) — the return request itself survives. */
   sellerId: string | null;
+  /** Server-authored display text — a fixed label per `reasonCode`, or the buyer's own trimmed/length-checked explanation when `reasonCode` is `other`. Never client-composed. */
   reason: string;
+  reasonCode: ReturnReasonCode;
+  requestType: ReturnRequestType;
   /** Storage path in the payment-receipts bucket — resolve via `getReturnEvidenceSignedUrl`, never render directly. */
   evidencePath: string | null;
   status: ReturnStatus;
@@ -34,6 +51,10 @@ export interface ReturnRequest {
   markedUnsellableAt: string | null;
   /** Optional free-text note attached when the item's condition was recorded, either way. */
   conditionNote: string | null;
+  /** Set once the seller/admin ships the replacement item (`record_return_replacement_shipment`) — only meaningful when `status` is `replacement_approved`. */
+  replacementCourier: string | null;
+  replacementTrackingNumber: string | null;
+  replacementShippedAt: string | null;
   createdAt: string;
 }
 

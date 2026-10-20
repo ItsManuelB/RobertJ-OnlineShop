@@ -54,7 +54,11 @@ export default async function AdminDashboardPage({ searchParams }: AdminDashboar
       </div>
 
       <Suspense fallback={<ActionCenterCardSkeleton />}>
-        <ActionCenterCard ordersHref={ROUTES.adminOrders} inventoryHref={ROUTES.adminInventory} />
+        <ActionCenterCard
+          ordersHref={ROUTES.adminOrders}
+          inventoryHref={ROUTES.adminInventory}
+          returnsHref={ROUTES.adminReturns}
+        />
       </Suspense>
 
       <Suspense key={`kpi:${from}:${to}`} fallback={<AdminKpiRowSkeleton />}>

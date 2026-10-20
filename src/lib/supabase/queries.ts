@@ -121,7 +121,9 @@ import type {
   AdminReturnDecision,
   PendingXenditRefund,
   ReturnItemCondition,
+  ReturnReasonCode,
   ReturnRequest,
+  ReturnRequestType,
   SellerReturnDecision,
 } from "@/features/returns/types/return.types";
 import type { AdminActionLogEntry } from "@/features/audit-log/types/audit-log.types";
@@ -2809,9 +2811,17 @@ export async function getOrderAttentionCounts(): Promise<{
    * exactly that state — same head-count pattern as the other two.
    */
   returnsAwaitingRestock: number;
+  /**
+   * Fulfillment/returns audit finding B1: a freshly-filed return had no
+   * seller-facing signal at all (not here, not in the bell, not anywhere)
+   * until this count — a seller could only ever discover one by opening
+   * that exact order's page. RLS scopes this to the caller's own shop
+   * (seller) or everything (admin), same as every other count here.
+   */
+  pendingReturnRequests: number;
 }> {
   const supabase = await createSupabaseServerClient();
-  const [confirmResult, codResult, restockResult] = await Promise.all([
+  const [confirmResult, codResult, restockResult, pendingReturnResult] = await Promise.all([
     supabase
       .from(DATABASE_TABLES.ORDERS)
       .select("id", { count: "exact", head: true })
@@ -2829,17 +2839,85 @@ export async function getOrderAttentionCounts(): Promise<{
       .eq("status", RETURN_STATUS.refunded)
       .is("restocked_at", null)
       .is("marked_unsellable_at", null),
+    supabase
+      .from(DATABASE_TABLES.RETURN_REQUESTS)
+      .select("id", { count: "exact", head: true })
+      .eq("status", RETURN_STATUS.pending),
   ]);
 
   if (confirmResult.error) throw queryError("Failed to load order counts", confirmResult.error);
   if (codResult.error) throw queryError("Failed to load order counts", codResult.error);
   if (restockResult.error) throw queryError("Failed to load order counts", restockResult.error);
+  if (pendingReturnResult.error) throw queryError("Failed to load order counts", pendingReturnResult.error);
 
   return {
     needsConfirmation: confirmResult.count ?? 0,
     codAwaitingCollection: codResult.count ?? 0,
     returnsAwaitingRestock: restockResult.count ?? 0,
+    pendingReturnRequests: pendingReturnResult.count ?? 0,
   };
+}
+
+/**
+ * Fulfillment/returns audit finding B1: how many `pending` return requests
+ * have gone unanswered past `decide_return`'s own overdue threshold (see
+ * `20261020030000_return_overdue_admin_escalation.sql`'s literal
+ * `interval '3 days'`) — admin-only signal that a request is not just
+ * waiting on the seller anymore, but actionable right now.
+ */
+export async function getOverduePendingReturnCount(): Promise<number> {
+  const supabase = await createSupabaseServerClient();
+  // Mirrors `decide_return`'s own `interval '3 days'` (the RPC is the real
+  // enforcement; this is only for the admin bell's count) and the matching
+  // UI constant, `RETURN_SELLER_RESPONSE_SLA_DAYS` — same "two places, kept
+  // in sync by comment" pattern as `RETURN_WINDOW_DAYS`.
+  const since = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+
+  const { count, error } = await supabase
+    .from(DATABASE_TABLES.RETURN_REQUESTS)
+    .select("id", { count: "exact", head: true })
+    .eq("status", RETURN_STATUS.pending)
+    .lt("created_at", since);
+
+  if (error) throw queryError("Failed to load overdue return requests", error);
+  return count ?? 0;
+}
+
+/** How far back `getRecentlyConfirmedOrders` looks — unlike the counts above
+ * (which naturally resolve as the seller acts), a buyer's receipt
+ * confirmation needs no further seller action, so without a time box it
+ * would surface every order ever confirmed, forever. */
+const RECENTLY_CONFIRMED_WINDOW_HOURS = 72;
+
+/**
+ * Orders the signed-in seller fulfilled whose buyer confirmed receipt within
+ * the last `RECENTLY_CONFIRMED_WINDOW_HOURS` — surfaced as a seller
+ * notification (the "Order Received" flow has no seller-facing signal
+ * otherwise; see `getSellerNotifications` in `app/seller/layout.tsx`). Relies
+ * on RLS alone for the seller scope, same pattern as
+ * `getOrderAttentionCounts`.
+ */
+export async function getRecentlyConfirmedOrders(
+  limit = 5,
+): Promise<Array<{ id: string; orderNumber: string; buyerConfirmedReceivedAt: string }>> {
+  const supabase = await createSupabaseServerClient();
+  const since = new Date(Date.now() - RECENTLY_CONFIRMED_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
+
+  const { data, error } = await supabase
+    .from(DATABASE_TABLES.ORDERS)
+    .select("id, order_number, buyer_confirmed_received_at")
+    .not("buyer_confirmed_received_at", "is", null)
+    .gte("buyer_confirmed_received_at", since)
+    .order("buyer_confirmed_received_at", { ascending: false })
+    .limit(limit);
+
+  if (error) throw queryError("Failed to load recently confirmed orders", error);
+
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    orderNumber: row.order_number,
+    buyerConfirmedReceivedAt: row.buyer_confirmed_received_at as string,
+  }));
 }
 
 /**
@@ -4531,18 +4609,24 @@ export async function listPaymentsForExport(
  * `orders`) since the row already carries its own snapshot of who filed it.
  */
 const RETURN_REQUEST_COLUMNS = `
-  id, order_id, order_item_id, buyer_id, seller_id, reason, evidence_path, status,
+  id, order_id, order_item_id, buyer_id, seller_id, reason, reason_code, request_type, evidence_path, status,
   seller_decision_note, seller_decided_at, seller_decided_by,
   admin_decision_note, admin_decided_at, admin_decided_by,
-  refund_amount_cents, restocked_at, marked_unsellable_at, condition_note, created_at, updated_at,
-  order:orders!return_requests_order_id_fkey ( order_number, currency ),
+  refund_amount_cents, restocked_at, marked_unsellable_at, condition_note,
+  replacement_courier, replacement_tracking_number, replacement_shipped_at, created_at, updated_at,
+  order:orders!return_requests_order_id_fkey ( order_number, currency, payment_method, payment_status ),
   buyer:profiles!return_requests_buyer_id_fkey ( full_name, username ),
   order_item:order_items!return_requests_order_item_id_fkey ( product_title )
 `;
 
 type ReturnRequestRow = Database["public"]["Tables"]["return_requests"]["Row"];
 type ReturnRequestRowWithJoins = ReturnRequestRow & {
-  order: { order_number: string; currency: string } | null;
+  order: {
+    order_number: string;
+    currency: string;
+    payment_method: Database["public"]["Enums"]["order_payment_method"];
+    payment_status: PaymentStatus;
+  } | null;
   buyer: Pick<ProfileRow, "full_name" | "username"> | null;
   order_item: { product_title: string } | null;
 };
@@ -4553,12 +4637,16 @@ function toReturnRequest(row: ReturnRequestRowWithJoins): ReturnRequest {
     orderId: row.order_id,
     orderNumber: row.order?.order_number ?? "",
     currency: row.order?.currency ?? "PHP",
+    orderPaymentMethod: row.order?.payment_method ?? null,
+    orderPaymentStatus: row.order?.payment_status ?? null,
     orderItemId: row.order_item_id,
     orderItemTitle: row.order_item?.product_title ?? null,
     buyerId: row.buyer_id,
     buyerName: row.buyer?.full_name ?? row.buyer?.username ?? null,
     sellerId: row.seller_id,
     reason: row.reason,
+    reasonCode: row.reason_code,
+    requestType: row.request_type,
     evidencePath: row.evidence_path,
     status: row.status,
     sellerDecisionNote: row.seller_decision_note,
@@ -4569,6 +4657,9 @@ function toReturnRequest(row: ReturnRequestRowWithJoins): ReturnRequest {
     restockedAt: row.restocked_at,
     markedUnsellableAt: row.marked_unsellable_at,
     conditionNote: row.condition_note,
+    replacementCourier: row.replacement_courier,
+    replacementTrackingNumber: row.replacement_tracking_number,
+    replacementShippedAt: row.replacement_shipped_at,
     createdAt: row.created_at,
   };
 }
@@ -4620,14 +4711,18 @@ export async function getReturnEvidenceSignedUrl(path: string): Promise<string> 
 export async function requestReturn(
   orderId: string,
   orderItemId: string | null,
-  reason: string,
+  reasonCode: ReturnReasonCode,
+  requestType: ReturnRequestType,
+  explanation: string | null,
   evidencePath: string | null,
 ): Promise<void> {
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.rpc("request_return", {
     p_order_id: orderId,
     p_order_item_id: orderItemId ?? undefined,
-    p_reason: reason,
+    p_reason_code: reasonCode,
+    p_request_type: requestType,
+    p_explanation: explanation ?? undefined,
     p_evidence_path: evidencePath ?? undefined,
   });
 
@@ -4672,12 +4767,14 @@ export async function decideReturn(
   returnId: string,
   decision: AdminReturnDecision,
   note: string | null,
+  resolutionType: ReturnRequestType = "money_refund",
 ): Promise<{ orderId: string }> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc("decide_return", {
     p_return_id: returnId,
     p_decision: decision,
     p_note: note ?? undefined,
+    p_resolution_type: resolutionType,
   });
 
   if (error) {
@@ -4709,6 +4806,33 @@ export async function recordReturnItemCondition(
 
   if (error) {
     throw new Error(mapPostgresError(error, "Could not record this item's condition."));
+  }
+  return { orderId: (data as { order_id: string }).order_id };
+}
+
+/**
+ * The order's own seller (or shop member) or an admin ships the
+ * replacement item for a `replacement_approved` return request — the sole
+ * write path for `replacement_courier`/`replacement_tracking_number`/
+ * `replacement_shipped_at`. Mirrors `recordOrderShipment`'s shape exactly;
+ * ownership and the `replacement_approved`/not-already-shipped
+ * preconditions are re-enforced inside `record_return_replacement_shipment`
+ * itself.
+ */
+export async function recordReturnReplacementShipment(
+  returnId: string,
+  courier: string,
+  trackingNumber: string,
+): Promise<{ orderId: string }> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("record_return_replacement_shipment", {
+    p_return_id: returnId,
+    p_courier: courier,
+    p_tracking_number: trackingNumber,
+  });
+
+  if (error) {
+    throw new Error(mapPostgresError(error, "Could not record this replacement shipment."));
   }
   return { orderId: (data as { order_id: string }).order_id };
 }

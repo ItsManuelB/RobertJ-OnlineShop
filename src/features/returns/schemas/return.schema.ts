@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { uuidSchema } from "@/lib/validations/common.schema";
+import { RETURN_EXPLANATION_MAX_LENGTH } from "@/features/returns/constants/return.constants";
 
 /** Mirrors the payment-receipts bucket's own file_size_limit/allowed_mime_types
  * (the return-evidence photo is uploaded to the same bucket) so the UI fails
@@ -8,29 +9,55 @@ import { uuidSchema } from "@/lib/validations/common.schema";
 const MAX_EVIDENCE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_EVIDENCE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
-export const requestReturnSchema = z.object({
-  orderId: uuidSchema,
-  orderItemId: uuidSchema.optional(),
-  reason: z
-    .string()
-    .trim()
-    .min(1, "A reason is required.")
-    .max(500, "Reason is too long."),
-  // Optional: an empty file input submits a zero-byte File, not undefined —
-  // normalize that to undefined before the size/type checks apply.
-  evidence: z
-    .instanceof(File)
-    .optional()
-    .transform((file) => (file && file.size > 0 ? file : undefined))
-    .refine(
-      (file) => !file || file.size <= MAX_EVIDENCE_BYTES,
-      "Evidence photo must be 5MB or smaller.",
-    )
-    .refine(
-      (file) => !file || ALLOWED_EVIDENCE_TYPES.includes(file.type),
-      "Evidence photo must be a JPEG, PNG, or WebP image.",
-    ),
-});
+/**
+ * Structured request fields, mirroring `public.return_reason_code`/
+ * `return_request_type`. `explanation` is required only for `other` — the
+ * trim-then-length check here mirrors `request_return`'s own server-side
+ * validation exactly (never trust the client alone for the 500-char cap or
+ * the whitespace-only rejection).
+ */
+export const requestReturnSchema = z
+  .object({
+    orderId: uuidSchema,
+    orderItemId: uuidSchema.optional(),
+    requestType: z.enum(["money_refund", "return_and_refund", "replacement_exchange"]),
+    reasonCode: z.enum([
+      "damaged_item",
+      "defective_item",
+      "wrong_item",
+      "missing_item",
+      "item_not_received",
+      "other",
+    ]),
+    explanation: z
+      .string()
+      .trim()
+      .max(RETURN_EXPLANATION_MAX_LENGTH, `Explanation must be ${RETURN_EXPLANATION_MAX_LENGTH} characters or fewer.`)
+      .optional(),
+    // Optional: an empty file input submits a zero-byte File, not undefined —
+    // normalize that to undefined before the size/type checks apply.
+    evidence: z
+      .instanceof(File)
+      .optional()
+      .transform((file) => (file && file.size > 0 ? file : undefined))
+      .refine(
+        (file) => !file || file.size <= MAX_EVIDENCE_BYTES,
+        "Evidence photo must be 5MB or smaller.",
+      )
+      .refine(
+        (file) => !file || ALLOWED_EVIDENCE_TYPES.includes(file.type),
+        "Evidence photo must be a JPEG, PNG, or WebP image.",
+      ),
+  })
+  .superRefine((data, ctx) => {
+    if (data.reasonCode === "other" && (!data.explanation || data.explanation.length === 0)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["explanation"],
+        message: "Please explain the issue.",
+      });
+    }
+  });
 
 export const respondToReturnSchema = z.object({
   returnId: uuidSchema,
@@ -41,6 +68,9 @@ export const respondToReturnSchema = z.object({
 export const decideReturnSchema = z.object({
   returnId: uuidSchema,
   decision: z.enum(["approve", "reject"]),
+  // Only consulted when decision === "approve"; defaults to a money refund
+  // (today's only behavior) so an omitted value is non-breaking.
+  resolutionType: z.enum(["money_refund", "return_and_refund", "replacement_exchange"]).default("money_refund"),
   note: z.string().trim().max(500, "Note is too long.").optional(),
 });
 
@@ -51,7 +81,23 @@ export const recordReturnItemConditionSchema = z.object({
   note: z.string().trim().max(500, "Note is too long.").optional(),
 });
 
+/** Payload for the seller/admin's "ship the replacement" step — only legal once `decide_return` approved `replacement_exchange`. Mirrors `ShipmentCaptureForm`'s courier/tracking shape exactly. */
+export const recordReturnReplacementShipmentSchema = z.object({
+  returnId: uuidSchema,
+  courier: z
+    .string()
+    .trim()
+    .min(1, "Please enter the courier.")
+    .max(80, "Courier name must be 80 characters or fewer."),
+  trackingNumber: z
+    .string()
+    .trim()
+    .min(1, "Please enter the tracking number.")
+    .max(120, "Tracking number must be 120 characters or fewer."),
+});
+
 export type RequestReturnInput = z.infer<typeof requestReturnSchema>;
 export type RespondToReturnInput = z.infer<typeof respondToReturnSchema>;
 export type DecideReturnInput = z.infer<typeof decideReturnSchema>;
 export type RecordReturnItemConditionInput = z.infer<typeof recordReturnItemConditionSchema>;
+export type RecordReturnReplacementShipmentInput = z.infer<typeof recordReturnReplacementShipmentSchema>;

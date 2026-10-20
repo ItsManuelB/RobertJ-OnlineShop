@@ -70,6 +70,7 @@ export const ROUTES = {
   /** Bulk print: one print job covering every id's shipping label, in order. */
   sellerOrderLabels: (ids: string[]) => `/seller/orders/labels?ids=${ids.join(",")}`,
   sellerPayments: "/seller/payments",
+  sellerReturns: "/seller/returns",
   sellerReports: "/seller/reports",
   notifications: "/notifications",
   assistant: "/assistant",

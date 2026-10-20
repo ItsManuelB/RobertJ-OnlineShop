@@ -14,6 +14,7 @@ import { OrderItemsList } from "@/features/orders/components/OrderItemsList";
 import { OrderSummary } from "@/features/orders/components/OrderSummary";
 import { OrderTimeline } from "@/features/orders/components/OrderTimeline";
 import { PaymentStatusBadge } from "@/features/orders/components/PaymentStatusBadge";
+import { ReceiptConfirmedNotice } from "@/features/orders/components/ReceiptConfirmedNotice";
 import { SellerShopRow } from "@/features/orders/components/SellerShopRow";
 import { ShipmentTrackingCard } from "@/features/orders/components/ShipmentTrackingCard";
 import { paymentMethodLabel } from "@/features/orders/utils/payment-method-label";
@@ -116,8 +117,15 @@ export default async function OrderDetailPage({
         .catch(() => 1)
     : 1;
 
+  // Fulfillment/returns audit finding A1: `shipped` is included here too —
+  // the buyer's own "I received it" (now valid from `shipped`, see
+  // `confirm_order_received`) and "item not received" report are both
+  // reachable before a seller ever marks the order delivered, so a
+  // negligent/inactive seller no longer strands the buyer with zero
+  // recourse.
   const canRequestReturn =
     order.status === ORDER_STATUS.delivered ||
+    order.status === ORDER_STATUS.shipped ||
     (order.status === ORDER_STATUS.cancelled && order.paymentStatus === "paid");
 
   // Whole-order return only in this UI (the RPC also supports a per-item
@@ -127,14 +135,14 @@ export default async function OrderDetailPage({
     ? await getReturnRequestForOrder(order.id).catch(() => null)
     : null;
 
-  // Delivered + nothing already filed + not yet confirmed received: the
-  // buyer gets the paired "everything's fine" / "something's wrong" choice
-  // (DeliveryResolutionChoice). Once they confirm receipt, the order is
-  // resolved and neither path is offered again. A cancelled-but-paid order
-  // has no "Confirm Received" counterpart, so it goes straight to the
-  // report form.
+  // Shipped or delivered + nothing already filed + not yet confirmed
+  // received: the buyer gets the paired "everything's fine"/"it hasn't
+  // arrived" vs. "something's wrong" choice (DeliveryResolutionChoice).
+  // Once they confirm receipt, the order is resolved and neither path is
+  // offered again. A cancelled-but-paid order has no "Confirm Received"
+  // counterpart, so it goes straight to the report form.
   const showDeliveryResolution =
-    order.status === ORDER_STATUS.delivered &&
+    (order.status === ORDER_STATUS.delivered || order.status === ORDER_STATUS.shipped) &&
     !returnRequest &&
     !order.buyerConfirmedReceivedAt;
   const returnEvidenceUrl = returnRequest?.evidencePath
@@ -207,7 +215,11 @@ export default async function OrderDetailPage({
         returnRequest ? (
           <ReturnRequestStatusCard request={returnRequest} evidenceUrl={returnEvidenceUrl} />
         ) : showDeliveryResolution ? (
-          <DeliveryResolutionChoice orderId={order.id} orderNumber={order.orderNumber} />
+          <DeliveryResolutionChoice
+            orderId={order.id}
+            orderNumber={order.orderNumber}
+            awaitingDelivery={order.status === ORDER_STATUS.shipped}
+          />
         ) : (
           // Return is still allowed (delivered, or cancelled-but-paid) and none
           // is open yet. The paired confirm/report choice above only applies
@@ -215,7 +227,12 @@ export default async function OrderDetailPage({
           // cancelled-paid order with no confirm step), the report path must
           // still be reachable — a defect found days after "Confirm Received"
           // previously hit a dead end here. Backend `request_return` allows it.
-          <ReportProblemPanel orderId={order.id} />
+          <div className="flex flex-col gap-3">
+            {order.buyerConfirmedReceivedAt ? (
+              <ReceiptConfirmedNotice confirmedAt={order.buyerConfirmedReceivedAt} />
+            ) : null}
+            <ReportProblemPanel orderId={order.id} />
+          </div>
         )
       ) : null}
 
