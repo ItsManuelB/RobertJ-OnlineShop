@@ -65,11 +65,18 @@ const TRUST_BADGES = ["Verified Sellers", "Buyer Protected", "Secure Payments"];
 async function loadSupportContact() {
   try {
     const settings = await getPlatformSettings();
-    if (settings) return { email: settings.supportEmail, phone: settings.supportPhone };
+    if (settings) {
+      return {
+        email: settings.supportEmail,
+        phone: settings.supportPhone,
+        address: settings.businessAddress,
+        hours: settings.businessHours,
+      };
+    }
   } catch {
     // fall through to the static default
   }
-  return { email: siteConfig.supportEmail, phone: null };
+  return { email: siteConfig.supportEmail, phone: null, address: null, hours: null };
 }
 
 export async function SiteFooter() {
@@ -180,6 +187,12 @@ export async function SiteFooter() {
                     {support.phone}
                   </a>
                 </li>
+              ) : null}
+              {support.hours ? (
+                <li className="text-[13px] text-rj-gray-400">{support.hours}</li>
+              ) : null}
+              {support.address ? (
+                <li className="text-[13px] text-rj-gray-400">{support.address}</li>
               ) : null}
               <li>
                 <Link

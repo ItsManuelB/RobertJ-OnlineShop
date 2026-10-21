@@ -4,11 +4,14 @@ import type { Metadata } from "next";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { Card, CardContent } from "@/components/ui/card";
 import { ROUTES } from "@/constants/routes";
-import { ChangePasswordForm, PortalAccountForm } from "@/features/account";
-import { ContactSettingsForm, PLATFORM_POLICIES } from "@/features/settings";
-import { getMyProfile, getPlatformSettings, listUserIdentities, requireSessionUser } from "@/lib/supabase/queries";
+import { ChangePasswordForm, PortalAccountForm, SignOutOtherDevicesPanel } from "@/features/account";
+import type { AuditLogAction } from "@/features/audit-log/constants/audit-log.constants";
+import { ContactSettingsForm, PLATFORM_POLICIES, RecentSettingsChanges } from "@/features/settings";
+import { getMyProfile, getPlatformSettings, listAdminActionLog, listUserIdentities, requireSessionUser } from "@/lib/supabase/queries";
 
 export const metadata: Metadata = { title: "Settings — Admin Portal" };
+
+const SETTINGS_AUDIT_ACTION = "update_platform_settings" satisfies AuditLogAction;
 
 function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
@@ -32,10 +35,11 @@ function Section({ title, description, children }: { title: string; description?
  */
 export default async function AdminSettingsPage() {
   const user = await requireSessionUser();
-  const [profile, identities, settings] = await Promise.all([
+  const [profile, identities, settings, recentChanges] = await Promise.all([
     getMyProfile(),
     listUserIdentities(),
     getPlatformSettings().catch(() => null),
+    listAdminActionLog({ page: 1, pageSize: 5, action: SETTINGS_AUDIT_ACTION }).catch(() => null),
   ]);
 
   if (!profile) {
@@ -54,6 +58,7 @@ export default async function AdminSettingsPage() {
 
       <Section title="Security" description="Change the password you sign in with.">
         <ChangePasswordForm themed hasPassword={identities.some((identity) => identity.provider === "email")} />
+        <SignOutOtherDevicesPanel themed />
       </Section>
 
       <Section title="Store contact" description="Shown in the storefront footer under Help.">
@@ -78,7 +83,12 @@ export default async function AdminSettingsPage() {
         </dl>
       </Section>
 
-      <Section title="Activity" description="Every settings change is recorded in the audit log.">
+      <Section title="Recent settings changes" description="Every settings change is recorded in the audit log.">
+        {recentChanges ? (
+          <RecentSettingsChanges entries={recentChanges.items} />
+        ) : (
+          <ErrorState message="Recent changes couldn't be loaded." />
+        )}
         <Link
           href={ROUTES.adminAuditLog}
           className="inline-flex min-h-10 w-fit items-center rounded-md border border-border px-4 text-sm font-medium hover:bg-muted"

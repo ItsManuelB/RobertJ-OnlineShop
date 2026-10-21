@@ -49,6 +49,23 @@ export function ContactSettingsForm({ settings }: ContactSettingsFormProps) {
         errors={fieldErrors?.supportPhone}
         themed
       />
+      <FormField
+        label="Business address"
+        name="businessAddress"
+        defaultValue={settings.businessAddress ?? ""}
+        autoComplete="street-address"
+        hint="Optional. Shown in the storefront footer."
+        errors={fieldErrors?.businessAddress}
+        themed
+      />
+      <FormField
+        label="Business hours"
+        name="businessHours"
+        defaultValue={settings.businessHours ?? ""}
+        hint="Optional, e.g. Mon–Sat, 9:00 AM – 6:00 PM."
+        errors={fieldErrors?.businessHours}
+        themed
+      />
       <Button type="submit" isLoading={isPending} className="w-full sm:w-auto sm:self-start">
         Save changes
       </Button>

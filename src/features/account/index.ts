@@ -5,3 +5,4 @@ export { changePasswordAction } from "./actions/account.actions";
 export { ChangePasswordForm } from "./components/ChangePasswordForm";
 export { AvatarUploader } from "./components/AvatarUploader";
 export { PortalAccountForm } from "./components/PortalAccountForm";
+export { SignOutOtherDevicesPanel } from "./components/SignOutOtherDevicesPanel";

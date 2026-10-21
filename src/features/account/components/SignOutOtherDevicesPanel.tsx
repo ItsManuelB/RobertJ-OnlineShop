@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils/cn";
  * `/privacy`'s Security section: ends every other login of this account while
  * keeping the current device signed in. Useful after using a shared computer.
  */
-export function SignOutOtherDevicesPanel() {
+export function SignOutOtherDevicesPanel({ themed = false }: { themed?: boolean }) {
   const [confirming, setConfirming] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,8 +33,10 @@ export function SignOutOtherDevicesPanel() {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-col gap-0.5">
-        <span className="text-sm font-medium text-rj-black">Sign out of other devices</span>
-        <span className="text-xs text-rj-gray-600">
+        <span className={cn("text-sm font-medium", themed ? "text-foreground" : "text-rj-black")}>
+          Sign out of other devices
+        </span>
+        <span className={cn("text-xs", themed ? "text-muted-foreground" : "text-rj-gray-600")}>
           Ends every other login on your account. This device stays signed in.
         </span>
       </div>
@@ -64,7 +66,10 @@ export function SignOutOtherDevicesPanel() {
       )}
 
       {done ? (
-        <p className="text-xs font-semibold text-rj-gray-600" role="status">
+        <p
+          className={cn("text-xs font-semibold", themed ? "text-muted-foreground" : "text-rj-gray-600")}
+          role="status"
+        >
           Done — your other devices have been signed out.
         </p>
       ) : null}

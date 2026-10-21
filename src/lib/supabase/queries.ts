@@ -5227,15 +5227,22 @@ export async function listAdminActionLog(
 // Platform Settings
 // ============================================================================
 
-const PLATFORM_SETTINGS_COLUMNS = "support_email, support_phone, updated_at";
+const PLATFORM_SETTINGS_COLUMNS =
+  "support_email, support_phone, business_address, business_hours, updated_at";
 
 type PlatformSettingsRow = Pick<
   Database["public"]["Tables"]["platform_settings"]["Row"],
-  "support_email" | "support_phone" | "updated_at"
+  "support_email" | "support_phone" | "business_address" | "business_hours" | "updated_at"
 >;
 
 function toPlatformSettings(row: PlatformSettingsRow): PlatformSettings {
-  return { supportEmail: row.support_email, supportPhone: row.support_phone, updatedAt: row.updated_at };
+  return {
+    supportEmail: row.support_email,
+    supportPhone: row.support_phone,
+    businessAddress: row.business_address,
+    businessHours: row.business_hours,
+    updatedAt: row.updated_at,
+  };
 }
 
 /**
@@ -5263,6 +5270,8 @@ export async function updatePlatformSettings(input: UpdatePlatformSettingsInput)
   const { data, error } = await supabase.rpc("admin_update_platform_settings", {
     p_support_email: input.supportEmail,
     p_support_phone: input.supportPhone,
+    p_business_address: input.businessAddress,
+    p_business_hours: input.businessHours,
   });
 
   if (error) {

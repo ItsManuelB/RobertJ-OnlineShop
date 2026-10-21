@@ -18,6 +18,8 @@ export async function updatePlatformSettingsAction(
   const parsed = updatePlatformSettingsSchema.safeParse({
     supportEmail: formData.get("supportEmail"),
     supportPhone: formData.get("supportPhone") ?? "",
+    businessAddress: formData.get("businessAddress") ?? "",
+    businessHours: formData.get("businessHours") ?? "",
   });
   if (!parsed.success) return fromZodError(parsed.error);
 

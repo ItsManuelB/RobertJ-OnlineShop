@@ -822,6 +822,8 @@ export type Database = {
       }
       platform_settings: {
         Row: {
+          business_address: string | null
+          business_hours: string | null
           id: boolean
           support_email: string
           support_phone: string | null
@@ -829,6 +831,8 @@ export type Database = {
           updated_by: string | null
         }
         Insert: {
+          business_address?: string | null
+          business_hours?: string | null
           id?: boolean
           support_email?: string
           support_phone?: string | null
@@ -836,6 +840,8 @@ export type Database = {
           updated_by?: string | null
         }
         Update: {
+          business_address?: string | null
+          business_hours?: string | null
           id?: boolean
           support_email?: string
           support_phone?: string | null
@@ -1922,8 +1928,15 @@ export type Database = {
         }
       }
       admin_update_platform_settings: {
-        Args: { p_support_email: string; p_support_phone: string }
+        Args: {
+          p_business_address: string
+          p_business_hours: string
+          p_support_email: string
+          p_support_phone: string
+        }
         Returns: {
+          business_address: string | null
+          business_hours: string | null
           id: boolean
           support_email: string
           support_phone: string | null

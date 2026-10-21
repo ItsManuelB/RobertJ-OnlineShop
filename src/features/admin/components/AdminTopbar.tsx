@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Bell, ChevronDown, Menu, Search } from "lucide-react";
 
 import { ROLE_LABELS, type UserRole } from "@/constants/roles";
+import { ROUTES } from "@/constants/routes";
 import { SignOutButton } from "@/features/auth/components/SignOutButton";
 import { getAdminPageMeta } from "@/features/admin/constants/nav";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
@@ -159,9 +160,18 @@ export function AdminTopbar({ user, pathname, notifications, onMenuClick }: Admi
               <div className="border-b border-border p-2 sm:hidden">
                 <ThemeToggle />
               </div>
+              <div className="py-1.5">
+                <Link
+                  href={ROUTES.adminSettings}
+                  className="block w-full px-4 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted"
+                  onClick={() => setShowProfile(false)}
+                >
+                  Profile Settings
+                </Link>
+              </div>
               <SignOutButton
                 themeScope="admin"
-                wrapperClassName="py-1.5"
+                wrapperClassName="border-t border-border py-1.5"
                 className="w-full px-4 py-2 text-left text-sm text-danger transition-colors hover:bg-danger/10"
               >
                 Sign Out
