@@ -854,12 +854,43 @@ function friendlyProductError(error: { message?: string } | null): string | null
   return /products_active_requires_stock/.test(error?.message ?? "") ? ACTIVE_NEEDS_STOCK_MESSAGE : null;
 }
 
+/**
+ * Re-validates a category's hard-required specs (e.g. Decors' Dimensions)
+ * against the actual values being saved. `ProductEditorFieldSections`'s
+ * required-field rendering is a client convenience, not a trust boundary —
+ * per CLAUDE.md's "never trust the client" rule, the same check must be
+ * enforced here. Only `material`/`dimensions` can ever be `is_required` in
+ * practice: `category_attributes_required_not_variant` forbids pairing
+ * `is_required` with `is_variant_eligible`, and color/size have no spec-level
+ * column on `products` to require in the first place.
+ */
+async function assertRequiredCategorySpecs(
+  categoryId: string,
+  specs: { material?: string | null; dimensions?: string | null },
+): Promise<void> {
+  const attributes = await listCategoryAttributes(categoryId);
+  const missing = attributes.filter(
+    (attribute) =>
+      attribute.isRequired &&
+      (attribute.attributeKey === "material" || attribute.attributeKey === "dimensions") &&
+      !specs[attribute.attributeKey],
+  );
+  if (missing.length === 0) return;
+
+  const labels = missing.map((attribute) => (attribute.attributeKey === "material" ? "Material" : "Dimensions"));
+  throw new Error(`${labels.join(" and ")} ${labels.length > 1 ? "are" : "is"} required for this category.`);
+}
+
 export async function createProduct(
   input: CreateProductInput,
   sellerId: string,
   shopId: string,
   clientId?: string,
 ): Promise<Product> {
+  if (input.categoryId) {
+    await assertRequiredCategorySpecs(input.categoryId, { material: input.material, dimensions: input.dimensions });
+  }
+
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from(DATABASE_TABLES.PRODUCTS)
@@ -958,23 +989,36 @@ export async function updateProduct(
   const supabase = await createSupabaseServerClient();
   const { id, price, categoryId, description, location, quantity, material, dimensions, occasions, ...rest } = input;
 
+  // Fetched regardless of `owner`: the ownership filter below is the same
+  // defense-in-depth re-check as before, but category_id/material/dimensions
+  // are needed either way to resolve the *effective* values for the
+  // required-spec check just below — an update that doesn't touch
+  // material/dimensions/category must be checked against what's already on
+  // the row, not treated as blank.
+  let existingQuery = supabase
+    .from(DATABASE_TABLES.PRODUCTS)
+    .select("id, category_id, material, dimensions")
+    .eq("id", id);
   if (owner) {
     const ownerFilter = owner.shopId
       ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
       : `seller_id.eq.${owner.sellerId}`;
-    const { data: existing, error: readError } = await supabase
-      .from(DATABASE_TABLES.PRODUCTS)
-      .select("id")
-      .eq("id", id)
-      .or(ownerFilter)
-      .maybeSingle();
+    existingQuery = existingQuery.or(ownerFilter);
+  }
+  const { data: existing, error: readError } = await existingQuery.maybeSingle();
+  if (readError) {
+    throw new Error(`Failed to load product: ${readError.message}`);
+  }
+  if (!existing) {
+    throw new Error("Product not found.");
+  }
 
-    if (readError) {
-      throw new Error(`Failed to load product: ${readError.message}`);
-    }
-    if (!existing) {
-      throw new Error("Product not found.");
-    }
+  const effectiveCategoryId = categoryId !== undefined ? categoryId : existing.category_id;
+  if (effectiveCategoryId) {
+    await assertRequiredCategorySpecs(effectiveCategoryId, {
+      material: material !== undefined ? material : existing.material,
+      dimensions: dimensions !== undefined ? dimensions : existing.dimensions,
+    });
   }
 
   if (quantity !== undefined) {
