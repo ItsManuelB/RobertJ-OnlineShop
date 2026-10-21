@@ -7154,6 +7154,18 @@ function callbackUrl(next?: string) {
 }
 
 /**
+ * Forces the provider to show its account picker instead of silently
+ * reusing whatever identity is still active in the browser's provider-side
+ * session (e.g. Google) after this app's own sign-out. `signOut` only ends
+ * our Supabase session; it cannot and should not clear Google/Facebook's
+ * own SSO cookie, so without this the consent screen is skipped and the
+ * previous account is re-selected automatically.
+ */
+function accountChooserParams(provider: OAuthProvider): Record<string, string> {
+  return provider === "google" ? { prompt: "select_account" } : { auth_type: "reauthenticate" };
+}
+
+/**
  * Current user with the profile row merged in, or null when signed out.
  * `cache()`-wrapped so the layout, page, and metadata share one auth + profile
  * round-trip per request (audit H3 remediation).
@@ -7363,7 +7375,7 @@ export async function signInWithOAuth(provider: OAuthProvider, next?: string): P
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider,
-    options: { redirectTo: callbackUrl(next) },
+    options: { redirectTo: callbackUrl(next), queryParams: accountChooserParams(provider) },
   });
   if (error) throw new Error(error.message);
   if (!data.url) throw new Error("The sign-in provider did not return a redirect URL.");
@@ -7509,7 +7521,7 @@ export async function linkOAuthIdentity(provider: OAuthProvider, next?: string):
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.auth.linkIdentity({
     provider,
-    options: { redirectTo: callbackUrl(next) },
+    options: { redirectTo: callbackUrl(next), queryParams: accountChooserParams(provider) },
   });
   if (error) throw new Error(error.message);
   if (!data.url) throw new Error("The sign-in provider did not return a redirect URL.");
