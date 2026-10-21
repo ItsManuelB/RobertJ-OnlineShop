@@ -130,6 +130,8 @@ import type {
   SellerReturnDecision,
 } from "@/features/returns/types/return.types";
 import type { AdminActionLogEntry } from "@/features/audit-log/types/audit-log.types";
+import type { UpdatePlatformSettingsInput } from "@/features/settings/schemas/settings.schema";
+import type { PlatformSettings } from "@/features/settings/types/settings.types";
 
 /**
  * Centralized, reusable Supabase data-access layer.
@@ -5219,6 +5221,54 @@ export async function listAdminActionLog(
     pageSize: params.pageSize,
     totalPages: Math.max(1, Math.ceil(total / params.pageSize)),
   };
+}
+
+// ============================================================================
+// Platform Settings
+// ============================================================================
+
+const PLATFORM_SETTINGS_COLUMNS = "support_email, support_phone, updated_at";
+
+type PlatformSettingsRow = Pick<
+  Database["public"]["Tables"]["platform_settings"]["Row"],
+  "support_email" | "support_phone" | "updated_at"
+>;
+
+function toPlatformSettings(row: PlatformSettingsRow): PlatformSettings {
+  return { supportEmail: row.support_email, supportPhone: row.support_phone, updatedAt: row.updated_at };
+}
+
+/**
+ * The singleton settings row. Public-readable (it feeds the storefront footer),
+ * so it uses the cookie-free anon client and keeps footer-bearing routes
+ * static-eligible. Returns `null` if the row is missing or unreadable so
+ * callers can fall back to `siteConfig` instead of breaking the page.
+ */
+export const getPlatformSettings = cache(async (): Promise<PlatformSettings | null> => {
+  const supabase = createSupabaseAnonClient();
+  const { data, error } = await supabase
+    .from(DATABASE_TABLES.PLATFORM_SETTINGS)
+    .select(PLATFORM_SETTINGS_COLUMNS)
+    .maybeSingle();
+
+  if (error) {
+    throw queryError("Failed to load platform settings", error);
+  }
+  return data ? toPlatformSettings(data) : null;
+});
+
+/** Sole write path: the admin-only `admin_update_platform_settings` RPC (also writes the audit row). */
+export async function updatePlatformSettings(input: UpdatePlatformSettingsInput): Promise<PlatformSettings> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("admin_update_platform_settings", {
+    p_support_email: input.supportEmail,
+    p_support_phone: input.supportPhone,
+  });
+
+  if (error) {
+    throw curatedRpcError("Could not save the settings.", error, ADMIN_USER_RPC_SAFE_ERROR_CODES);
+  }
+  return toPlatformSettings(data);
 }
 
 // ============================================================================

@@ -820,6 +820,38 @@ export type Database = {
           },
         ]
       }
+      platform_settings: {
+        Row: {
+          id: boolean
+          support_email: string
+          support_phone: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          id?: boolean
+          support_email?: string
+          support_phone?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          id?: boolean
+          support_email?: string
+          support_phone?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_settings_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       product_images: {
         Row: {
           alt_text: string | null
@@ -1610,15 +1642,15 @@ export type Database = {
             foreignKeyName: "xendit_card_session_failures_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
-            referencedRelation: "orders"
-            referencedColumns: ["id"]
+            referencedRelation: "buyer_order_lifecycle"
+            referencedColumns: ["order_id"]
           },
           {
             foreignKeyName: "xendit_card_session_failures_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
-            referencedRelation: "buyer_order_lifecycle"
-            referencedColumns: ["order_id"]
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "xendit_card_session_failures_payment_id_fkey"
@@ -1726,11 +1758,7 @@ export type Database = {
     }
     Functions: {
       add_cart_item: {
-        Args: {
-          p_product_id: string
-          p_quantity: number
-          p_variant_id: string | null
-        }
+        Args: { p_product_id: string; p_quantity: number; p_variant_id: string | null }
         Returns: {
           line_id: string
           stock_available: number
@@ -1893,6 +1921,22 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      admin_update_platform_settings: {
+        Args: { p_support_email: string; p_support_phone: string }
+        Returns: {
+          id: boolean
+          support_email: string
+          support_phone: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "platform_settings"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       admin_update_shop: {
         Args: { p_active?: boolean; p_name?: string; p_shop_id: string }
         Returns: {
@@ -1986,6 +2030,7 @@ export type Database = {
           cancelled_at: string | null
           cancelled_by: Database["public"]["Enums"]["user_role"] | null
           checkout_group_id: string | null
+          confirmed_at: string | null
           created_at: string
           currency: string
           delivered_at: string | null
@@ -1997,6 +2042,7 @@ export type Database = {
           payment_method: Database["public"]["Enums"]["order_payment_method"]
           payment_status: Database["public"]["Enums"]["payment_status"]
           placed_at: string
+          processing_at: string | null
           seller_id: string | null
           shipped_at: string | null
           shipping_address: Json
@@ -2031,6 +2077,7 @@ export type Database = {
           cancelled_at: string | null
           cancelled_by: Database["public"]["Enums"]["user_role"] | null
           checkout_group_id: string | null
+          confirmed_at: string | null
           created_at: string
           currency: string
           delivered_at: string | null
@@ -2042,6 +2089,7 @@ export type Database = {
           payment_method: Database["public"]["Enums"]["order_payment_method"]
           payment_status: Database["public"]["Enums"]["payment_status"]
           placed_at: string
+          processing_at: string | null
           seller_id: string | null
           shipped_at: string | null
           shipping_address: Json
@@ -2074,6 +2122,7 @@ export type Database = {
           cancelled_at: string | null
           cancelled_by: Database["public"]["Enums"]["user_role"] | null
           checkout_group_id: string | null
+          confirmed_at: string | null
           created_at: string
           currency: string
           delivered_at: string | null
@@ -2085,6 +2134,7 @@ export type Database = {
           payment_method: Database["public"]["Enums"]["order_payment_method"]
           payment_status: Database["public"]["Enums"]["payment_status"]
           placed_at: string
+          processing_at: string | null
           seller_id: string | null
           shipped_at: string | null
           shipping_address: Json
@@ -2104,6 +2154,23 @@ export type Database = {
       current_user_role: {
         Args: never
         Returns: Database["public"]["Enums"]["user_role"]
+      }
+      dashboard_payment_history_summary: {
+        Args: {
+          p_payment_method_type?: string
+          p_payment_source?: string
+          p_search?: string
+          p_stale_only?: boolean
+          p_status?: string
+        }
+        Returns: {
+          failed_count: number
+          paid_amount_cents: number
+          paid_count: number
+          payment_count: number
+          pending_count: number
+          refunded_count: number
+        }[]
       }
       decide_return: {
         Args: {
@@ -2157,6 +2224,7 @@ export type Database = {
           cancelled_at: string | null
           cancelled_by: Database["public"]["Enums"]["user_role"] | null
           checkout_group_id: string | null
+          confirmed_at: string | null
           created_at: string
           currency: string
           delivered_at: string | null
@@ -2168,6 +2236,7 @@ export type Database = {
           payment_method: Database["public"]["Enums"]["order_payment_method"]
           payment_status: Database["public"]["Enums"]["payment_status"]
           placed_at: string
+          processing_at: string | null
           seller_id: string | null
           shipped_at: string | null
           shipping_address: Json
@@ -2485,7 +2554,54 @@ export type Database = {
           order_id: string
           order_item_id: string | null
           reason: string
+          reason_code: Database["public"]["Enums"]["return_reason_code"]
           refund_amount_cents: number | null
+          replacement_courier: string | null
+          replacement_shipped_at: string | null
+          replacement_tracking_number: string | null
+          request_type: Database["public"]["Enums"]["return_request_type"]
+          restocked_at: string | null
+          seller_decided_at: string | null
+          seller_decided_by: string | null
+          seller_decision_note: string | null
+          seller_id: string | null
+          shop_id: string | null
+          status: Database["public"]["Enums"]["return_status"]
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "return_requests"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      record_return_replacement_shipment: {
+        Args: {
+          p_courier: string
+          p_return_id: string
+          p_tracking_number: string
+        }
+        Returns: {
+          admin_decided_at: string | null
+          admin_decided_by: string | null
+          admin_decision_note: string | null
+          buyer_id: string
+          condition_note: string | null
+          condition_recorded_by: string | null
+          created_at: string
+          evidence_path: string | null
+          id: string
+          marked_unsellable_at: string | null
+          order_id: string
+          order_item_id: string | null
+          reason: string
+          reason_code: Database["public"]["Enums"]["return_reason_code"]
+          refund_amount_cents: number | null
+          replacement_courier: string | null
+          replacement_shipped_at: string | null
+          replacement_tracking_number: string | null
+          request_type: Database["public"]["Enums"]["return_request_type"]
           restocked_at: string | null
           seller_decided_at: string | null
           seller_decided_by: string | null
@@ -2528,23 +2644,6 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
-      }
-      dashboard_payment_history_summary: {
-        Args: {
-          p_payment_source?: string
-          p_payment_method_type?: string
-          p_status?: string
-          p_search?: string
-          p_stale_only?: boolean
-        }
-        Returns: {
-          failed_count: number
-          paid_amount_cents: number
-          paid_count: number
-          payment_count: number
-          pending_count: number
-          refunded_count: number
-        }[]
       }
       report_order_status_breakdown: {
         Args: { p_from: string; p_shop_id?: string; p_to: string }
@@ -2602,44 +2701,6 @@ export type Database = {
           revenue_cents: number
           units_sold: number
         }[]
-      }
-      record_return_replacement_shipment: {
-        Args: { p_courier: string; p_return_id: string; p_tracking_number: string }
-        Returns: {
-          admin_decided_at: string | null
-          admin_decided_by: string | null
-          admin_decision_note: string | null
-          buyer_id: string
-          condition_note: string | null
-          condition_recorded_by: string | null
-          created_at: string
-          evidence_path: string | null
-          id: string
-          marked_unsellable_at: string | null
-          order_id: string
-          order_item_id: string | null
-          reason: string
-          reason_code: Database["public"]["Enums"]["return_reason_code"]
-          refund_amount_cents: number | null
-          replacement_courier: string | null
-          replacement_shipped_at: string | null
-          replacement_tracking_number: string | null
-          request_type: Database["public"]["Enums"]["return_request_type"]
-          restocked_at: string | null
-          seller_decided_at: string | null
-          seller_decided_by: string | null
-          seller_decision_note: string | null
-          seller_id: string | null
-          shop_id: string | null
-          status: Database["public"]["Enums"]["return_status"]
-          updated_at: string
-        }
-        SetofOptions: {
-          from: "*"
-          to: "return_requests"
-          isOneToOne: true
-          isSetofReturn: false
-        }
       }
       request_return: {
         Args: {
@@ -2711,7 +2772,12 @@ export type Database = {
           order_id: string
           order_item_id: string | null
           reason: string
+          reason_code: Database["public"]["Enums"]["return_reason_code"]
           refund_amount_cents: number | null
+          replacement_courier: string | null
+          replacement_shipped_at: string | null
+          replacement_tracking_number: string | null
+          request_type: Database["public"]["Enums"]["return_request_type"]
           restocked_at: string | null
           seller_decided_at: string | null
           seller_decided_by: string | null
@@ -2975,7 +3041,11 @@ export const Constants = {
         "item_not_received",
         "other",
       ],
-      return_request_type: ["money_refund", "return_and_refund", "replacement_exchange"],
+      return_request_type: [
+        "money_refund",
+        "return_and_refund",
+        "replacement_exchange",
+      ],
       return_status: [
         "pending",
         "seller_accepted",

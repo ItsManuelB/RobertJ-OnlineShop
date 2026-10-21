@@ -28,6 +28,7 @@ export const DATABASE_TABLES = {
   INVENTORY: "inventory",
   STOCK_ADJUSTMENTS: "stock_adjustments",
   ADMIN_ACTION_LOG: "admin_action_log",
+  PLATFORM_SETTINGS: "platform_settings",
   WISHLISTS: "wishlists",
   REVIEWS: "reviews",
   RETURN_REQUESTS: "return_requests",
