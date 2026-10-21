@@ -4,3 +4,4 @@ export type { Profile } from "./types/account.types";
 export { changePasswordAction } from "./actions/account.actions";
 export { ChangePasswordForm } from "./components/ChangePasswordForm";
 export { AvatarUploader } from "./components/AvatarUploader";
+export { PortalAccountForm } from "./components/PortalAccountForm";

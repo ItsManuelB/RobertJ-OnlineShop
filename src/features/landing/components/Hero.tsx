@@ -56,13 +56,13 @@ export async function Hero() {
           <div className="mb-10 flex flex-wrap gap-3">
             <Link
               href={ROUTES.products}
-              className="rounded-full bg-rj-red px-7 py-3.5 text-sm font-bold text-white shadow-lg shadow-rj-red/25 transition-all hover:bg-rj-red-dark active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-rj-black"
+              className="rounded-full bg-rj-red px-7 py-3.5 text-sm font-bold text-rj-white shadow-lg shadow-rj-red/25 transition-all hover:bg-rj-red-dark active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rj-white focus-visible:ring-offset-2 focus-visible:ring-offset-rj-black"
             >
               Shop Now
             </Link>
             <a
               href="#shops"
-              className="flex items-center gap-2 rounded-full border border-rj-white/20 px-7 py-3.5 text-sm font-medium text-rj-white transition-colors hover:border-rj-white/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-rj-black"
+              className="flex items-center gap-2 rounded-full border border-rj-white/20 px-7 py-3.5 text-sm font-medium text-rj-white transition-colors hover:border-rj-white/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rj-white focus-visible:ring-offset-2 focus-visible:ring-offset-rj-black"
             >
               Explore Shops
               <ArrowRight className="h-[13px] w-[13px]" aria-hidden="true" />
@@ -192,7 +192,7 @@ export async function Hero() {
         aria-hidden="true"
       >
         <div className="text-[10px] uppercase tracking-widest text-rj-white">Scroll</div>
-        <ArrowDown className="h-4 w-4 text-white" />
+        <ArrowDown className="h-4 w-4 text-rj-white" />
       </div>
     </section>
   );

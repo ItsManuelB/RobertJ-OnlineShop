@@ -18,7 +18,7 @@ import {
   bulkOrderIdsSchema,
   cancelOrderSchema,
   confirmOrderReceivedSchema,
-  dashboardOrderListParamsSchema,
+  dashboardOrderExportFiltersSchema,
   recordShipmentSchema,
   scanOrderNumberSchema,
 } from "@/features/orders/schemas/order.schema";
@@ -326,9 +326,6 @@ export async function bulkCancelOrdersAction(
   }
 }
 
-/** Filters accepted by `exportOrdersAction` — the same dashboard list filters, minus pagination (the export has its own row cap). */
-const orderExportFiltersSchema = dashboardOrderListParamsSchema.omit({ page: true, pageSize: true });
-
 export interface OrderExportRow {
   orderNumber: string;
   buyerName: string | null;
@@ -347,13 +344,17 @@ export interface OrderExportRow {
 export async function exportOrdersAction(
   filters: Record<string, unknown>,
 ): Promise<ActionResult<OrderExportRow[]>> {
-  const parsed = orderExportFiltersSchema.safeParse(filters);
+  const parsed = dashboardOrderExportFiltersSchema.safeParse(filters);
   if (!parsed.success) return fromZodError(parsed.error);
 
   try {
     const user = await queries.requireRole(DASHBOARD_ROLES);
     await queries.requireRateLimit(`exportOrders:${user.id}`, 10, 60);
-    const orders = await queries.listOrdersForExport(parsed.data as OrderListParams);
+    const owner =
+      user.role === USER_ROLES.seller
+        ? { sellerId: user.id, shopId: await queries.getOwnShopId(user.id) }
+        : null;
+    const orders = await queries.listOrdersForExport(parsed.data as OrderListParams, owner);
     return ok(
       orders.map((order) => ({
         orderNumber: order.orderNumber,

@@ -5,12 +5,12 @@ import { buttonVariants } from "@/components/ui/button";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ROUTES } from "@/constants/routes";
 import { cn } from "@/lib/utils/cn";
-import { MAX_SELECTION } from "@/features/orders/components/OrdersDataTable";
+import { MAX_ORDER_SELECTION } from "@/features/orders/order-selection.constants";
 import { PrintLabelButton } from "@/features/orders/components/PrintLabelButton";
 import { ShippingLabel } from "@/features/orders/components/ShippingLabel";
 import { isShippingLabelEligible, type Order } from "@/features/orders/types/order.types";
 import {
-  getDashboardOrder,
+  getDashboardOrdersByIds,
   getOrderShipment,
   getOwnShopId,
   getShopMembershipBySellerIds,
@@ -27,10 +27,10 @@ interface SellerOrderLabelsPageProps {
  * Bulk shipping-label print view — one print job covering every selected
  * order's label, each on its own page (`.print-page-break`, globals.css).
  * Ids come from `OrdersDataTable`'s "Print labels" bulk action
- * (`ROUTES.sellerOrderLabels`); each is independently re-scoped to the
- * signed-in seller via `getDashboardOrder`'s owner filter (RLS backs this
- * too) — an id that isn't found or isn't this seller's is silently skipped,
- * never a hard error, since the list is just whatever was selected on screen.
+ * (`ROUTES.sellerOrderLabels`); selected orders are re-scoped to the signed-in
+ * seller in one query (RLS backs this too). Orders that aren't found or
+ * eligible are skipped; query failures surface as errors instead of looking
+ * like an empty selection.
  */
 export default async function SellerOrderLabelsPage({ searchParams }: SellerOrderLabelsPageProps) {
   const { ids } = await searchParams;
@@ -44,30 +44,27 @@ export default async function SellerOrderLabelsPage({ searchParams }: SellerOrde
         .map((id) => id.trim())
         .filter(Boolean),
     ),
-  ).slice(0, MAX_SELECTION);
+  ).slice(0, MAX_ORDER_SELECTION);
 
-  const resolvedOrders = await Promise.all(
-    requestedIds.map((id) =>
-      getDashboardOrder(id, owner).catch((error) => {
-        // Logged, not swallowed — an id that's simply not this seller's own
-        // (or doesn't exist) is an expected, routine skip, but a real
-        // DB/RLS failure here would otherwise look identical to one in the
-        // "aren't eligible for a label" notice below.
-        console.error("[seller-labels] Failed to load order", id, error);
-        return null;
-      }),
-    ),
-  );
-  const orders = resolvedOrders.filter(
-    (order): order is Order => order !== null && isShippingLabelEligible(order),
-  );
+  const resolvedOrders = await getDashboardOrdersByIds(requestedIds, owner).catch((error) => {
+    console.error("[seller-labels] Failed to load selected orders", error);
+    throw error;
+  });
+  const resolvedById = new Map(resolvedOrders.map((order) => [order.id, order] as const));
+  const orders = requestedIds
+    .map((id) => resolvedById.get(id))
+    .filter((order): order is Order => order !== undefined && isShippingLabelEligible(order));
 
   if (orders.length === 0) {
     return (
       <div className="p-5 lg:p-7">
         <EmptyState
-          title="No labels to show"
-          description="None of the selected orders have a shipping label yet — only To Pack orders onward do."
+          title={requestedIds.length === 0 ? "No orders selected" : "No labels to show"}
+          description={
+            requestedIds.length === 0
+              ? "Go back to orders, select the orders you want to print, then choose Print labels."
+              : "No labels are available for these selections. Labels are available for To Pack orders and later. Check that you're signed in to the seller account for these orders."
+          }
           action={
             <Link href={ROUTES.sellerOrders} className={cn(buttonVariants({ variant: "rj", size: "rjSm" }))}>
               Back to orders

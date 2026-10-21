@@ -4,9 +4,13 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { FILTER_CHIP_ACTIVE_THEMED, FILTER_CHIP_IDLE_THEMED } from "@/components/ui/filter-chip";
 import { STOCK_STATUS_LABELS } from "@/features/inventory/constants/inventory.constants";
-import type { StockStatus } from "@/features/inventory/types/inventory.types";
+import type { InventoryStatusFilter } from "@/features/inventory/types/inventory.types";
 
-const STATUS_ORDER: StockStatus[] = ["low_stock", "out_of_stock", "in_stock"];
+const STATUS_ORDER: InventoryStatusFilter[] = ["needs_attention", "low_stock", "out_of_stock", "in_stock"];
+
+function statusLabel(status: InventoryStatusFilter): string {
+  return status === "needs_attention" ? "Low or out of stock" : STOCK_STATUS_LABELS[status];
+}
 
 /** Stock-status chips for the Inventory dashboard table — sets `stockStatus`, always clears `page`. */
 export function DashboardStockStatusFilter() {
@@ -42,7 +46,7 @@ export function DashboardStockStatusFilter() {
           className={active === status ? FILTER_CHIP_ACTIVE_THEMED : FILTER_CHIP_IDLE_THEMED}
           onClick={() => updateParams(status)}
         >
-          {STOCK_STATUS_LABELS[status]}
+          {statusLabel(status)}
         </button>
       ))}
     </div>

@@ -50,12 +50,12 @@ export function ScanBarcodeButton() {
         variant="outline"
         size="rjSm"
         onClick={() => setOpen(true)}
-        className="shrink-0"
+        className="shrink-0 text-foreground"
       >
         <ScanLine className="mr-2 h-4 w-4" aria-hidden="true" />
         Scan barcode
       </Button>
-      {open ? <BarcodeScannerModal onClose={() => setOpen(false)} onDecode={handleDecode} /> : null}
+      {open ? <BarcodeScannerModal themed onClose={() => setOpen(false)} onDecode={handleDecode} /> : null}
     </>
   );
 }

@@ -33,11 +33,16 @@ export const buyerOrderListParamsSchema = paginationSchema.extend({
  * filters that only make sense for a seller/admin managing orders, never the
  * buyer's own history.
  */
-export const dashboardOrderListParamsSchema = paginationSchema.extend({
+const dashboardOrderListParamsObjectSchema = paginationSchema.extend({
   search: z.string().trim().min(1).max(40).optional(),
   status: orderStatusSchema.optional(),
   paymentMethod: z.enum(["cod", "xendit"]).optional(),
   dateRange: z.enum(["today", "7d", "30d"]).optional(),
+  /** Exact Manila calendar range, used by shop-dashboard metric drill-downs. */
+  from: z.iso.date().optional(),
+  to: z.iso.date().optional(),
+  /** Current pending orders that meet the admin dashboard's confirmation rule. */
+  confirmationRequired: z.string().optional().transform((value) => value === "true"),
   /** Admin-only shop filter (F-12) — a seller's own `listDashboardOrders` call is already shop-scoped by RLS, so this is simply ignored (harmless) if a non-admin URL ever carried it. */
   shopId: uuidSchema.optional(),
   // Deliberately not z.coerce.boolean() — Boolean("false") is true, which
@@ -47,6 +52,26 @@ export const dashboardOrderListParamsSchema = paginationSchema.extend({
     .optional()
     .transform((value) => value === "true"),
 });
+
+const validateDashboardOrderDateRange = (
+  value: { from?: string; to?: string },
+  context: z.RefinementCtx,
+) => {
+  if (Boolean(value.from) !== Boolean(value.to)) {
+    context.addIssue({ code: "custom", message: "Both dates are required for a custom range." });
+  } else if (value.from && value.to && value.from > value.to) {
+    context.addIssue({ code: "custom", message: "The start date must be on or before the end date." });
+  }
+};
+
+export const dashboardOrderListParamsSchema = dashboardOrderListParamsObjectSchema.superRefine(
+  validateDashboardOrderDateRange,
+);
+
+/** Export filters share dashboard validation without pagination fields. */
+export const dashboardOrderExportFiltersSchema = dashboardOrderListParamsObjectSchema
+  .omit({ page: true, pageSize: true })
+  .superRefine(validateDashboardOrderDateRange);
 
 /** Shared id-list shape for the dashboard's bulk order actions. */
 export const bulkOrderIdsSchema = z.array(uuidSchema).min(1, "Select at least one order.").max(100);

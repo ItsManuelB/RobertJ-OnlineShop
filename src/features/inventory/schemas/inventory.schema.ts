@@ -43,7 +43,9 @@ export const dashboardInventoryListParamsSchema = z.object({
     .max(PAGINATION.maxPageSize)
     .default(PAGINATION.defaultPageSize),
   search: z.string().trim().max(120).optional(),
-  stockStatus: z.enum(["in_stock", "low_stock", "out_of_stock"]).optional(),
+  /** Admin-only shop filter; seller inventory remains scoped by RLS. */
+  shopId: z.uuid().optional(),
+  stockStatus: z.enum(["in_stock", "low_stock", "out_of_stock", "needs_attention"]).optional(),
 });
 
 /** Payload for applying one delta/reason/note to several inventory rows at once. */

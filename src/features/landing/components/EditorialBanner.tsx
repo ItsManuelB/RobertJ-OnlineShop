@@ -31,7 +31,7 @@ export function EditorialBanner() {
         </h2>
         <Link
           href={ROUTES.products}
-          className="inline-flex items-center gap-2 rounded-full bg-rj-red px-7 py-3.5 text-sm font-bold text-white shadow-lg shadow-rj-red/30 transition-colors hover:bg-rj-red-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-rj-black"
+          className="inline-flex items-center gap-2 rounded-full bg-rj-red px-7 py-3.5 text-sm font-bold text-rj-white shadow-lg shadow-rj-red/30 transition-colors hover:bg-rj-red-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rj-white focus-visible:ring-offset-2 focus-visible:ring-offset-rj-black"
         >
           Explore New Arrivals
           <ArrowRight className="h-[13px] w-[13px]" aria-hidden="true" />

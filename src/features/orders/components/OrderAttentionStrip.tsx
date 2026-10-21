@@ -62,10 +62,10 @@ export function OrderAttentionStrip({
 
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-xl border border-warning/40 bg-warning/10 p-3">
-      <span aria-hidden="true">⚠</span>
+      <span aria-hidden="true" className="text-warning">⚠</span>
       <p className="flex-1 text-sm font-semibold text-foreground">{parts.join(" · ")}</p>
       {hasOrderAttention ? (
-        <Button type="button" variant="outline" size="rjSm" onClick={toggle}>
+        <Button type="button" variant="outline" size="rjSm" onClick={toggle} className="text-foreground">
           {active ? "Show all orders" : "Show only these"}
         </Button>
       ) : null}

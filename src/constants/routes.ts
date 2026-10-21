@@ -52,6 +52,7 @@ export const ROUTES = {
   adminUsers: "/admin/users",
   adminUserDetail: (id: string) => `/admin/users/${id}`,
   adminShops: "/admin/shops",
+  adminShopDashboard: (shopId: string) => `/admin/shops/${shopId}/dashboard`,
   adminCategories: "/admin/categories",
   adminAuditLog: "/admin/audit-log",
   adminSettings: "/admin/settings",

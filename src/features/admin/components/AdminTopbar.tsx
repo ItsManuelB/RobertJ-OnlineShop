@@ -160,6 +160,7 @@ export function AdminTopbar({ user, pathname, notifications, onMenuClick }: Admi
                 <ThemeToggle />
               </div>
               <SignOutButton
+                themeScope="admin"
                 wrapperClassName="py-1.5"
                 className="w-full px-4 py-2 text-left text-sm text-danger transition-colors hover:bg-danger/10"
               >

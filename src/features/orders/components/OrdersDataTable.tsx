@@ -27,10 +27,9 @@ import { downloadCsv } from "@/lib/utils/csv";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDateTime } from "@/lib/utils/date";
 import { cn } from "@/lib/utils/cn";
+import { MAX_ORDER_SELECTION } from "@/features/orders/order-selection.constants";
 
 const CANCELLABLE = new Set(["pending", "confirmed", "processing"]);
-/** Shared with the bulk shipping-labels page, which imports this instead of duplicating the number. */
-export const MAX_SELECTION = 100;
 
 export interface OrdersDataTableProps {
   orders: Order[];
@@ -73,11 +72,11 @@ export function OrdersDataTable({ orders, isAdmin }: OrdersDataTableProps) {
       setSelected(new Set());
       return;
     }
-    setSelected(new Set(orders.slice(0, MAX_SELECTION).map((o) => o.id)));
+    setSelected(new Set(orders.slice(0, MAX_ORDER_SELECTION).map((o) => o.id)));
   }
   function toggleOne(id: string, checked: boolean) {
     setSelected((prev) => {
-      if (checked && prev.size >= MAX_SELECTION) return prev;
+      if (checked && prev.size >= MAX_ORDER_SELECTION) return prev;
       const next = new Set(prev);
       if (checked) next.add(id);
       else next.delete(id);
@@ -220,7 +219,7 @@ export function OrdersDataTable({ orders, isAdmin }: OrdersDataTableProps) {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex justify-end">
-        <Button type="button" variant="outline" size="rjSm" onClick={runExport} isLoading={isPending && selectedCount === 0}>
+        <Button type="button" variant="outline" size="rjSm" onClick={runExport} isLoading={isPending && selectedCount === 0} className="text-foreground">
           Export CSV
         </Button>
       </div>
@@ -228,7 +227,7 @@ export function OrdersDataTable({ orders, isAdmin }: OrdersDataTableProps) {
       {selectedCount > 0 ? (
         <div className="flex flex-wrap items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 p-3">
           <span className="text-sm font-semibold text-foreground">{selectedCount} selected</span>
-          <span className="text-xs text-muted-foreground">(max {MAX_SELECTION} at a time)</span>
+          <span className="text-xs text-muted-foreground">(max {MAX_ORDER_SELECTION} at a time)</span>
           <div className="ml-auto flex flex-wrap items-center gap-2">
             {confirmCancelIds ? null : (
               <>

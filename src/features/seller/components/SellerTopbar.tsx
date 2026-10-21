@@ -170,6 +170,7 @@ export function SellerTopbar({ user, pathname, notifications, onMenuClick }: Sel
                 </Link>
               </div>
               <SignOutButton
+                themeScope="seller"
                 wrapperClassName="border-t border-border py-1.5"
                 className="w-full px-4 py-2 text-left text-sm text-danger transition-colors hover:bg-danger/10"
               >

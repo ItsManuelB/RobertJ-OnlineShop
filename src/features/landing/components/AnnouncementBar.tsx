@@ -17,7 +17,7 @@ export function AnnouncementBar() {
   }, []);
 
   return (
-    <div className="overflow-hidden bg-rj-red py-2 text-center text-[11px] font-semibold uppercase tracking-widest text-white">
+    <div className="overflow-hidden bg-rj-red py-2 text-center text-[11px] font-semibold uppercase tracking-widest text-rj-white">
       <div key={index} style={{ animation: "fadeSlideIn 0.5s ease both" }} aria-live="polite">
         {ANNOUNCEMENTS[index]}
       </div>

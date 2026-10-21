@@ -177,7 +177,7 @@ export function ProductFilters({ categories = [], shops = [], attributeFilters =
           <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
           Filters
           {activeAdvancedCount > 0 ? (
-            <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-rj-red px-1 text-[9px] font-bold text-white">
+            <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-rj-red px-1 text-[9px] font-bold text-rj-white">
               {activeAdvancedCount}
             </span>
           ) : null}

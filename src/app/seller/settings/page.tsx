@@ -4,8 +4,7 @@ import type { Metadata } from "next";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { Card, CardContent } from "@/components/ui/card";
 import { ROUTES } from "@/constants/routes";
-import { ChangePasswordForm } from "@/features/account";
-import { SellerAccountForm } from "@/features/seller/components/SellerAccountForm";
+import { ChangePasswordForm, PortalAccountForm } from "@/features/account";
 import { getMyProfile, getOwnShopId, getShopById, listUserIdentities, requireSessionUser } from "@/lib/supabase/queries";
 
 export const metadata: Metadata = { title: "Settings — Seller Portal" };
@@ -49,7 +48,7 @@ export default async function SellerSettingsPage() {
   return (
     <div className="flex max-w-3xl flex-col gap-5 p-5 lg:p-7">
       <Section title="Account" description="How you appear in the seller portal.">
-        <SellerAccountForm profile={profile} email={user.email} />
+        <PortalAccountForm profile={profile} email={user.email} />
       </Section>
 
       <Section title="Security" description="Change the password you sign in with.">

@@ -1,12 +1,14 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
+import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ConfirmPanel } from "@/components/ui/confirm-panel";
 import { ErrorState } from "@/components/feedback/ErrorState";
+import { ROUTES } from "@/constants/routes";
 import { deleteShopAction, toggleShopActiveAction } from "@/features/shops/actions/shop.actions";
 import { ShopForm } from "@/features/shops/components/ShopForm";
 import type { ShopWithMember } from "@/features/shops/types/shop.types";
@@ -91,6 +93,12 @@ export function ShopRow({ shop }: ShopRowProps) {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href={ROUTES.adminShopDashboard(shop.id)}
+              className={cn(buttonVariants({ variant: "primary", size: "rjSm" }))}
+            >
+              View Dashboard
+            </Link>
             <Button type="button" variant="outline" size="rjSm" onClick={() => setMode("edit")}>
               Edit
             </Button>

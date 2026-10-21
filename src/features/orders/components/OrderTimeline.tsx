@@ -142,9 +142,9 @@ export function OrderTimeline({
                           !isDone && !isCurrent && "border-border bg-card text-muted-foreground",
                         ]
                       : [
-                          isDone && "border-rj-red bg-rj-red text-white",
+                          isDone && "border-rj-red bg-rj-red text-rj-white",
                           isCurrent &&
-                            "border-rj-red bg-rj-red text-white ring-2 ring-rj-red/30",
+                            "border-rj-red bg-rj-red text-rj-white ring-2 ring-rj-red/30",
                           !isDone && !isCurrent && "border-rj-gray-200 bg-rj-white text-rj-gray-400",
                         ],
                   )}

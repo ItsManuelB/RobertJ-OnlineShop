@@ -37,7 +37,7 @@ export interface GuidedSelectorQuizProps {
 }
 
 const CHIP_ACTIVE =
-  "rounded-full border-[1.5px] border-rj-black bg-rj-black px-4 py-2 text-xs font-bold text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rj-red/30";
+  "rounded-full border-[1.5px] border-rj-black bg-rj-black px-4 py-2 text-xs font-bold text-rj-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rj-red/30";
 const CHIP_IDLE =
   "rounded-full border-[1.5px] border-rj-gray-200 bg-transparent px-4 py-2 text-xs font-bold text-rj-gray-600 transition-colors hover:border-rj-black hover:text-rj-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rj-red/30";
 

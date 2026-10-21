@@ -23,7 +23,7 @@ export function Checkbox({ checked, className, ...props }: CheckboxProps) {
       type="checkbox"
       checked={checked === true}
       className={cn(
-        "h-4 w-4 shrink-0 cursor-pointer rounded border-rj-gray-300 text-rj-red accent-rj-red focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rj-red/30",
+        "h-4 w-4 shrink-0 cursor-pointer rounded border-rj-gray-300 text-primary accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30",
         className,
       )}
       {...props}

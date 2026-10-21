@@ -20,6 +20,10 @@
   --muted: #f4f4f5;
   --muted-foreground: #6b7280;
   --border: #e4e4e7;
+  --subtle-border: #e4e4e7;
+  --table-divider: #e4e4e7;
+  --filter-active-background: #171717;
+  --filter-active-foreground: #ffffff;
   --ring: #135e4a;
   --primary: #135e4a;
   --primary-foreground: #ffffff;
@@ -52,6 +56,7 @@
  */
 [data-theme-scope="admin"],
 [data-theme-scope="seller"] {
+  color-scheme: light;
   --background: #f8faf9; /* rj-white */
   --foreground: #09120f; /* rj-black */
   --card: #ffffff;
@@ -59,6 +64,10 @@
   --muted: #e2f0eb; /* rj-gray-100 */
   --muted-foreground: #4a5c52; /* rj-gray-600 */
   --border: #ccdcdc; /* rj-gray-200 / emerald-whisper */
+  --subtle-border: #e2f0eb; /* rj-gray-100 */
+  --table-divider: #f3f9f6; /* rj-gray-50 */
+  --filter-active-background: #09120f; /* rj-black */
+  --filter-active-foreground: #f8faf9; /* rj-white */
   --ring: #135e4a; /* rj-red (emerald brand accent) */
   --primary: #135e4a; /* rj-red (emerald brand accent) */
   --primary-foreground: #ffffff;
@@ -91,13 +100,18 @@
  */
 .dark [data-theme-scope="admin"],
 .dark [data-theme-scope="seller"] {
+  color-scheme: dark;
   --background: #101b17;
   --foreground: #f2f2f0;
   --card: #172621;
   --card-foreground: #f2f2f0;
   --muted: #1f2d27;
   --muted-foreground: #a2b9ad;
-  --border: #293831; /* rj-gray-800 family, dark surface */
+  --border: #60736a; /* 3.1:1 against cards and 3.5:1 against the page */
+  --subtle-border: #34473e;
+  --table-divider: #34473e;
+  --filter-active-background: var(--primary);
+  --filter-active-foreground: #09120f;
   --ring: #4cb571;
   --primary: #4cb571; /* brightened emerald for visibility on a near-black surface */
   /* Dark ink, not white: white text on this bright a green only reaches
@@ -109,8 +123,8 @@
   --secondary-foreground: #f2f2f0;
   --success: #22c55e; /* rj-green */
   --warning: #f4b942; /* rj-gold */
-  --danger: #f0384a;
-  --danger-foreground: #ffffff;
+  --danger: #ff7580;
+  --danger-foreground: #09120f;
   --info: #38bdf8;
 
   --sidebar-background: #0c1512; /* rj-black family, darkest surface */
@@ -158,6 +172,10 @@
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-border: var(--border);
+  --color-subtle-border: var(--subtle-border);
+  --color-table-divider: var(--table-divider);
+  --color-filter-active: var(--filter-active-background);
+  --color-filter-active-foreground: var(--filter-active-foreground);
   --color-ring: var(--ring);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);

@@ -10,7 +10,12 @@ import { OrdersDataTable } from "@/features/orders/components/OrdersDataTable";
 import { dashboardOrderListParamsSchema } from "@/features/orders/schemas/order.schema";
 import type { Order, OrderListParams } from "@/features/orders/types/order.types";
 import { cn } from "@/lib/utils/cn";
-import { getOrderAttentionCounts, listDashboardOrders } from "@/lib/supabase/queries";
+import {
+  getOrderAttentionCounts,
+  getOwnShopId,
+  listDashboardOrders,
+  requireSessionUser,
+} from "@/lib/supabase/queries";
 import type { PaginatedResult } from "@/types/pagination.types";
 
 export interface DashboardOrdersPanelProps {
@@ -22,9 +27,9 @@ export interface DashboardOrdersPanelProps {
 
 /**
  * Dashboard equivalent of `OrderListSection` — same composition, but reads
- * via `listDashboardOrders()` (no manual seller/admin filter; RLS is the
- * boundary) instead of the buyer-scoped `listBuyerOrders`. Renders a data
- * table (checkbox multi-select + bulk actions) instead of a plain card
+ * via `listDashboardOrders()` (explicit seller/shop scope plus RLS, or all
+ * orders for admins) instead of the buyer-scoped `listBuyerOrders`. Renders a
+ * data table (checkbox multi-select + bulk actions) instead of a plain card
  * list, and a "Needs attention" summary strip above it.
  */
 export async function DashboardOrdersPanel({
@@ -44,9 +49,15 @@ export async function DashboardOrdersPanel({
   let result: PaginatedResult<Order>;
   let attentionCounts: Awaited<ReturnType<typeof getOrderAttentionCounts>>;
   try {
+    const owner = isAdmin
+      ? null
+      : await (async () => {
+          const user = await requireSessionUser();
+          return { sellerId: user.id, shopId: await getOwnShopId(user.id) };
+        })();
     [result, attentionCounts] = await Promise.all([
-      listDashboardOrders(params),
-      getOrderAttentionCounts(),
+      listDashboardOrders(params, owner),
+      getOrderAttentionCounts(owner?.shopId),
     ]);
   } catch {
     return <ErrorState message="We couldn't load orders right now." />;
@@ -62,11 +73,17 @@ export async function DashboardOrdersPanel({
         returnsAwaitingRestock={attentionCounts.returnsAwaitingRestock}
         returnsHref={isAdmin ? ROUTES.adminReturns : ROUTES.sellerOrders}
       />
+      {params.confirmationRequired ? (
+        <p className="text-xs text-muted-foreground">
+          Showing pending orders eligible for confirmation (COD or paid online), scoped to {isAdmin ? "the selected shop" : "your shop"}.
+        </p>
+      ) : null}
 
       {items.length === 0 ? (
         (() => {
           const filtering = Boolean(
-            params.search || params.status || params.paymentMethod || params.dateRange || params.attentionOnly,
+            params.search || params.status || params.paymentMethod || params.dateRange ||
+              params.from || params.to || params.confirmationRequired || params.attentionOnly,
           );
           return (
             <EmptyState

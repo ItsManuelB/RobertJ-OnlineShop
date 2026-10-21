@@ -5,23 +5,25 @@ import { useActionState } from "react";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { FormField } from "@/components/forms/FormField";
 import { Button } from "@/components/ui/button";
-import { AvatarUploader, updateProfileAction, type Profile } from "@/features/account";
+import { updateProfileAction } from "@/features/account/actions/account.actions";
+import { AvatarUploader } from "@/features/account/components/AvatarUploader";
+import type { Profile } from "@/features/account/types/account.types";
 import type { ActionResult } from "@/types/action.types";
 
-export interface SellerAccountFormProps {
+export interface PortalAccountFormProps {
   profile: Profile;
   email: string;
 }
 
 /**
- * Seller's own account details: photo, display name and phone. Email is read
+ * Signed-in staff member's own account details (seller or admin portal): photo, display name and phone. Email is read
  * only (it is the sign-in identity). Saves through the same
  * `updateProfileAction` the buyer profile uses, which rewrites every profile
  * field it receives — so the fields this form does not show (username,
  * bio, gender, date of birth) ride along as hidden inputs with their current
  * values, and saving can never blank them.
  */
-export function SellerAccountForm({ profile, email }: SellerAccountFormProps) {
+export function PortalAccountForm({ profile, email }: PortalAccountFormProps) {
   const [state, formAction, isPending] = useActionState<ActionResult<Profile> | null, FormData>(
     updateProfileAction,
     null,

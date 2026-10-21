@@ -13,6 +13,8 @@ export interface SignOutButtonProps {
   children: ReactNode;
   /** Wraps just the trigger button (e.g. a dropdown item's border-top divider) — the confirm dialog itself is portaled out, so this never wraps it. */
   wrapperClassName?: string;
+  /** Adds the Admin/Seller theme scope to the portaled confirmation surface. */
+  themeScope?: "admin" | "seller";
 }
 
 /**
@@ -29,7 +31,7 @@ export interface SignOutButtonProps {
  * immediately read as an outside click and close (unmount) the dropdown,
  * taking this dialog down with it.
  */
-export function SignOutButton({ className, children, wrapperClassName }: SignOutButtonProps) {
+export function SignOutButton({ className, children, wrapperClassName, themeScope }: SignOutButtonProps) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -70,6 +72,7 @@ export function SignOutButton({ className, children, wrapperClassName }: SignOut
       {confirmOpen
         ? createPortal(
             <div
+              data-theme-scope={themeScope}
               className="fixed inset-0 z-[100] flex items-center justify-center bg-rj-black/50 p-4"
               onMouseDown={(event) => {
                 // Stops a dropdown ancestor's own document-level "click
@@ -85,10 +88,10 @@ export function SignOutButton({ className, children, wrapperClassName }: SignOut
                 aria-modal="true"
                 aria-label="Sign out of your account"
                 tabIndex={-1}
-                className="w-full max-w-sm rounded-2xl bg-rj-white p-6 text-center shadow-2xl outline-none"
+                className={`w-full max-w-sm rounded-2xl p-6 text-center shadow-2xl outline-none ${themeScope ? "bg-rj-white text-rj-black dark:bg-card dark:text-card-foreground" : "bg-rj-white text-rj-black"}`}
               >
-                <p className="text-base font-bold text-rj-black">Sign out?</p>
-                <p className="mt-1.5 text-sm text-rj-gray-600">
+                <p className={`text-base font-bold ${themeScope ? "text-foreground" : "text-rj-black"}`}>Sign out?</p>
+                <p className={`mt-1.5 text-sm ${themeScope ? "text-muted-foreground" : "text-rj-gray-600"}`}>
                   You&apos;ll need to sign in again to continue.
                 </p>
                 <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-center">
@@ -104,7 +107,7 @@ export function SignOutButton({ className, children, wrapperClassName }: SignOut
                   </Button>
                   <Button
                     type="button"
-                    variant="rj"
+                    variant={themeScope ? "primary" : "rj"}
                     size="rjSm"
                     isLoading={isPending}
                     onClick={handleConfirm}

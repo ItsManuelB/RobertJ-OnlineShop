@@ -156,6 +156,11 @@ export interface OrderListParams {
   paymentMethod?: "cod" | "xendit";
   /** Dashboard-only: relative window off `placed_at`. */
   dateRange?: "today" | "7d" | "30d";
+  /** Dashboard-only: exact inclusive Manila calendar range. */
+  from?: string;
+  to?: string;
+  /** Dashboard-only: pending orders eligible for confirmation. */
+  confirmationRequired?: boolean;
   /**
    * Dashboard-only: only orders needing a seller action right now — see
    * `isOrderNeedingAttention()`. Overrides `status` when set (attention

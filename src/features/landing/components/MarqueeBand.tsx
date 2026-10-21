@@ -17,7 +17,7 @@ export function MarqueeBand() {
         {items.map((item, i) => (
           <span
             key={i}
-            className="inline-flex items-center gap-4 px-6 text-[11px] font-bold uppercase tracking-[0.2em] text-white"
+            className="inline-flex items-center gap-4 px-6 text-[11px] font-bold uppercase tracking-[0.2em] text-rj-white"
           >
             {item}
             <span className="h-1 w-1 rounded-full bg-white/50" />

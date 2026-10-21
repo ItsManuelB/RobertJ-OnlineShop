@@ -146,6 +146,7 @@ export function ItemVerificationChecklist({
 
       {scanning ? (
         <BarcodeScannerModal
+          themed={themed}
           onClose={() => setScanning(false)}
           onDecode={handleDecode}
           // Camera confirmed unavailable (denied/no device/unsupported): let
