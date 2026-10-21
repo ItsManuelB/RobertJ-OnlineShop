@@ -11,11 +11,19 @@ export function OrderMethodFilter() {
   const active = searchParams.get("paymentMethod") ?? "";
 
   function updateParams(value: string) {
-    const params = new URLSearchParams(searchParams.toString());
+    const current = searchParams.toString();
+    const params = new URLSearchParams(current);
     if (value) params.set("paymentMethod", value);
     else params.delete("paymentMethod");
     params.delete("page");
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    const next = params.toString();
+
+    // Same no-op-on-unchanged-URL fix as OrderStatusFilter/DashboardDateFilter.
+    if (next === current) {
+      router.refresh();
+      return;
+    }
+    router.replace(`${pathname}?${next}`, { scroll: false });
   }
 
   return (

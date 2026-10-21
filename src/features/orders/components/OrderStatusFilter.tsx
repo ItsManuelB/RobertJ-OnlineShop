@@ -30,14 +30,26 @@ export function OrderStatusFilter({ themed = false }: { themed?: boolean }) {
   const activeStatus = searchParams.get("status") ?? "";
 
   function updateParams(status: string | null) {
-    const params = new URLSearchParams(searchParams.toString());
+    const current = searchParams.toString();
+    const params = new URLSearchParams(current);
     if (status) {
       params.set("status", status);
     } else {
       params.delete("status");
     }
     params.delete("page");
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    const next = params.toString();
+
+    // Re-clicking the already-active filter (e.g. to force-refresh a list
+    // that's gone stale — an order's status changed elsewhere since this
+    // page loaded) resolves to the exact same URL. router.replace() to an
+    // unchanged URL is a no-op in Next.js (no new request, no refetch), so
+    // without this the list would look stuck. Same fix as DashboardDateFilter.
+    if (next === current) {
+      router.refresh();
+      return;
+    }
+    router.replace(`${pathname}?${next}`, { scroll: false });
   }
 
   return (
