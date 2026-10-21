@@ -59,7 +59,15 @@ export default async function AdminOrderDetailPage({ params }: AdminOrderDetailP
   return (
     <article className="flex flex-col gap-8 p-5 lg:p-7">
       <OrderHeader order={order} themed />
-      <OrderTimeline status={order.status} themed />
+      <OrderTimeline
+        status={order.status}
+        themed
+        placedAt={order.placedAt}
+        confirmedAt={order.confirmedAt}
+        processingAt={order.processingAt}
+        shippedAt={order.shippedAt}
+        deliveredAt={order.deliveredAt}
+      />
       <OrderStatusControl
         orderId={order.id}
         orderNumber={order.orderNumber}

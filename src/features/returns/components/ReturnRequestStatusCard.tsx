@@ -6,7 +6,7 @@ import { RETURN_STATUS, RETURN_STATUS_LABELS, type ReturnStatus } from "@/consta
 import { RETURN_REQUEST_TYPE_LABELS } from "@/features/returns/constants/return.constants";
 import type { ReturnRequest } from "@/features/returns/types/return.types";
 import { formatCurrency } from "@/lib/utils/currency";
-import { formatDate, formatDateTime } from "@/lib/utils/date";
+import { formatDateTime } from "@/lib/utils/date";
 import { cn } from "@/lib/utils/cn";
 import { getPendingXenditRefundForReturn } from "@/lib/supabase/queries";
 
@@ -67,7 +67,7 @@ export async function ReturnRequestStatusCard({
       </div>
 
       <p className={cn("mt-2 text-xs", muted)}>
-        Requested {formatDate(request.createdAt)}
+        Requested {formatDateTime(request.createdAt)}
         {request.buyerName ? ` by ${request.buyerName}` : ""} —{" "}
         {RETURN_REQUEST_TYPE_LABELS[request.requestType]}
       </p>

@@ -1,5 +1,5 @@
 import { formatCurrency } from "@/lib/utils/currency";
-import { formatDate } from "@/lib/utils/date";
+import { formatDateTime } from "@/lib/utils/date";
 import { formatAddressCityLine, type Order } from "@/features/orders/types/order.types";
 
 export interface OrderReceiptProps {
@@ -34,9 +34,9 @@ export function OrderReceipt({ order, shopName, paymentLabel }: OrderReceiptProp
       <div className="mt-4">
         <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-600">Order</p>
         <p className="text-xl font-bold">{order.orderNumber}</p>
-        <p className="text-xs text-gray-600">Placed {formatDate(order.placedAt)}</p>
+        <p className="text-xs text-gray-600">Placed {formatDateTime(order.placedAt)}</p>
         {order.deliveredAt ? (
-          <p className="text-xs text-gray-600">Delivered {formatDate(order.deliveredAt)}</p>
+          <p className="text-xs text-gray-600">Delivered {formatDateTime(order.deliveredAt)}</p>
         ) : null}
       </div>
 

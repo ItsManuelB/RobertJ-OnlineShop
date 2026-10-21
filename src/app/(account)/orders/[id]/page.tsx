@@ -161,7 +161,14 @@ export default async function OrderDetailPage({
   return (
     <article className="flex flex-col gap-8">
       <OrderHeader order={order} />
-      <OrderTimeline status={order.status} />
+      <OrderTimeline
+        status={order.status}
+        placedAt={order.placedAt}
+        confirmedAt={order.confirmedAt}
+        processingAt={order.processingAt}
+        shippedAt={order.shippedAt}
+        deliveredAt={order.deliveredAt}
+      />
       <div className="flex flex-wrap items-center gap-3">
         {order.cancellable ? (
           <CancelOrderButton orderId={order.id} orderNumber={order.orderNumber} />

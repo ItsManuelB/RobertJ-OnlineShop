@@ -2206,7 +2206,7 @@ type OrderItemRow = Database["public"]["Tables"]["order_items"]["Row"];
 const ORDER_COLUMNS = `
   id, order_number, buyer_id, seller_id, shop_id, subtotal_cents, shipping_fee_cents,
   total_cents, currency, payment_status, payment_method, order_status, shipping_address, notes,
-  placed_at, paid_at, shipped_at, delivered_at, cancelled_at, checkout_group_id,
+  placed_at, confirmed_at, processing_at, paid_at, shipped_at, delivered_at, cancelled_at, checkout_group_id,
   cancellation_reason, cancelled_by, buyer_confirmed_received_at,
   buyer:profiles!orders_buyer_id_fkey ( full_name, username ),
   seller:profiles!orders_seller_id_fkey ( full_name, username, role ),
@@ -2287,6 +2287,8 @@ function toOrder(row: OrderRowWithItems): Order {
       variantLabel: item.variant_label,
     })),
     placedAt: row.placed_at,
+    confirmedAt: row.confirmed_at,
+    processingAt: row.processing_at,
     paidAt: row.paid_at,
     shippedAt: row.shipped_at,
     deliveredAt: row.delivered_at,

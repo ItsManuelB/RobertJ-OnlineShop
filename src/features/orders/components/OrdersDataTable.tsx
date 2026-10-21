@@ -25,7 +25,7 @@ import {
 } from "@/features/orders/types/order.types";
 import { downloadCsv } from "@/lib/utils/csv";
 import { formatCurrency } from "@/lib/utils/currency";
-import { formatDate } from "@/lib/utils/date";
+import { formatDateTime } from "@/lib/utils/date";
 import { cn } from "@/lib/utils/cn";
 
 const CANCELLABLE = new Set(["pending", "confirmed", "processing"]);
@@ -181,7 +181,7 @@ export function OrdersDataTable({ orders, isAdmin }: OrdersDataTableProps) {
           row.paymentMethod === "cod" ? "COD" : "Online",
           row.paymentStatus,
           row.status,
-          formatDate(row.placedAt),
+          formatDateTime(row.placedAt),
         ]),
       );
     });
@@ -212,7 +212,7 @@ export function OrdersDataTable({ orders, isAdmin }: OrdersDataTableProps) {
         o.paymentMethod === "cod" ? "COD" : "Online",
         o.paymentStatus,
         o.status,
-        formatDate(o.placedAt),
+        formatDateTime(o.placedAt),
       ]),
     );
   }
@@ -377,7 +377,7 @@ export function OrdersDataTable({ orders, isAdmin }: OrdersDataTableProps) {
                         paymentStatus={order.paymentStatus}
                         paymentMethod={order.paymentMethod}
                       /></td>
-                    <td className="p-3 align-top text-sm text-muted-foreground">{formatDate(order.placedAt)}</td>
+                    <td className="p-3 align-top text-sm text-muted-foreground">{formatDateTime(order.placedAt)}</td>
                     <td className="p-3 align-top text-right">
                       <RowMenu open={openMenuId === order.id} onOpenChange={(open) => setOpenMenuId(open ? order.id : null)}>
                         <Link href={orderHref(order.id)} onClick={() => setOpenMenuId(null)} className="block w-full rounded px-2 py-1.5 text-left text-sm text-foreground hover:bg-muted">

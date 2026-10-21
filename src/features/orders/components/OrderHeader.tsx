@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils/cn";
-import { formatDate } from "@/lib/utils/date";
+import { formatDateTime } from "@/lib/utils/date";
 import type { Order } from "@/features/orders/types/order.types";
 
 import { OrderStatusBadge } from "./OrderStatusBadge";
@@ -31,7 +31,7 @@ export function OrderHeader({ order, themed = false }: { order: Order; themed?: 
           {order.orderNumber}
         </h1>
         <p className={cn("mt-1 text-xs", themed ? "text-muted-foreground" : "text-rj-gray-600")}>
-          Placed {formatDate(order.placedAt)}
+          Placed {formatDateTime(order.placedAt)}
         </p>
       </div>
       <OrderStatusBadge

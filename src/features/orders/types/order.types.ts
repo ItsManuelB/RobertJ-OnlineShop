@@ -106,6 +106,10 @@ export interface Order {
   shopName: string | null;
   items: OrderItem[];
   placedAt: string;
+  /** Null until the seller/shop-member/admin advances the order to `confirmed` — including for orders placed before this column existed, which can never be backfilled. */
+  confirmedAt: string | null;
+  /** Null until advanced to `processing` — same backfill caveat as `confirmedAt`. */
+  processingAt: string | null;
   paidAt: string | null;
   shippedAt: string | null;
   deliveredAt: string | null;

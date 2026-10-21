@@ -581,6 +581,7 @@ export type Database = {
           cancelled_at: string | null
           cancelled_by: Database["public"]["Enums"]["user_role"] | null
           checkout_group_id: string | null
+          confirmed_at: string | null
           created_at: string
           currency: string
           delivered_at: string | null
@@ -592,6 +593,7 @@ export type Database = {
           payment_method: Database["public"]["Enums"]["order_payment_method"]
           payment_status: Database["public"]["Enums"]["payment_status"]
           placed_at: string
+          processing_at: string | null
           seller_id: string | null
           shipped_at: string | null
           shipping_address: Json
@@ -608,6 +610,7 @@ export type Database = {
           cancelled_at?: string | null
           cancelled_by?: Database["public"]["Enums"]["user_role"] | null
           checkout_group_id?: string | null
+          confirmed_at?: string | null
           created_at?: string
           currency?: string
           delivered_at?: string | null
@@ -619,6 +622,7 @@ export type Database = {
           payment_method?: Database["public"]["Enums"]["order_payment_method"]
           payment_status?: Database["public"]["Enums"]["payment_status"]
           placed_at?: string
+          processing_at?: string | null
           seller_id?: string | null
           shipped_at?: string | null
           shipping_address: Json
@@ -635,6 +639,7 @@ export type Database = {
           cancelled_at?: string | null
           cancelled_by?: Database["public"]["Enums"]["user_role"] | null
           checkout_group_id?: string | null
+          confirmed_at?: string | null
           created_at?: string
           currency?: string
           delivered_at?: string | null
@@ -646,6 +651,7 @@ export type Database = {
           payment_method?: Database["public"]["Enums"]["order_payment_method"]
           payment_status?: Database["public"]["Enums"]["payment_status"]
           placed_at?: string
+          processing_at?: string | null
           seller_id?: string | null
           shipped_at?: string | null
           shipping_address?: Json

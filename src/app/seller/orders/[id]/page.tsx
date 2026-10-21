@@ -73,7 +73,15 @@ export default async function SellerOrderDetailPage({ params, searchParams }: Se
   return (
     <article className="flex flex-col gap-8 p-5 lg:p-7">
       <OrderHeader order={order} themed />
-      <OrderTimeline status={order.status} themed />
+      <OrderTimeline
+        status={order.status}
+        themed
+        placedAt={order.placedAt}
+        confirmedAt={order.confirmedAt}
+        processingAt={order.processingAt}
+        shippedAt={order.shippedAt}
+        deliveredAt={order.deliveredAt}
+      />
       <OrderStatusControl
         // Forces a remount per order — otherwise a client-side navigation
         // between two different "processing" orders (both via the barcode

@@ -210,7 +210,7 @@ erDiagram
 
 - **Money is stored as integer minor units** (`*_cents`), never floats.
 - **Financial and historical rows are append-mostly:** no `DELETE` policy on orders / order items / payments; price and title are **snapshotted** onto order lines so later product edits never rewrite history.
-- **Order lifecycle timestamps** (`placed_at`, `paid_at`, `shipped_at`, `delivered_at`, `cancelled_at`) are set by triggers, not clients.
+- **Order lifecycle timestamps** (`placed_at`, `confirmed_at`, `processing_at`, `paid_at`, `shipped_at`, `delivered_at`, `cancelled_at`) are set by triggers, not clients. `confirmed_at`/`processing_at` (added `20261022000000_order_confirmed_processing_timestamps.sql`) are null for any order that passed through those statuses before the column existed — there is no history to backfill.
 - **Stock decrements happen atomically** inside a `SECURITY DEFINER` RPC that locks `inventory` rows `FOR UPDATE` (before `products`, on purpose — see the Inventory section below).
 
 ---

@@ -1,6 +1,6 @@
 import { RJ_CARD } from "@/components/ui/card";
 import { cn } from "@/lib/utils/cn";
-import { formatDate } from "@/lib/utils/date";
+import { formatDateTime } from "@/lib/utils/date";
 import type { OrderShipment } from "@/features/orders/types/order.types";
 
 export interface ShipmentTrackingCardProps {
@@ -41,7 +41,7 @@ export function ShipmentTrackingCard({ shipment, shippedAt }: ShipmentTrackingCa
           {shippedAt ? (
             <div>
               <dt className="text-xs text-rj-gray-600">Shipped</dt>
-              <dd className="text-sm text-rj-black">{formatDate(shippedAt)}</dd>
+              <dd className="text-sm text-rj-black">{formatDateTime(shippedAt)}</dd>
             </div>
           ) : null}
         </dl>
