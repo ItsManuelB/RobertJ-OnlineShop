@@ -41,7 +41,8 @@ export function ReportsFilters({ filters, isAdmin, shops }: ReportsFiltersProps)
   const [isPending, startTransition] = useTransition();
 
   function commit(next: Partial<ReportFilters>) {
-    const params = new URLSearchParams(searchParams.toString());
+    const current = searchParams.toString();
+    const params = new URLSearchParams(current);
     const merged = { ...filters, ...next };
 
     params.set("from", merged.from);
@@ -53,8 +54,17 @@ export function ReportsFilters({ filters, isAdmin, shops }: ReportsFiltersProps)
       params.delete("shopId");
     }
 
+    const nextQuery = params.toString();
     startTransition(() => {
-      router.push(`${pathname}?${params.toString()}`);
+      // Re-picking the already-active preset/range resolves to the exact
+      // same URL — router.push() to an unchanged URL is a no-op in Next.js
+      // (no new request, no refetch) — so without this, the report would
+      // look stuck until some other click happened to change the URL.
+      if (nextQuery === current) {
+        router.refresh();
+        return;
+      }
+      router.push(`${pathname}?${nextQuery}`);
     });
   }
 

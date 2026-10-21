@@ -2,7 +2,11 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
-import { DATE_PRESETS, type DatePresetId } from "@/features/reports/constants/report.constants";
+import {
+  DATE_PRESETS,
+  REPORT_TIMEZONE_LABEL,
+  type DatePresetId,
+} from "@/features/reports/constants/report.constants";
 import { resolvePreset } from "@/features/reports/utils/report-range";
 import { cn } from "@/lib/utils/cn";
 
@@ -27,10 +31,23 @@ export function DashboardDateFilter({ from, to }: DashboardDateFilterProps) {
   const searchParams = useSearchParams();
 
   function commit(range: { from: string; to: string }) {
-    const params = new URLSearchParams(searchParams.toString());
+    const current = searchParams.toString();
+    const params = new URLSearchParams(current);
     params.set("from", range.from);
     params.set("to", range.to);
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    const next = params.toString();
+
+    // Re-selecting the already-active range (e.g. clicking "Today" again to
+    // pull in an order placed moments ago) resolves to the exact same URL —
+    // router.replace() to an unchanged URL is a no-op in Next.js (no new
+    // request, no refetch), so the stale numbers would otherwise stick until
+    // some other click happens to change the URL. router.refresh() forces
+    // the server round-trip that a same-URL replace() can't.
+    if (next === current) {
+      router.refresh();
+      return;
+    }
+    router.replace(`${pathname}?${next}`, { scroll: false });
   }
 
   const activePreset = DATE_PRESETS.find((preset) => {
@@ -86,6 +103,10 @@ export function DashboardDateFilter({ from, to }: DashboardDateFilterProps) {
           className={CONTROL}
         />
       </label>
+
+      <p className="w-full text-[11px] text-rj-gray-400">
+        Dates use the {REPORT_TIMEZONE_LABEL} day boundary.
+      </p>
     </div>
   );
 }
