@@ -1,5 +1,6 @@
 import type { OrderStatus } from "@/constants/status";
 import type { StockStatus } from "@/features/inventory";
+import type { PaymentSourceKey } from "@/features/payments/lib/payment-source";
 
 /** Time bucket granularity for the sales trend. Mirrors the RPC's accepted values. */
 export type ReportGranularity = "day" | "week" | "month";
@@ -29,6 +30,13 @@ export interface SalesSummary {
   qrPaidOrders: number;
   xenditPaidOrders: number;
   pendingPaymentOrders: number;
+}
+
+/** Paid orders grouped by the source staff recognize in Finance. Amounts are gross order values in centavos. */
+export interface PaymentSourceSummaryRow {
+  source: PaymentSourceKey;
+  orderCount: number;
+  amountCents: number;
 }
 
 /** A single point on the sales trend. `bucket` is a `YYYY-MM-DD` Manila date. */

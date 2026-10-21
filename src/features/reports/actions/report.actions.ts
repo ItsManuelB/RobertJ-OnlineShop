@@ -38,7 +38,7 @@ export async function exportSalesReportAction(
       shopId: parsed.data.shopId,
     };
 
-    const [summary, series] = await Promise.all([
+    const [summary, series, paymentSources] = await Promise.all([
       queries.getSalesSummary(resolved.from, resolved.to, resolved.shopId),
       queries.getSalesTimeseries(
         resolved.from,
@@ -46,10 +46,11 @@ export async function exportSalesReportAction(
         resolved.granularity,
         resolved.shopId,
       ),
+      queries.getPaymentSourceSummary(resolved.from, resolved.to, resolved.shopId),
     ]);
 
     const trend = fillTrendGaps(series, resolved);
-    const csv = buildReportCsv(resolved, summary, trend);
+    const csv = buildReportCsv(resolved, summary, trend, paymentSources);
     const filename = `roberj-sales-${resolved.from}_to_${resolved.to}.csv`;
 
     return ok({ filename, csv });

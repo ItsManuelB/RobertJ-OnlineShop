@@ -62,6 +62,7 @@ import type {
 } from "@/features/assistant/types/assistant.types";
 import { isOccasion } from "@/constants/occasions";
 import { filterImagesForColor } from "@/lib/utils/variant-images";
+import { channelsForPaymentSourceFilter } from "@/features/payments/lib/payment-source";
 import type { CartItem } from "@/features/cart/types/cart.types";
 import { matchCandidates, type MatchOption } from "@/features/assistant/lib/guided-match";
 import {
@@ -89,6 +90,7 @@ import type {
   DashboardPaymentListParams,
   Payment,
   PaymentAttempt,
+  PaymentHistorySummary,
 } from "@/features/payments/types/payment.types";
 import type { Shop, ShopWithMember } from "@/features/shops/types/shop.types";
 import type { AdminUser } from "@/features/users/types/user.types";
@@ -110,6 +112,7 @@ import type {
   RestockPriorityItem,
   SalesSummary,
   SalesTrendPoint,
+  PaymentSourceSummaryRow,
   TopProduct,
 } from "@/features/reports/types/report.types";
 import type {
@@ -949,9 +952,7 @@ export async function getDashboardProduct(
 
   if (owner) {
     query = query.or(
-      owner.shopId
-        ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
-        : `seller_id.eq.${owner.sellerId}`,
+      owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`,
     );
   }
 
@@ -1000,9 +1001,7 @@ export async function updateProduct(
     .select("id, category_id, material, dimensions")
     .eq("id", id);
   if (owner) {
-    const ownerFilter = owner.shopId
-      ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
-      : `seller_id.eq.${owner.sellerId}`;
+    const ownerFilter = owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`;
     existingQuery = existingQuery.or(ownerFilter);
   }
   const { data: existing, error: readError } = await existingQuery.maybeSingle();
@@ -1081,9 +1080,7 @@ export async function archiveProduct(
   const supabase = await createSupabaseServerClient();
 
   if (owner) {
-    const ownerFilter = owner.shopId
-      ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
-      : `seller_id.eq.${owner.sellerId}`;
+    const ownerFilter = owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`;
     const { data: existing, error: readError } = await supabase
       .from(DATABASE_TABLES.PRODUCTS)
       .select("id")
@@ -1142,9 +1139,7 @@ export async function restoreProduct(
     .eq("id", id);
 
   if (owner) {
-    const ownerFilter = owner.shopId
-      ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
-      : `seller_id.eq.${owner.sellerId}`;
+    const ownerFilter = owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`;
     existingQuery = existingQuery.or(ownerFilter);
   }
 
@@ -1187,21 +1182,16 @@ export async function restoreProduct(
 }
 
 /**
- * Cheap ownership check for a seller before an image write — same "own it,
- * or it's in my shop" rule as `updateProduct`/`archiveProduct` (and, since
- * the accompanying migration, the `product_images`/storage RLS policies
- * too). A shop's product can have a `seller_id` that predates shop
- * assignment or belongs to a different shop member; checking `seller_id`
- * alone rejected uploads on products the seller can otherwise see and edit.
+ * Cheap authorization check for a seller before an image write. Assigned
+ * products follow the caller's current shop; seller_id is a fallback only
+ * for legacy products without a shop assignment, matching database RLS.
  */
 export async function productBelongsToOwner(
   productId: string,
   owner: { sellerId: string; shopId: string | null },
 ): Promise<boolean> {
   const supabase = await createSupabaseServerClient();
-  const ownerFilter = owner.shopId
-    ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
-    : `seller_id.eq.${owner.sellerId}`;
+  const ownerFilter = owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`;
   const { data, error } = await supabase
     .from(DATABASE_TABLES.PRODUCTS)
     .select("id")
@@ -1232,9 +1222,7 @@ export async function getProductOwnerInfo(
     .eq("id", productId);
 
   if (owner) {
-    const ownerFilter = owner.shopId
-      ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
-      : `seller_id.eq.${owner.sellerId}`;
+    const ownerFilter = owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`;
     query = query.or(ownerFilter);
   }
 
@@ -1361,8 +1349,9 @@ export async function setProductImageVariant(
   }
   if (
     owner &&
-    image.products.seller_id !== owner.sellerId &&
-    !(owner.shopId && image.products.shop_id === owner.shopId)
+    (owner.shopId
+      ? image.products.shop_id !== owner.shopId
+      : image.products.seller_id !== owner.sellerId)
   ) {
     throw new Error("Image not found.");
   }
@@ -1434,8 +1423,9 @@ export async function deleteProductImage(
   }
   if (
     owner &&
-    image.products.seller_id !== owner.sellerId &&
-    !(owner.shopId && image.products.shop_id === owner.shopId)
+    (owner.shopId
+      ? image.products.shop_id !== owner.shopId
+      : image.products.seller_id !== owner.sellerId)
   ) {
     throw new Error("Image not found.");
   }
@@ -2371,7 +2361,6 @@ export async function listBuyerOrders(
   if (params.status) {
     query = query.eq("order_status", params.status);
   }
-
   query = query.order("placed_at", { ascending: false });
 
   const { from, to } = toRange(params);
@@ -2640,24 +2629,53 @@ export async function getBuyerOrderSummary(
  * (a seller's rows are scoped to `seller_id = auth.uid()`, an admin sees
  * every order).
  */
-export async function getDashboardOrderSummary(): Promise<OrderSummary> {
+function manilaDateRangeBounds(from: string, to: string): { start: string; endExclusive: string } {
+  const [year, month, day] = to.split("-").map(Number);
+  const nextDay = new Date(Date.UTC(year, month - 1, day + 1)).toISOString().slice(0, 10);
+
+  return {
+    start: new Date(`${from}T00:00:00+08:00`).toISOString(),
+    endExclusive: new Date(`${nextDay}T00:00:00+08:00`).toISOString(),
+  };
+}
+
+export async function getDashboardOrderSummary(
+  filters?: { from: string; to: string; shopId?: string | null },
+): Promise<OrderSummary> {
   const supabase = await createSupabaseServerClient();
+  const bounds = filters ? manilaDateRangeBounds(filters.from, filters.to) : null;
 
   const counts = await Promise.all(
     ORDER_STATUS_FLOW.map(async (status) => {
-      const { count, error } = await supabase
+      let query = supabase
         .from(DATABASE_TABLES.ORDERS)
         .select("id", { count: "exact", head: true })
         .eq("order_status", status);
+
+      if (filters?.shopId) query = query.eq("shop_id", filters.shopId);
+      if (bounds) query = query.gte("placed_at", bounds.start).lt("placed_at", bounds.endExclusive);
+
+      const { count, error } = await query;
       return [status, error ? 0 : (count ?? 0)] as const;
     }),
   );
 
   const statusCounts = Object.fromEntries(counts) as Record<OrderStatus, number>;
 
-  const recent = await listDashboardOrders({ page: 1, pageSize: 5 });
+  let recentQuery = supabase
+    .from(DATABASE_TABLES.ORDERS)
+    .select(ORDER_COLUMNS);
 
-  return { statusCounts, recentOrders: recent.items };
+  if (filters?.shopId) recentQuery = recentQuery.eq("shop_id", filters.shopId);
+  if (bounds) recentQuery = recentQuery.gte("placed_at", bounds.start).lt("placed_at", bounds.endExclusive);
+
+  const { data, error } = await recentQuery.order("placed_at", { ascending: false }).limit(5);
+  if (error) throw queryError("Failed to load recent orders", error);
+
+  return {
+    statusCounts,
+    recentOrders: (data ?? []).map((row) => toOrder(row as OrderRowWithItems)),
+  };
 }
 
 /**
@@ -2706,20 +2724,21 @@ export async function cancelBuyerOrder(
 }
 
 /**
- * Every order visible to the caller for management purposes — no manual
- * seller/admin filtering, matching `listDashboardInventory()`'s "RLS is the
- * primary boundary" pattern: a seller sees their own orders
- * (`seller_id = auth.uid()`), an admin sees every order. Safe to rely on RLS
- * alone here because `orders`' SELECT policy has no public/unscoped clause
- * (unlike `products` — see `listDashboardProducts()`'s owner-filter note).
+ * Dashboard order list. Sellers receive an explicit seller/shop filter because
+ * order RLS also allows buyers to see their own purchases from other shops;
+ * admins pass `null` and retain the full order view. RLS remains the security
+ * boundary behind either query.
  */
+export type DashboardOrderOwner = { sellerId: string; shopId: string | null };
+
 export async function listDashboardOrders(
   params: OrderListParams,
+  owner: DashboardOrderOwner | null = null,
 ): Promise<PaginatedResult<Order>> {
   const supabase = await createSupabaseServerClient();
 
   if (params.attentionOnly) {
-    return listDashboardOrdersNeedingAttention(supabase, params);
+    return listDashboardOrdersNeedingAttention(supabase, params, owner);
   }
 
   let query = supabase
@@ -2732,14 +2751,27 @@ export async function listDashboardOrders(
   if (params.status) {
     query = query.eq("order_status", params.status);
   }
+  if (params.confirmationRequired) {
+    query = query
+      .eq("order_status", ORDER_STATUS.pending)
+      .or(`payment_method.eq.cod,payment_status.eq.${PAYMENT_STATUS.paid}`);
+  }
   if (params.paymentMethod) {
     query = query.eq("payment_method", params.paymentMethod);
   }
-  if (params.dateRange) {
+  if (params.from && params.to) {
+    const bounds = manilaDateRangeBounds(params.from, params.to);
+    query = query.gte("placed_at", bounds.start).lt("placed_at", bounds.endExclusive);
+  } else if (params.dateRange) {
     query = query.gte("placed_at", dateRangeBoundary(params.dateRange));
   }
   if (params.shopId) {
     query = query.eq("shop_id", params.shopId);
+  }
+  if (owner) {
+    query = query.or(
+      owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`,
+    );
   }
 
   query = query.order("placed_at", { ascending: false });
@@ -2788,6 +2820,7 @@ const ATTENTION_SCAN_LIMIT = 500;
 async function listDashboardOrdersNeedingAttention(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
   params: OrderListParams,
+  owner: DashboardOrderOwner | null,
 ): Promise<PaginatedResult<Order>> {
   let needsConfirmation = supabase
     .from(DATABASE_TABLES.ORDERS)
@@ -2818,6 +2851,11 @@ async function listDashboardOrdersNeedingAttention(
     needsConfirmation = needsConfirmation.eq("shop_id", params.shopId);
     codAwaitingCollection = codAwaitingCollection.eq("shop_id", params.shopId);
   }
+  if (owner) {
+    const ownerFilter = owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`;
+    needsConfirmation = needsConfirmation.or(ownerFilter);
+    codAwaitingCollection = codAwaitingCollection.or(ownerFilter);
+  }
 
   const [confirmResult, codResult] = await Promise.all([
     needsConfirmation.order("placed_at", { ascending: false }).limit(ATTENTION_SCAN_LIMIT),
@@ -2847,7 +2885,7 @@ async function listDashboardOrdersNeedingAttention(
  * two conditions as `listDashboardOrdersNeedingAttention`, but a `head`
  * count-only query instead of fetching rows.
  */
-export async function getOrderAttentionCounts(): Promise<{
+export async function getOrderAttentionCounts(shopId?: string | null): Promise<{
   needsConfirmation: number;
   codAwaitingCollection: number;
   /**
@@ -2867,28 +2905,40 @@ export async function getOrderAttentionCounts(): Promise<{
   pendingReturnRequests: number;
 }> {
   const supabase = await createSupabaseServerClient();
-  const [confirmResult, codResult, restockResult, pendingReturnResult] = await Promise.all([
-    supabase
+  let confirmQuery = supabase
       .from(DATABASE_TABLES.ORDERS)
       .select("id", { count: "exact", head: true })
       .eq("order_status", ORDER_STATUS.pending)
-      .or(`payment_method.eq.cod,payment_status.eq.${PAYMENT_STATUS.paid}`),
-    supabase
+      .or(`payment_method.eq.cod,payment_status.eq.${PAYMENT_STATUS.paid}`);
+  let codQuery = supabase
       .from(DATABASE_TABLES.ORDERS)
       .select("id", { count: "exact", head: true })
       .eq("payment_method", "cod")
       .eq("payment_status", PAYMENT_STATUS.pending)
-      .in("order_status", [ORDER_STATUS.shipped, ORDER_STATUS.delivered]),
-    supabase
+      .in("order_status", [ORDER_STATUS.shipped, ORDER_STATUS.delivered]);
+  let restockQuery = supabase
       .from(DATABASE_TABLES.RETURN_REQUESTS)
       .select("id", { count: "exact", head: true })
       .eq("status", RETURN_STATUS.refunded)
       .is("restocked_at", null)
-      .is("marked_unsellable_at", null),
-    supabase
+      .is("marked_unsellable_at", null);
+  let pendingReturnQuery = supabase
       .from(DATABASE_TABLES.RETURN_REQUESTS)
       .select("id", { count: "exact", head: true })
-      .eq("status", RETURN_STATUS.pending),
+      .eq("status", RETURN_STATUS.pending);
+
+  if (shopId) {
+    confirmQuery = confirmQuery.eq("shop_id", shopId);
+    codQuery = codQuery.eq("shop_id", shopId);
+    restockQuery = restockQuery.eq("shop_id", shopId);
+    pendingReturnQuery = pendingReturnQuery.eq("shop_id", shopId);
+  }
+
+  const [confirmResult, codResult, restockResult, pendingReturnResult] = await Promise.all([
+    confirmQuery,
+    codQuery,
+    restockQuery,
+    pendingReturnQuery,
   ]);
 
   if (confirmResult.error) throw queryError("Failed to load order counts", confirmResult.error);
@@ -2977,8 +3027,9 @@ const EXPORT_ROW_LIMIT = 1000;
 
 export async function listOrdersForExport(
   params: Omit<OrderListParams, "page" | "pageSize">,
+  owner: DashboardOrderOwner | null = null,
 ): Promise<Order[]> {
-  const result = await listDashboardOrders({ ...params, page: 1, pageSize: EXPORT_ROW_LIMIT });
+  const result = await listDashboardOrders({ ...params, page: 1, pageSize: EXPORT_ROW_LIMIT }, owner);
   return result.items;
 }
 
@@ -2989,13 +3040,8 @@ export async function listOrdersForExport(
  * already scope it — collapsing them would blur that intent.
  */
 /**
- * `sellerId`: defense-in-depth beyond RLS, same precedent as `getBuyerOrder`'s
- * explicit `buyer_id` filter — pass the caller's own id for a seller, `null`
- * for an admin (unconditional access, matching RLS's own `is_admin()`
- * bypass). Deliberately just `seller_id`, not `is_shop_member`-aware: orders
- * are intentionally not shop-scoped yet (see the shop-scoping migrations'
- * own "orders are NOT touched here" notes) — this mirrors the existing RLS
- * boundary exactly rather than expanding or narrowing it.
+ * `owner`: defense-in-depth beyond RLS. Assigned orders follow current shop
+ * membership; seller_id is used only for legacy orders with no shop_id.
  */
 /**
  * `owner`: `null` = admin (no filter, sees every order); otherwise scoped to
@@ -3018,9 +3064,7 @@ export const getDashboardOrder = cache(
 
     if (owner) {
       query = query.or(
-        owner.shopId
-          ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
-          : `seller_id.eq.${owner.sellerId}`,
+        owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`,
       );
     }
 
@@ -3033,6 +3077,34 @@ export const getDashboardOrder = cache(
     return data ? toOrder(data as OrderRowWithItems) : null;
   },
 );
+
+/** Loads a selected set of dashboard orders in one owner-scoped query. */
+export async function getDashboardOrdersByIds(
+  orderIds: string[],
+  owner: { sellerId: string; shopId: string | null } | null,
+): Promise<Order[]> {
+  if (orderIds.length === 0) return [];
+
+  const supabase = await createSupabaseServerClient();
+  let query = supabase
+    .from(DATABASE_TABLES.ORDERS)
+    .select(ORDER_COLUMNS)
+    .in("id", orderIds);
+
+  if (owner) {
+    query = query.or(
+      owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`,
+    );
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    throw queryError("Failed to load selected orders", error);
+  }
+
+  return (data ?? []).map((row) => toOrder(row as OrderRowWithItems));
+}
 
 /**
  * Resolves an order's id from its `order_number` (exact match), scoped to the
@@ -3054,9 +3126,7 @@ export async function getDashboardOrderByNumber(
 
   if (owner) {
     query = query.or(
-      owner.shopId
-        ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
-        : `seller_id.eq.${owner.sellerId}`,
+      owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`,
     );
   }
 
@@ -3105,9 +3175,7 @@ export async function advanceOrderStatus(
   const supabase = await createSupabaseServerClient();
 
   const ownerFilter = owner
-    ? owner.shopId
-      ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
-      : `seller_id.eq.${owner.sellerId}`
+    ? owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`
     : null;
 
   let readQuery = supabase
@@ -4585,8 +4653,22 @@ export async function listPaymentHistory(
   if (params.status) {
     query = query.eq("status", params.status);
   }
-  if (params.paymentMethodType) {
+  if (params.paymentMethodType && !params.paymentSource) {
     query = query.eq("payment_method_type", params.paymentMethodType);
+  }
+  if (params.paymentSource) {
+    switch (params.paymentSource) {
+      case "cod":
+        query = query.eq("payment_method_type", "cod");
+        break;
+      case "gcash":
+      case "paymaya":
+      case "xendit_card":
+        query = query
+          .eq("payment_method_type", "xendit")
+          .in("payment_channel", channelsForPaymentSourceFilter(params.paymentSource));
+        break;
+    }
   }
   if (params.staleOnly) {
     const staleBoundary = new Date(Date.now() - 30 * 60 * 1000).toISOString();
@@ -4613,6 +4695,43 @@ export async function listPaymentHistory(
     page: params.page,
     pageSize: params.pageSize,
     totalPages: Math.max(1, Math.ceil(total / params.pageSize)),
+  };
+}
+
+const EMPTY_PAYMENT_HISTORY_SUMMARY: PaymentHistorySummary = {
+  paymentCount: 0,
+  paidCount: 0,
+  pendingCount: 0,
+  failedCount: 0,
+  refundedCount: 0,
+  paidAmountCents: 0,
+};
+
+/** All-match summary for the Payments cards, independent of table pagination. */
+export async function getPaymentHistorySummary(
+  params: DashboardPaymentListParams,
+): Promise<PaymentHistorySummary> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("dashboard_payment_history_summary", {
+    p_payment_source: params.paymentSource ?? undefined,
+    p_payment_method_type: params.paymentMethodType && !params.paymentSource
+      ? params.paymentMethodType
+      : undefined,
+    p_status: params.status ?? undefined,
+    p_search: params.search ?? undefined,
+    p_stale_only: params.staleOnly ?? false,
+  });
+
+  if (error) throw queryError("Failed to load payment summary", error);
+  const row = data?.[0];
+  if (!row) return EMPTY_PAYMENT_HISTORY_SUMMARY;
+  return {
+    paymentCount: row.payment_count,
+    paidCount: row.paid_count,
+    pendingCount: row.pending_count,
+    failedCount: row.failed_count,
+    refundedCount: row.refunded_count,
+    paidAmountCents: row.paid_amount_cents,
   };
 }
 
@@ -5602,7 +5721,9 @@ export async function listShopsWithMembers(): Promise<ShopWithMember[]> {
     throw queryError("Failed to load shops", error);
   }
 
-  return (data ?? []).map((row) => toShopWithMember(row as ShopRowWithMembers));
+  return (data ?? [])
+    .map((row) => toShopWithMember(row as ShopRowWithMembers))
+    .sort((a, b) => compareNatural(a.name, b.name));
 }
 
 /** The exact `errcode`s `admin_hard_delete_shop` is documented to `raise
@@ -5857,9 +5978,7 @@ export async function listDashboardProducts(
 
   if (owner) {
     query = query.or(
-      owner.shopId
-        ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
-        : `seller_id.eq.${owner.sellerId}`,
+      owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`,
     );
   }
 
@@ -5888,9 +6007,7 @@ export async function getProductCount(
 
   if (owner) {
     query = query.or(
-      owner.shopId
-        ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
-        : `seller_id.eq.${owner.sellerId}`,
+      owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`,
     );
   }
 
@@ -5921,9 +6038,7 @@ export async function listDashboardProductsPage(
 
   if (owner) {
     query = query.or(
-      owner.shopId
-        ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
-        : `seller_id.eq.${owner.sellerId}`,
+      owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`,
     );
   }
   if (params.search) {
@@ -5983,9 +6098,7 @@ export async function bulkUpdateProductStatus(
 
   if (owner) {
     query = query.or(
-      owner.shopId
-        ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
-        : `seller_id.eq.${owner.sellerId}`,
+      owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`,
     );
   }
 
@@ -6010,9 +6123,7 @@ export async function bulkAssignProductCategory(
 
   if (owner) {
     query = query.or(
-      owner.shopId
-        ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
-        : `seller_id.eq.${owner.sellerId}`,
+      owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`,
     );
   }
 
@@ -6257,10 +6368,13 @@ export async function listDashboardInventoryPage(
     const term = params.search.replace(/[,()]/g, " ").trim();
     if (term) query = query.ilike("product.title", `%${term}%`);
   }
+  if (params.shopId) query = query.eq("shop_id", params.shopId);
   if (params.stockStatus === "out_of_stock") {
     query = query.lte("quantity", 0);
   } else if (params.stockStatus === "low_stock") {
     query = query.gt("quantity", 0).lte("quantity", DEFAULT_LOW_STOCK_THRESHOLD);
+  } else if (params.stockStatus === "needs_attention") {
+    query = query.lte("quantity", DEFAULT_LOW_STOCK_THRESHOLD);
   } else if (params.stockStatus === "in_stock") {
     query = query.gt("quantity", DEFAULT_LOW_STOCK_THRESHOLD);
   }
@@ -6693,9 +6807,7 @@ export async function updateProductVariant(
   const supabase = await createSupabaseServerClient();
 
   if (owner) {
-    const ownerFilter = owner.shopId
-      ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
-      : `seller_id.eq.${owner.sellerId}`;
+    const ownerFilter = owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`;
     const { data: existing, error: readError } = await supabase
       .from(DATABASE_TABLES.PRODUCT_VARIANTS)
       .select("id")
@@ -6802,9 +6914,7 @@ export async function deleteProductVariant(
   const supabase = await createSupabaseServerClient();
 
   if (owner) {
-    const ownerFilter = owner.shopId
-      ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
-      : `seller_id.eq.${owner.sellerId}`;
+    const ownerFilter = owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`;
     const { data: existing, error: readError } = await supabase
       .from(DATABASE_TABLES.PRODUCT_VARIANTS)
       .select("id")
@@ -6900,6 +7010,27 @@ export const getSalesSummary = cache(async function getSalesSummary(
     xenditPaidOrders: row.xendit_paid_orders,
     pendingPaymentOrders: row.pending_payment_orders,
   };
+});
+
+/** Gross paid order counts/amounts by normalized payment source, scoped by the report RPC. */
+export const getPaymentSourceSummary = cache(async function getPaymentSourceSummary(
+  from: string,
+  to: string,
+  shopId: string | null = null,
+): Promise<PaymentSourceSummaryRow[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("report_payment_source_summary", {
+    p_from: from,
+    p_to: to,
+    p_shop_id: shopId ?? undefined,
+  });
+
+  if (error) throw queryError("Failed to load payment source summary", error);
+  return (data ?? []).map((row) => ({
+    source: row.source_key as PaymentSourceSummaryRow["source"],
+    orderCount: row.order_count,
+    amountCents: row.amount_cents,
+  }));
 });
 
 /** Order count + paid revenue per time bucket (only non-empty buckets). */
@@ -8121,9 +8252,7 @@ export async function updateRecommendationRule(
   const supabase = await createSupabaseServerClient();
 
   if (owner) {
-    const ownerFilter = owner.shopId
-      ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
-      : `seller_id.eq.${owner.sellerId}`;
+    const ownerFilter = owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`;
     const { data: existing, error: readError } = await supabase
       .from(DATABASE_TABLES.RECOMMENDATION_RULES)
       .select("id")
@@ -8164,9 +8293,7 @@ export async function deleteRecommendationRule(
   const supabase = await createSupabaseServerClient();
 
   if (owner) {
-    const ownerFilter = owner.shopId
-      ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
-      : `seller_id.eq.${owner.sellerId}`;
+    const ownerFilter = owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`;
     const { data: existing, error: readError } = await supabase
       .from(DATABASE_TABLES.RECOMMENDATION_RULES)
       .select("id")

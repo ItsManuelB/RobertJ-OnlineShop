@@ -89,6 +89,7 @@ export interface PaymentExportRow {
   orderNumber: string;
   buyerName: string | null;
   paymentMethodType: string;
+  paymentChannel: string | null;
   amountCents: number;
   currency: string;
   status: string;
@@ -111,6 +112,7 @@ export async function exportPaymentsAction(
         orderNumber: payment.orderNumber,
         buyerName: payment.buyerName,
         paymentMethodType: payment.paymentMethodType,
+        paymentChannel: payment.paymentChannel,
         amountCents: payment.amountCents,
         currency: payment.currency,
         status: payment.status,

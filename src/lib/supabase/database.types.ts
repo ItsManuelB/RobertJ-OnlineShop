@@ -2529,11 +2529,36 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      dashboard_payment_history_summary: {
+        Args: {
+          p_payment_source?: string
+          p_payment_method_type?: string
+          p_status?: string
+          p_search?: string
+          p_stale_only?: boolean
+        }
+        Returns: {
+          failed_count: number
+          paid_amount_cents: number
+          paid_count: number
+          payment_count: number
+          pending_count: number
+          refunded_count: number
+        }[]
+      }
       report_order_status_breakdown: {
         Args: { p_from: string; p_shop_id?: string; p_to: string }
         Returns: {
           order_count: number
           status: Database["public"]["Enums"]["order_status"]
+        }[]
+      }
+      report_payment_source_summary: {
+        Args: { p_from: string; p_shop_id?: string; p_to: string }
+        Returns: {
+          amount_cents: number
+          order_count: number
+          source_key: string
         }[]
       }
       report_sales_summary: {

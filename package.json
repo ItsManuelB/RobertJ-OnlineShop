@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
+    "test:security:api": "node --test scripts/test-shop-access-postgrest.mjs",
     "test:unit": "node --experimental-strip-types --no-warnings --test scripts/test-product-save-flow.mjs scripts/test-guided-match.mjs scripts/test-export-my-data.mjs"
   },
   "dependencies": {
@@ -15,6 +16,7 @@
     "@supabase/supabase-js": "^2.111.0",
     "@tanstack/react-query": "^5.101.4",
     "@zxing/browser": "^0.2.1",
+    "@zxing/library": "^0.23.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.43.0",

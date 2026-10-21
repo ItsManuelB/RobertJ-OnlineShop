@@ -15,17 +15,11 @@ import { ROUTES } from "@/constants/routes";
 import { PaymentStatusBadge } from "@/features/orders/components/PaymentStatusBadge";
 import { bulkMarkCodPaymentCollectedAction, exportPaymentsAction } from "@/features/payments/actions/payment.actions";
 import type { Payment } from "@/features/payments/types/payment.types";
+import { PAYMENT_SOURCE_DOT, paymentSourceOf, paymentSourceCsvLabel } from "@/features/payments/lib/payment-source";
 import { downloadCsv } from "@/lib/utils/csv";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate } from "@/lib/utils/date";
 import { cn } from "@/lib/utils/cn";
-
-const METHOD_LABELS: Record<string, string> = {
-  cod: "Cash on Delivery",
-  xendit: "Online Payment",
-  qr_upload: "QR Transfer (legacy)",
-  card: "Card (legacy)",
-};
 
 const MAX_SELECTION = 100;
 
@@ -53,8 +47,20 @@ function canCollect(payment: Payment) {
 }
 
 function methodLabel(payment: Payment) {
-  const base = METHOD_LABELS[payment.paymentMethodType] ?? payment.paymentMethodType;
-  return payment.paymentChannel ? `${base} · ${payment.paymentChannel}` : base;
+  return paymentSourceOf(payment);
+}
+
+function PaymentSourceChip({ payment }: { payment: Payment }) {
+  const source = methodLabel(payment);
+  return (
+    <div className="min-w-0">
+      <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border bg-card px-2 py-0.5 text-xs font-medium text-foreground">
+        <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${PAYMENT_SOURCE_DOT[source.key]}`} />
+        <span className="truncate">{source.label}</span>
+      </span>
+      {source.detail ? <p className="mt-0.5 text-xs text-muted-foreground">{source.detail}</p> : null}
+    </div>
+  );
 }
 
 /**
@@ -130,6 +136,7 @@ export function PaymentsDataTable({ payments, showAdminTools = false }: Payments
         search: searchParams.get("search") ?? undefined,
         status: searchParams.get("status") ?? undefined,
         paymentMethodType: searchParams.get("paymentMethodType") ?? undefined,
+        paymentSource: searchParams.get("paymentSource") ?? undefined,
         staleOnly: searchParams.get("staleOnly") ?? undefined,
       };
       const result = await exportPaymentsAction(filters);
@@ -143,7 +150,7 @@ export function PaymentsDataTable({ payments, showAdminTools = false }: Payments
         result.data.map((row) => [
           row.orderNumber,
           row.buyerName,
-          METHOD_LABELS[row.paymentMethodType] ?? row.paymentMethodType,
+          paymentSourceCsvLabel({ paymentMethodType: row.paymentMethodType, paymentChannel: row.paymentChannel }),
           (row.amountCents / 100).toFixed(2),
           row.status,
           formatDate(row.createdAt),
@@ -160,7 +167,7 @@ export function PaymentsDataTable({ payments, showAdminTools = false }: Payments
       selectedPayments.map((p) => [
         p.orderNumber,
         p.buyerName,
-        methodLabel(p),
+        paymentSourceCsvLabel(p),
         (p.amountCents / 100).toFixed(2),
         p.status,
         formatDate(p.createdAt),
@@ -171,7 +178,7 @@ export function PaymentsDataTable({ payments, showAdminTools = false }: Payments
   return (
     <div className="flex flex-col gap-4">
       <div className="flex justify-end">
-        <Button type="button" variant="outline" size="rjSm" onClick={runExport}>
+        <Button type="button" variant="outline" size="rjSm" onClick={runExport} className="text-foreground">
           Export CSV
         </Button>
       </div>
@@ -288,7 +295,9 @@ export function PaymentsDataTable({ payments, showAdminTools = false }: Payments
                       </div>
                     </div>
                   </td>
-                  <td className="p-3 align-top text-sm text-muted-foreground">{methodLabel(payment)}</td>
+                  <td className="p-3 align-top">
+                    <PaymentSourceChip payment={payment} />
+                  </td>
                   <td className="p-3 align-top text-sm font-medium text-foreground">{formatCurrency(payment.amountCents, payment.currency)}</td>
                   <td className="p-3 align-top"><PaymentStatusBadge status={payment.status} paymentMethod={payment.paymentMethodType} /></td>
                   <td className="p-3 align-top text-sm text-muted-foreground">{formatDate(payment.createdAt)}</td>
@@ -336,7 +345,7 @@ export function PaymentsDataTable({ payments, showAdminTools = false }: Payments
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-foreground">{payment.orderNumber}</p>
                     <p className="text-xs text-muted-foreground">
-                      {payment.buyerName ?? "Buyer"} · {methodLabel(payment)} · {formatCurrency(payment.amountCents, payment.currency)}
+                      {payment.buyerName ?? "Buyer"} · {methodLabel(payment).label} · {formatCurrency(payment.amountCents, payment.currency)}
                     </p>
                     {payment.status === "failed" && payment.failureReason ? (
                       <p className="mt-0.5 text-xs text-danger">{payment.failureReason}</p>
