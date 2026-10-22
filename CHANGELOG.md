@@ -8,6 +8,7 @@ All notable changes to RoberJ Online Shop are documented here, newest first. For
 ## [Unreleased]
 
 ### Fixed
+- **Netlify deploy blocked by the secret scan.** Turbopack's build cache (`.next/cache/turbopack`) records the values of env vars the build reads, so Netlify found `CRON_SECRET` and `XENDIT_WEBHOOK_TOKEN` in it and failed an otherwise successful build. The build cache is now off (`turbopackFileSystemCacheForBuild: false`); scanning stays on.
 - **Paid e-wallet orders stayed "Payment Pending" when the webhook was late or unreachable.** Coming back from Xendit (`?xendit_return=1`), the payment page now asks Xendit for the real status and applies it through the same `process_xendit_webhook` RPC the webhook uses, then moves a paid order to its order page. Xendit stays the only source of truth.
 - **Card form stuck on "Loading card form..." in development.** React Strict Mode's mount/cleanup/mount cancelled the one auto-started card session; cleanup now only tracks whether the component is on screen. A rejected session request now shows an error instead of spinning.
 - **Card payments need HTTPS.** Xendit's card Sessions API rejects `http://` return URLs and origins (confirmed live), so card can't start on `http://localhost:3000`. The app now says so plainly, and `npm run dev:https` serves local HTTPS (set `NEXT_PUBLIC_SITE_URL=https://localhost:3000`). GCash and Maya are unaffected.
