@@ -86,6 +86,20 @@ export const allocateStockSchema = z.object({
     .max(200),
 });
 
+/** Opening counts for options that were just created at 0 stock. */
+export const startingStockSchema = z.object({
+  productId: z.uuid(),
+  entries: z
+    .array(
+      z.object({
+        variantId: z.uuid(),
+        quantity: z.coerce.number().int("Enter a whole number.").min(1, "Enter at least 1."),
+      }),
+    )
+    .min(1, "Enter a quantity for at least one option.")
+    .max(200),
+});
+
 export type AdjustStockInput = z.infer<typeof adjustStockSchema>;
 export type DashboardInventoryListParamsInput = z.input<typeof dashboardInventoryListParamsSchema>;
 export type BulkAdjustStockInput = z.infer<typeof bulkAdjustStockSchema>;

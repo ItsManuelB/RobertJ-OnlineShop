@@ -2,7 +2,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PAGINATION } from "@/constants/pagination";
 
 export function ProductGridSkeleton({
-  count = PAGINATION.defaultPageSize,
+  count = PAGINATION.catalogPageSize,
 }: {
   count?: number;
 }) {

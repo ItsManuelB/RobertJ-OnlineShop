@@ -32,6 +32,7 @@ export interface ProductFiltersProps {
 }
 
 const SORT_OPTIONS: Array<{ value: ProductSort; label: string }> = [
+  { value: "recommended", label: "Recommended" },
   { value: "newest", label: "Newest" },
   { value: "price-asc", label: "Price: Low to High" },
   { value: "price-desc", label: "Price: High to Low" },
@@ -50,7 +51,7 @@ export function ProductFilters({ categories = [], shops = [], attributeFilters =
   const rawSort = searchParams.get("sort");
   const sort: ProductSort = SORT_OPTIONS.some((o) => o.value === rawSort)
     ? (rawSort as ProductSort)
-    : "newest";
+    : "recommended";
   const onSale = searchParams.get("onSale") === "true";
 
   const [minPrice, setMinPrice] = useState(searchParams.get("minPrice") ?? "");
@@ -130,7 +131,7 @@ export function ProductFilters({ categories = [], shops = [], attributeFilters =
     (onSale ? 1 : 0) +
     (hasPriceFilter ? 1 : 0) +
     (activeShopId ? 1 : 0) +
-    (sort !== "newest" ? 1 : 0) +
+    (sort !== "recommended" ? 1 : 0) +
     activeAttributeFilterCount;
 
   return (

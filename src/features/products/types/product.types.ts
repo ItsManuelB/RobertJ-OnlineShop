@@ -76,7 +76,7 @@ export interface ProductListParams {
   dimensions?: string;
 }
 
-export type ProductSort = "newest" | "price-asc" | "price-desc" | "title-asc";
+export type ProductSort = "recommended" | "newest" | "price-asc" | "price-desc" | "title-asc";
 
 /**
  * Filters accepted by the Seller/Admin dashboard product listing — a
