@@ -9,6 +9,7 @@ export {
   adjustStockAction,
   getStockHistoryAction,
   bulkAdjustStockAction,
+  setStartingStockAction,
 } from "./actions/inventory.actions";
 export {
   adjustStockSchema,

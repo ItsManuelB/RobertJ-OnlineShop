@@ -11,6 +11,7 @@ import {
   adjustStockSchema,
   allocateStockSchema,
   bulkAdjustStockSchema,
+  startingStockSchema,
 } from "@/features/inventory/schemas/inventory.schema";
 import type {
   InventoryItem,
@@ -122,6 +123,52 @@ export async function getProductOptionsAction(
     return ok(options);
   } catch (error) {
     return fail(error instanceof Error ? error.message : "Could not load the options.");
+  }
+}
+
+/**
+ * Sets the opening count of options that were just created at 0 stock. Each
+ * entry is a "restock" of that option through the same `adjust_stock` RPC as
+ * any manual change (so it is logged and ownership-checked); per-option
+ * failures are reported without aborting the rest.
+ */
+export async function setStartingStockAction(
+  input: unknown,
+): Promise<ActionResult<{ updated: number; failed: Array<{ variantId: string; error: string }> }>> {
+  const parsed = startingStockSchema.safeParse(input);
+  if (!parsed.success) return fromZodError(parsed.error);
+
+  try {
+    const user = await queries.requireRole(DASHBOARD_ROLES);
+    await queries.requireRateLimit(`startingStock:${user.id}`, 20, 60);
+
+    const failed: Array<{ variantId: string; error: string }> = [];
+    let updated = 0;
+    for (const entry of parsed.data.entries) {
+      try {
+        await queries.adjustStock({
+          productId: parsed.data.productId,
+          variantId: entry.variantId,
+          delta: entry.quantity,
+          reason: "restock",
+          note: "Opening count for a new option",
+        });
+        updated += 1;
+      } catch (error) {
+        failed.push({
+          variantId: entry.variantId,
+          error: error instanceof Error ? error.message : "Could not set stock.",
+        });
+      }
+    }
+
+    revalidatePath(ROUTES.adminInventory);
+    revalidatePath(ROUTES.adminProducts);
+    revalidatePath(ROUTES.sellerInventory);
+    revalidatePath(ROUTES.sellerProducts);
+    return ok({ updated, failed });
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "Could not set stock.");
   }
 }
 
