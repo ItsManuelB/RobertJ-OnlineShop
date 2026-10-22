@@ -71,6 +71,20 @@ export interface OrderShipment {
   packedAt: string | null;
 }
 
+/** What the dashboard Shipped tab shows per order: courier, tracking and whole days since it shipped. */
+export interface ShippedOrderInfo {
+  courier: string | null;
+  trackingNumber: string | null;
+  daysInTransit: number | null;
+}
+
+/** What the dashboard Delivered tab shows per order: days since delivery and how long the buyer can still file a return. */
+export interface DeliveredOrderInfo {
+  daysSinceDelivery: number | null;
+  /** 0 once the return window has closed; null when the delivery date is unknown. */
+  returnDaysLeft: number | null;
+}
+
 /** Domain model returned by the order service to the rest of the app. */
 export interface Order {
   id: string;

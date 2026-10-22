@@ -7,7 +7,11 @@ import { ScanLine } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ROUTES } from "@/constants/routes";
-import { resolveSellerOrderByNumberAction } from "@/features/orders/actions/order.actions";
+import {
+  resolveSellerOrderByNumberAction,
+  type ScannedOrderSummary,
+} from "@/features/orders/actions/order.actions";
+import { ScanPackConfirmDialog } from "@/features/orders/components/ScanPackConfirmDialog";
 import type { BarcodeDecodeResult } from "@/features/orders/components/BarcodeScannerModal";
 
 // Client-only + code-split: the scanner modal and its `@zxing/browser` import
@@ -29,11 +33,18 @@ const BarcodeScannerModal = dynamic(
  */
 export function ScanBarcodeButton() {
   const [open, setOpen] = useState(false);
+  const [packScan, setPackScan] = useState<{ orderId: string; summary: ScannedOrderSummary } | null>(null);
   const router = useRouter();
 
   async function handleDecode(decoded: string): Promise<BarcodeDecodeResult> {
     const result = await resolveSellerOrderByNumberAction(decoded);
     if (!result.success) return { success: false, error: result.error };
+
+    // To Pack: pop up the confirmation instead of navigating away.
+    if (result.data.summary) {
+      setPackScan({ orderId: result.data.orderId, summary: result.data.summary });
+      return { success: true };
+    }
 
     const detailUrl =
       result.data.status === "processing"
@@ -56,6 +67,13 @@ export function ScanBarcodeButton() {
         Scan barcode
       </Button>
       {open ? <BarcodeScannerModal themed onClose={() => setOpen(false)} onDecode={handleDecode} /> : null}
+      {packScan ? (
+        <ScanPackConfirmDialog
+          orderId={packScan.orderId}
+          summary={packScan.summary}
+          onClose={() => setPackScan(null)}
+        />
+      ) : null}
     </>
   );
 }

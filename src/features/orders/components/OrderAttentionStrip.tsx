@@ -11,7 +11,7 @@ export interface OrderAttentionStripProps {
   codAwaitingCollection: number;
   /** F-10: refunded returns whose item condition was never recorded — stock stays un-restored until someone does. Not part of the `attentionOnly` order filter (it's a return_requests count, not an orders one), so its own link just points at `returnsHref`. */
   returnsAwaitingRestock: number;
-  /** Where "Review returns" should link — admin's returns queue, or (seller) the orders list, since sellers record condition inline per-order rather than from a dedicated list. */
+  /** Where "Review returns" should link — the admin's or the seller's own returns queue, which is where the restock decision is recorded. */
   returnsHref: string;
 }
 

@@ -4,17 +4,8 @@ import { useId, useState } from "react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import { RJ_CARD, THEMED_CARD } from "@/components/ui/card";
+import { COMMON_COURIERS } from "@/features/orders/constants/couriers.constants";
 import { cn } from "@/lib/utils/cn";
-
-/** Non-authoritative suggestions only — courier is stored as free text (no courier API). */
-const COMMON_COURIERS = [
-  "J&T Express",
-  "LBC",
-  "Ninja Van",
-  "Flash Express",
-  "JRS Express",
-  "GrabExpress",
-];
 
 const inputClasses =
   "h-10 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30";

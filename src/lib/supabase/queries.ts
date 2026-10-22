@@ -3302,6 +3302,25 @@ export async function getOrderShipment(
 }
 
 /**
+ * Shipment records for a page of orders in one query (no N+1) — used by the
+ * dashboard Shipped tab to show courier/tracking. RLS scopes visibility to
+ * the caller's own orders, so ids outside their shop simply return nothing.
+ */
+export async function listOrderShipments(orderIds: string[]): Promise<OrderShipment[]> {
+  if (orderIds.length === 0) return [];
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from(DATABASE_TABLES.ORDER_SHIPMENTS)
+    .select("order_id, courier, tracking_number, packed_at")
+    .in("order_id", orderIds);
+
+  if (error) {
+    throw queryError("Failed to load shipment details", error);
+  }
+  return (data ?? []).map(toOrderShipment);
+}
+
+/**
  * Records the `packed_at` audit timestamp when the seller verifies items and
  * moves an order To Pack → Ready for Pickup. Upserts on `order_id` (one row
  * per order); RLS restricts writes to the order's seller or an admin. The
