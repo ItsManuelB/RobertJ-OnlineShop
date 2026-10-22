@@ -1,0 +1,220 @@
+-- =============================================================================
+-- Refund-aware sales reports (Gross, Refunds, Net).
+--
+-- Before: revenue summed total_cents only where payment_status = 'paid', so a
+-- fully refunded order silently vanished from revenue, a partially refunded one
+-- vanished too, there was no "Refunds" figure, and the payment-method counts
+-- fell back to 'cod' for refunded orders (their payment row is no longer
+-- 'paid').
+--
+-- After (cohort basis: orders placed in the range, refunds attributed to those
+-- same orders so the summary, the trend chart and every KPI agree):
+--   gross_revenue_cents = total of orders that were ever paid
+--                         (paid / partially_refunded / refunded)
+--   refunds_cents       = confirmed refunds on those orders
+--                         (return_requests.status = 'refunded', capped at the
+--                          order total) — the original order/payment rows are
+--                          never modified or deleted
+--   revenue_cents       = gross - refunds  (NET; existing KPI cards that read
+--                         revenue_cents become net-of-refunds automatically)
+--   paid_orders         = orders ever paid; refunded_orders is new
+--
+-- report_sales_summary's return type changes, so it is dropped and recreated
+-- with the same least-privilege grants. report_sales_timeseries keeps its
+-- signature; its revenue_cents becomes net. No data is changed.
+-- ROLLBACK: restore both bodies from the earlier report migrations.
+-- =============================================================================
+
+begin;
+
+drop function if exists public.report_sales_summary(date, date, uuid);
+
+create function public.report_sales_summary(p_from date, p_to date, p_shop_id uuid default null)
+returns table(
+  total_orders bigint,
+  paid_orders bigint,
+  cancelled_orders bigint,
+  revenue_cents bigint,
+  units_sold bigint,
+  avg_order_value_cents bigint,
+  cod_paid_orders bigint,
+  qr_paid_orders bigint,
+  xendit_paid_orders bigint,
+  pending_payment_orders bigint,
+  gross_revenue_cents bigint,
+  refunds_cents bigint,
+  refunded_orders bigint
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := (select auth.uid());
+  v_is_admin boolean := public.is_admin();
+  v_caller_shop_id uuid;
+begin
+  if v_uid is null then
+    raise exception 'You must be signed in to view reports' using errcode = '42501';
+  end if;
+  if not (v_is_admin or public.current_user_role() = 'seller') then
+    raise exception 'You do not have permission to view reports' using errcode = '42501';
+  end if;
+
+  if not v_is_admin then
+    select su.shop_id into v_caller_shop_id from public.shop_users su where su.user_id = v_uid;
+  end if;
+
+  return query
+  with scoped as (
+    select
+      o.id, o.total_cents, o.order_status, o.payment_status,
+      (o.payment_status in ('paid', 'partially_refunded', 'refunded')) as was_paid,
+      least(
+        o.total_cents,
+        coalesce((
+          select sum(rr.refund_amount_cents)
+          from public.return_requests rr
+          where rr.order_id = o.id and rr.status = 'refunded'
+        ), 0)
+      )::bigint as refunded_cents
+    from public.orders o
+    where o.placed_at >= (p_from::timestamp at time zone 'Asia/Manila')
+      and o.placed_at <  ((p_to + 1)::timestamp at time zone 'Asia/Manila')
+      and case
+            when v_is_admin then (
+              p_shop_id is null
+              or o.seller_id in (
+                select su.user_id from public.shop_users su where su.shop_id = p_shop_id
+              )
+            )
+            else (
+              (v_caller_shop_id is not null and o.shop_id = v_caller_shop_id)
+              or (o.shop_id is null and o.seller_id = v_uid)
+            )
+          end
+  ),
+  agg as (
+    select
+      count(*)::bigint as total_orders,
+      count(*) filter (where s.was_paid)::bigint as paid_orders,
+      count(*) filter (where s.order_status = 'cancelled')::bigint as cancelled_orders,
+      coalesce(sum(s.total_cents) filter (where s.was_paid), 0)::bigint as gross_revenue_cents,
+      coalesce(sum(s.refunded_cents) filter (where s.was_paid), 0)::bigint as refunds_cents,
+      coalesce(round(avg(s.total_cents) filter (where s.was_paid)), 0)::bigint as avg_order_value_cents,
+      count(*) filter (where s.payment_status = 'pending')::bigint as pending_payment_orders,
+      count(*) filter (where s.was_paid and s.refunded_cents > 0)::bigint as refunded_orders
+    from scoped s
+  ),
+  units as (
+    select coalesce(sum(oi.quantity), 0)::bigint as units_sold
+    from public.order_items oi
+    where oi.order_id in (select id from scoped)
+  ),
+  methods as (
+    select
+      count(*) filter (where m.method = 'cod')::bigint as cod_paid_orders,
+      count(*) filter (where m.method = 'qr_upload')::bigint as qr_paid_orders,
+      count(*) filter (where m.method = 'xendit')::bigint as xendit_paid_orders
+    from (
+      select coalesce(paid_pm.payment_method_type::text, 'cod') as method
+      from scoped s
+      left join lateral (
+        select pm.payment_method_type
+        from public.payments pm
+        where pm.order_id = s.id
+          and pm.status in ('paid', 'partially_refunded', 'refunded')
+        order by pm.created_at desc
+        limit 1
+      ) paid_pm on true
+      where s.was_paid
+    ) m
+  )
+  select
+    agg.total_orders,
+    agg.paid_orders,
+    agg.cancelled_orders,
+    (agg.gross_revenue_cents - agg.refunds_cents)::bigint,
+    units.units_sold,
+    agg.avg_order_value_cents,
+    methods.cod_paid_orders,
+    methods.qr_paid_orders,
+    methods.xendit_paid_orders,
+    agg.pending_payment_orders,
+    agg.gross_revenue_cents,
+    agg.refunds_cents,
+    agg.refunded_orders
+  from agg, units, methods;
+end;
+$$;
+
+revoke all on function public.report_sales_summary(date, date, uuid) from public, anon;
+grant execute on function public.report_sales_summary(date, date, uuid) to authenticated, service_role;
+
+create or replace function public.report_sales_timeseries(
+  p_from date, p_to date, p_granularity text default 'day', p_shop_id uuid default null
+)
+returns table(bucket date, order_count bigint, revenue_cents bigint)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := (select auth.uid());
+  v_is_admin boolean := public.is_admin();
+  v_caller_shop_id uuid;
+begin
+  if v_uid is null then
+    raise exception 'You must be signed in to view reports' using errcode = '42501';
+  end if;
+  if not (v_is_admin or public.current_user_role() = 'seller') then
+    raise exception 'You do not have permission to view reports' using errcode = '42501';
+  end if;
+  if p_granularity not in ('day', 'week', 'month') then
+    raise exception 'Invalid granularity' using errcode = '22023';
+  end if;
+
+  if not v_is_admin then
+    select su.shop_id into v_caller_shop_id from public.shop_users su where su.user_id = v_uid;
+  end if;
+
+  return query
+  with scoped as (
+    select
+      o.placed_at, o.total_cents,
+      (o.payment_status in ('paid', 'partially_refunded', 'refunded')) as was_paid,
+      least(
+        o.total_cents,
+        coalesce((
+          select sum(rr.refund_amount_cents)
+          from public.return_requests rr
+          where rr.order_id = o.id and rr.status = 'refunded'
+        ), 0)
+      )::bigint as refunded_cents
+    from public.orders o
+    where o.placed_at >= (p_from::timestamp at time zone 'Asia/Manila')
+      and o.placed_at <  ((p_to + 1)::timestamp at time zone 'Asia/Manila')
+      and case
+            when v_is_admin then (
+              p_shop_id is null
+              or o.seller_id in (
+                select su.user_id from public.shop_users su where su.shop_id = p_shop_id
+              )
+            )
+            else (
+              (v_caller_shop_id is not null and o.shop_id = v_caller_shop_id)
+              or (o.shop_id is null and o.seller_id = v_uid)
+            )
+          end
+  )
+  select
+    (date_trunc(p_granularity, (s.placed_at at time zone 'Asia/Manila')))::date as bucket,
+    count(*)::bigint as order_count,
+    coalesce(sum(s.total_cents - s.refunded_cents) filter (where s.was_paid), 0)::bigint as revenue_cents
+  from scoped s
+  group by 1
+  order by 1;
+end;
+$$;
+
+commit;

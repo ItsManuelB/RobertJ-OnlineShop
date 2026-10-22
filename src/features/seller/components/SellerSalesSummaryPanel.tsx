@@ -43,7 +43,7 @@ export async function SellerSalesSummaryPanel({ filters }: { filters: ReportFilt
               <DeltaBadge current={summary.revenueCents} previous={previousSummary.revenueCents} />
             </span>
           }
-          hint="Paid orders only, vs. previous period"
+          hint="Net of refunds, vs. previous period"
         />
         <StatCard
           label="Orders placed"

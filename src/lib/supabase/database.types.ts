@@ -2686,9 +2686,12 @@ export type Database = {
           avg_order_value_cents: number
           cancelled_orders: number
           cod_paid_orders: number
+          gross_revenue_cents: number
           paid_orders: number
           pending_payment_orders: number
           qr_paid_orders: number
+          refunded_orders: number
+          refunds_cents: number
           revenue_cents: number
           total_orders: number
           units_sold: number

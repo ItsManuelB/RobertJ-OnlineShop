@@ -10,7 +10,8 @@ import type { ReportFilters } from "../types/report.types";
 /**
  * KPI grid + confirmed-payment source split for the selected range. Reads the
  * one-row summary RPC (RLS/DEFINER-scoped: seller → own shop, admin → all or
- * one shop). Revenue counts only orders whose payment_status='paid'.
+ * one shop). Revenue is net of confirmed refunds (gross paid-order totals minus
+ * refunds on those orders); the original orders and payments are never altered.
  */
 export async function SalesSummaryPanel({ filters }: { filters: ReportFilters }) {
   let summary;
@@ -24,9 +25,9 @@ export async function SalesSummaryPanel({ filters }: { filters: ReportFilters })
     <div className="flex flex-col gap-6">
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
         <StatCard
-          label="Revenue"
+          label="Net revenue"
           value={formatCurrency(summary.revenueCents)}
-          hint="Paid orders only"
+          hint={`${formatCurrency(summary.grossRevenueCents)} gross − ${formatCurrency(summary.refundsCents)} refunds`}
         />
         <StatCard label="Orders placed" value={summary.totalOrders} />
         <StatCard
@@ -41,6 +42,11 @@ export async function SalesSummaryPanel({ filters }: { filters: ReportFilters })
         />
         <StatCard label="Units sold" value={summary.unitsSold} />
         <StatCard label="Cancelled" value={summary.cancelledOrders} />
+        <StatCard
+          label="Refunds"
+          value={formatCurrency(summary.refundsCents)}
+          hint={`${summary.refundedOrders} refunded order${summary.refundedOrders === 1 ? "" : "s"}`}
+        />
       </div>
 
       <Card>
