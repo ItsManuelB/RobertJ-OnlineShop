@@ -4934,7 +4934,9 @@ export async function uploadReturnEvidence(
   file: File,
 ): Promise<string> {
   const supabase = await createSupabaseServerClient();
-  const ext = file.name.split(".").pop() ?? "jpg";
+  // Extension comes from the validated MIME type, not the client's filename
+  // (a name without a dot used to become the "extension").
+  const ext = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
   const path = `${orderId}/return-${crypto.randomUUID()}.${ext}`;
 
   const { error } = await supabase.storage
