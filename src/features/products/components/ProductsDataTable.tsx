@@ -598,6 +598,7 @@ export function ProductsDataTable({
       <div className={cn("flex flex-col gap-3", view === "list" ? "sm:hidden" : "hidden")}>
         {products.map((product) => {
           const productVariants = variants.filter((v) => v.productId === product.id);
+          const cover = getCoverImage(product);
           return (
             <Card key={product.id} className={cn(selected.has(product.id) && "ring-2 ring-primary")}>
               <CardContent className="flex flex-col gap-3 p-4">
@@ -608,6 +609,13 @@ export function ProductsDataTable({
                     aria-label={`Select ${product.title}`}
                     className="mt-1"
                   />
+                  <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-xs font-bold text-muted-foreground">
+                    {cover ? (
+                      <Image src={cover.url} alt={cover.altText ?? ""} fill sizes="56px" className="object-cover" />
+                    ) : (
+                      initials(product.title)
+                    )}
+                  </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-foreground">{product.title}</p>
                     <p className="text-xs text-muted-foreground">
