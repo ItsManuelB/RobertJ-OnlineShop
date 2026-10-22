@@ -5,6 +5,7 @@ export {
   requestReturnAction,
   respondToReturnAction,
 } from "./actions/return.actions";
+export { RETURN_WINDOW_DAYS } from "./constants/return.constants";
 export {
   decideReturnSchema,
   recordReturnItemConditionSchema,

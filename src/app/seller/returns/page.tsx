@@ -6,6 +6,10 @@ import { ReturnQueue } from "@/features/returns/components/ReturnQueue";
 
 export const metadata: Metadata = { title: "Returns & Refunds — Seller Portal" };
 
+interface SellerReturnsPageProps {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}
+
 function ReturnQueueSkeleton() {
   return (
     <div className="flex flex-col gap-3" role="status" aria-live="polite">
@@ -17,20 +21,29 @@ function ReturnQueueSkeleton() {
   );
 }
 
+/** First value of a possibly-repeated search param. */
+function first(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
 /**
  * Fulfillment/returns audit finding B1: previously, a seller had no
  * dedicated place to see return requests across their shop — only the
  * individual order detail page, which they had no reason to open unless
  * they already knew a request existed. Mirrors the admin queue, but scoped
  * to the seller's own shop by RLS and without the admin-only decide step.
- * Authorization is enforced once by `src/app/seller/layout.tsx`
+ * Tabs (`?tab=`) default to "Needs my action" and the list is paginated
+ * (`?page=`). Authorization is enforced once by `src/app/seller/layout.tsx`
  * (`requireRole([USER_ROLES.seller])`).
  */
-export default function SellerReturnsPage() {
+export default async function SellerReturnsPage({ searchParams }: SellerReturnsPageProps) {
+  const params = await searchParams;
+
   return (
     <div className="flex flex-col gap-6 p-5 lg:p-7">
-      <Suspense fallback={<ReturnQueueSkeleton />}>
-        <ReturnQueue viewer="seller" />
+      {/* Keyed so switching tab/page restarts the suspense boundary. */}
+      <Suspense key={JSON.stringify(params)} fallback={<ReturnQueueSkeleton />}>
+        <ReturnQueue viewer="seller" tab={first(params.tab)} page={first(params.page)} />
       </Suspense>
     </div>
   );
