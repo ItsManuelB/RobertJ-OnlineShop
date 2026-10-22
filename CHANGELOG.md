@@ -7,6 +7,9 @@ All notable changes to RoberJ Online Shop are documented here, newest first. For
 
 ## [Unreleased]
 
+### Added (deployment)
+- **Netlify setup.** `netlify.toml` (build + Node 22), a scheduled function `netlify/functions/xendit-reconciliation.mts` that replaces the Vercel Cron job (daily 03:00 UTC, calls the existing sweep route with `CRON_SECRET`), and a step-by-step guide in `docs/deployment-netlify.md` (environment variables, Supabase redirect URLs, Xendit webhook, smoke test). No application code changed; `vercel.json` is kept.
+
 ### Added
 - **Clearer stock limit and Undo when buying.** The quantity stepper (product page, options sheet, cart) now says "Maximum available: N" when "+" is greyed out, and a typed quantity above stock is cut to the maximum instead of failing later. The "Added to cart" toast has an **Undo** button that puts the cart back to what it held before that tap. Front-end only; server stock checks are unchanged.
 - **Add every color and size in one step.** When a product's category offers both color and size, the Options section now has "Add colors and sizes together": enter the colors and sizes (or tick the category's size list) and it creates every missing color x size option. Each starts with **0 stock** - nothing is invented - and pairs that already exist are skipped. At most 60 options per batch.
