@@ -1253,6 +1253,7 @@ export type Database = {
           return_received_by: string | null
           return_shipped_at: string | null
           return_tracking_number: string | null
+          replacement_completed_at: string | null
         }
         Insert: {
           admin_decided_at?: string | null
@@ -1293,6 +1294,7 @@ export type Database = {
           return_received_by?: string | null
           return_shipped_at?: string | null
           return_tracking_number?: string | null
+          replacement_completed_at?: string | null
         }
         Update: {
           admin_decided_at?: string | null
@@ -1333,6 +1335,7 @@ export type Database = {
           return_received_by?: string | null
           return_shipped_at?: string | null
           return_tracking_number?: string | null
+          replacement_completed_at?: string | null
         }
         Relationships: [
           {
@@ -2629,6 +2632,14 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      confirm_replacement_received: {
+        Args: { p_return_id: string }
+        Returns: Database["public"]["Tables"]["return_requests"]["Row"]
+      }
+      complete_overdue_replacements: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
       record_return_shipment: {
         Args: {
           p_courier: string
@@ -2954,6 +2965,8 @@ export type Database = {
         | "return_shipped"
         | "return_received"
         | "return_expired"
+        | "replacement_shipped"
+        | "replacement_completed"
       stock_adjustment_reason:
         | "initial_stock"
         | "restock"
@@ -2963,6 +2976,7 @@ export type Database = {
         | "shrinkage"
         | "other"
         | "return_restock"
+        | "replacement_shipment"
       user_role: "buyer" | "seller" | "admin"
       xendit_refund_status: "pending" | "succeeded" | "failed"
     }
@@ -3148,6 +3162,8 @@ export const Constants = {
         "return_shipped",
         "return_received",
         "return_expired",
+        "replacement_shipped",
+        "replacement_completed",
       ],
       stock_adjustment_reason: [
         "initial_stock",
@@ -3158,6 +3174,7 @@ export const Constants = {
         "shrinkage",
         "other",
         "return_restock",
+        "replacement_shipment",
       ],
       user_role: ["buyer", "seller", "admin"],
       xendit_refund_status: ["pending", "succeeded", "failed"],

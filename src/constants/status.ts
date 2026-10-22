@@ -100,6 +100,10 @@ export const RETURN_STATUS = {
   refunded: "refunded",
   /** Admin approved a `replacement_exchange` resolution — no payment/order_status change; see `record_return_replacement_shipment`. */
   replacementApproved: "replacement_approved",
+  /** The seller shipped the replacement (stock deducted); the buyer confirms receipt, or it auto-completes 7 days later. */
+  replacementShipped: "replacement_shipped",
+  /** The buyer confirmed the replacement (or it auto-completed). Replacements are never sales. */
+  replacementCompleted: "replacement_completed",
   /** COD refund approved by admin; nothing is marked refunded until `record_cod_refund_payout` records the real payout. */
   refundDue: "refund_due",
   /** Admin approved a Return and Refund: the buyer must ship the item back by `returnDeadlineAt`. */
@@ -119,6 +123,8 @@ export const RETURN_STATUS_LABELS: Record<ReturnStatus, string> = {
   admin_rejected: "Rejected",
   refunded: "Refunded",
   replacement_approved: "Replacement approved",
+  replacement_shipped: "Replacement shipped",
+  replacement_completed: "Replacement completed",
   refund_due: "Refund approved — payout pending",
   awaiting_return: "Awaiting return",
   return_shipped: "Return shipped",
@@ -130,6 +136,6 @@ export const RETURN_STATUS_LABELS: Record<ReturnStatus, string> = {
 export const TERMINAL_RETURN_STATUSES: readonly ReturnStatus[] = [
   RETURN_STATUS.adminRejected,
   RETURN_STATUS.refunded,
-  RETURN_STATUS.replacementApproved,
+  RETURN_STATUS.replacementCompleted,
   RETURN_STATUS.returnExpired,
 ];

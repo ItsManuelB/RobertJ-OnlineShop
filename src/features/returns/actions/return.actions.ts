@@ -12,6 +12,7 @@ import type { Json } from "@/lib/supabase/database.types";
 import type { ActionResult } from "@/types/action.types";
 import { revalidateOrderSurfaces } from "@/features/orders";
 import {
+  confirmReplacementReceivedSchema,
   decideReturnSchema,
   recordCodRefundPayoutSchema,
   recordReturnItemConditionSchema,
@@ -371,6 +372,31 @@ export async function recordReturnReceivedAction(
   } catch (error) {
     return fail(
       error instanceof Error ? error.message : "Could not record this received return.",
+    );
+  }
+}
+
+/**
+ * The BUYER confirms the replacement arrived, completing the request. Ownership
+ * and the `replacement_shipped` state are enforced inside
+ * `confirm_replacement_received`; this only needs a signed-in user.
+ */
+export async function confirmReplacementReceivedAction(
+  returnId: string,
+): Promise<ActionResult<null>> {
+  const parsed = confirmReplacementReceivedSchema.safeParse({ returnId });
+  if (!parsed.success) return fail("Invalid request.");
+
+  try {
+    await queries.requireSessionUser();
+    const { orderId } = await queries.confirmReplacementReceived(parsed.data.returnId);
+    await revalidateOrderSurfaces(orderId);
+    revalidatePath(ROUTES.adminReturns);
+    revalidatePath(ROUTES.sellerReturns);
+    return ok(null);
+  } catch (error) {
+    return fail(
+      error instanceof Error ? error.message : "Could not confirm your replacement.",
     );
   }
 }

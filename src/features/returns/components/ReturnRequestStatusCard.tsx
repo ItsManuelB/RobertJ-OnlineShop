@@ -25,6 +25,8 @@ const RETURN_STATUS_TONE: Record<ReturnStatus, "neutral" | "info" | "success" | 
   return_shipped: "info",
   return_received: "info",
   return_expired: "neutral",
+  replacement_shipped: "info",
+  replacement_completed: "success",
 };
 
 /** Plain "what happens next" line for the ship-back leg — shown to every viewer, so it names the role, not "you". */
@@ -33,6 +35,8 @@ const RETURN_NEXT_STEP: Partial<Record<ReturnStatus, string>> = {
   return_shipped: "the seller confirms the parcel arrived and checks the item.",
   return_received: "the admin confirms the refund.",
   return_expired: "the item was not shipped back in time, so nothing was refunded.",
+  replacement_approved: "the seller ships the replacement (its stock is taken off the shelf when it ships).",
+  replacement_shipped: "the buyer confirms the replacement arrived. If they don't, it completes automatically after 7 days.",
 };
 
 export interface ReturnRequestStatusCardProps {
@@ -205,12 +209,15 @@ export async function ReturnRequestStatusCard({
         </p>
       ) : null}
 
-      {request.status === RETURN_STATUS.replacementApproved ? (
+      {request.status === RETURN_STATUS.replacementApproved ||
+      request.status === RETURN_STATUS.replacementShipped ||
+      request.status === RETURN_STATUS.replacementCompleted ? (
         <p className={cn("mt-3 text-xs", muted)}>
           <span className={cn("font-semibold", ink)}>Replacement:</span>{" "}
           {request.replacementShippedAt
             ? `shipped via ${request.replacementCourier} — tracking ${request.replacementTrackingNumber} (${formatDateTime(request.replacementShippedAt)})`
             : "approved — awaiting shipment"}
+          {request.replacementCompletedAt ? ` — completed ${formatDateTime(request.replacementCompletedAt)}` : ""}
         </p>
       ) : null}
     </section>

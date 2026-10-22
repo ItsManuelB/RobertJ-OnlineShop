@@ -51,10 +51,12 @@ export interface ReturnRequest {
   markedUnsellableAt: string | null;
   /** Optional free-text note attached when the item's condition was recorded, either way. */
   conditionNote: string | null;
-  /** Set once the seller/admin ships the replacement item (`record_return_replacement_shipment`) — only meaningful when `status` is `replacement_approved`. */
+  /** Set once the seller/admin ships the replacement item (`record_return_replacement_shipment`) — set when the status moves to `replacement_shipped`. */
   replacementCourier: string | null;
   replacementTrackingNumber: string | null;
   replacementShippedAt: string | null;
+  /** Set when the buyer confirms the replacement, or the sweep auto-completes it 7 days after shipping. */
+  replacementCompletedAt: string | null;
   /** COD refunds only, set when an admin records the actual payout (`record_cod_refund_payout`). */
   codRefundMethod: "gcash" | "bank_transfer" | "cash" | null;
   codRefundReference: string | null;

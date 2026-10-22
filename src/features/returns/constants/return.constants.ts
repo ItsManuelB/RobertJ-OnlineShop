@@ -39,6 +39,14 @@ export const RETURN_SELLER_RESPONSE_SLA_DAYS = 3;
  */
 export const RETURN_SHIPBACK_DAYS = 5;
 
+/**
+ * Replacement/Exchange: a shipped replacement the buyer never confirms completes
+ * by itself this many days after shipping. Authoritative enforcement is
+ * `complete_overdue_replacements`'s literal `interval '7 days'`
+ * (`20261023010100_replacement_shipping_and_completion.sql`); single source for UI copy.
+ */
+export const REPLACEMENT_AUTO_COMPLETE_DAYS = 7;
+
 /** Non-authoritative courier suggestions only — courier is stored as free text (no courier API). Same list as `ShipmentCaptureForm`. */
 export const COMMON_COURIERS = ["J&T Express", "LBC", "Ninja Van", "Flash Express", "JRS Express", "GrabExpress"];
 

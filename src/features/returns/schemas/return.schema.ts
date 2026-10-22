@@ -107,6 +107,11 @@ export const recordReturnShipmentSchema = z.object({
   ...courierTrackingFields,
 });
 
+/** Payload for the buyer's "my replacement arrived" confirmation. */
+export const confirmReplacementReceivedSchema = z.object({
+  returnId: uuidSchema,
+});
+
 /** Payload for the seller's "I received the returned item" step — only legal once the buyer shipped it. */
 export const recordReturnReceivedSchema = z.object({
   returnId: uuidSchema,
@@ -132,5 +137,6 @@ export type DecideReturnInput = z.infer<typeof decideReturnSchema>;
 export type RecordReturnItemConditionInput = z.infer<typeof recordReturnItemConditionSchema>;
 export type RecordCodRefundPayoutInput = z.infer<typeof recordCodRefundPayoutSchema>;
 export type RecordReturnReplacementShipmentInput = z.infer<typeof recordReturnReplacementShipmentSchema>;
+export type ConfirmReplacementReceivedInput = z.infer<typeof confirmReplacementReceivedSchema>;
 export type RecordReturnShipmentInput = z.infer<typeof recordReturnShipmentSchema>;
 export type RecordReturnReceivedInput = z.infer<typeof recordReturnReceivedSchema>;

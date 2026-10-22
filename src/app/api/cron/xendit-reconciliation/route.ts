@@ -137,13 +137,22 @@ export async function GET(request: NextRequest) {
  * (`awaiting_return` past `return_deadline_at` -> `return_expired`). Nothing was
  * refunded at that point, so there is nothing to undo.
  */
-async function runReturnExpirySweep(): Promise<{ expired: number; errors: number }> {
+async function runReturnExpirySweep(): Promise<{ expired: number; replacementsCompleted: number; errors: number }> {
+  const summary = { expired: 0, replacementsCompleted: 0, errors: 0 };
   try {
-    return { expired: await queries.expireOverdueReturnRequests(), errors: 0 };
+    summary.expired = await queries.expireOverdueReturnRequests();
   } catch (error) {
     console.error("[return expiry sweep] failed", error);
-    return { expired: 0, errors: 1 };
+    summary.errors++;
   }
+  // Replacements the buyer never confirmed complete by themselves 7 days after shipping.
+  try {
+    summary.replacementsCompleted = await queries.completeOverdueReplacements();
+  } catch (error) {
+    console.error("[replacement completion sweep] failed", error);
+    summary.errors++;
+  }
+  return summary;
 }
 
 /**

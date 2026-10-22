@@ -4882,7 +4882,7 @@ const RETURN_REQUEST_COLUMNS = `
   seller_decision_note, seller_decided_at, seller_decided_by,
   admin_decision_note, admin_decided_at, admin_decided_by,
   refund_amount_cents, restocked_at, marked_unsellable_at, condition_note,
-  replacement_courier, replacement_tracking_number, replacement_shipped_at, created_at, updated_at,
+  replacement_courier, replacement_tracking_number, replacement_shipped_at, replacement_completed_at, created_at, updated_at,
   cod_refund_method, cod_refund_reference, cod_refunded_at,
   return_deadline_at, return_courier, return_tracking_number, return_shipped_at, return_received_at, return_inspection,
   order:orders!return_requests_order_id_fkey ( order_number, currency, payment_method, payment_status ),
@@ -4931,6 +4931,7 @@ function toReturnRequest(row: ReturnRequestRowWithJoins): ReturnRequest {
     replacementCourier: row.replacement_courier,
     replacementTrackingNumber: row.replacement_tracking_number,
     replacementShippedAt: row.replacement_shipped_at,
+    replacementCompletedAt: row.replacement_completed_at,
     codRefundMethod: row.cod_refund_method as ReturnRequest["codRefundMethod"],
     codRefundReference: row.cod_refund_reference,
     codRefundedAt: row.cod_refunded_at,
@@ -5117,6 +5118,37 @@ export async function recordReturnReplacementShipment(
     throw new Error(mapPostgresError(error, "Could not record this replacement shipment."));
   }
   return { orderId: (data as { order_id: string }).order_id };
+}
+
+/**
+ * Buyer-only: confirms the replacement arrived (`confirm_replacement_received`),
+ * moving `replacement_shipped` to `replacement_completed`. Ownership and state
+ * are enforced in the RPC.
+ */
+export async function confirmReplacementReceived(returnId: string): Promise<{ orderId: string }> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("confirm_replacement_received", {
+    p_return_id: returnId,
+  });
+
+  if (error) {
+    throw new Error(mapPostgresError(error, "Could not confirm your replacement."));
+  }
+  return { orderId: (data as { order_id: string }).order_id };
+}
+
+/**
+ * Completes replacements the buyer never confirmed, 7 days after shipping.
+ * Service-role only (the 15-minute sweep has no user session). Returns how many
+ * were completed.
+ */
+export async function completeOverdueReplacements(): Promise<number> {
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin.rpc("complete_overdue_replacements");
+  if (error) {
+    throw queryError("Failed to complete overdue replacements", error);
+  }
+  return data ?? 0;
 }
 
 /**

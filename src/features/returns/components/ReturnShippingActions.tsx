@@ -1,4 +1,5 @@
 import { RETURN_STATUS } from "@/constants/status";
+import { ConfirmReplacementReceivedPanel } from "@/features/returns/components/ConfirmReplacementReceivedPanel";
 import { DecideReturnPanel } from "@/features/returns/components/DecideReturnPanel";
 import { ReceiveReturnPanel } from "@/features/returns/components/ReceiveReturnPanel";
 import { ShipReturnPanel } from "@/features/returns/components/ShipReturnPanel";
@@ -17,6 +18,7 @@ export interface ReturnShippingActionsProps {
  *   awaiting_return -> buyer ships it; admin may cancel
  *   return_shipped  -> seller (or admin) confirms receipt + inspects; admin may cancel
  *   return_received -> admin confirms the refund (or rejects)
+ *   replacement_shipped -> buyer confirms the replacement arrived
  */
 export function ReturnShippingActions({ request, viewer }: ReturnShippingActionsProps) {
   const isAdmin = viewer === "admin";
@@ -43,6 +45,8 @@ export function ReturnShippingActions({ request, viewer }: ReturnShippingActions
       return isAdmin ? (
         <DecideReturnPanel returnId={request.id} sellerRejected={false} requestedType={request.requestType} stage="received" />
       ) : null;
+    case RETURN_STATUS.replacementShipped:
+      return viewer === "buyer" ? <ConfirmReplacementReceivedPanel returnId={request.id} /> : null;
     default:
       return null;
   }

@@ -1,4 +1,5 @@
 export {
+  confirmReplacementReceivedAction,
   decideReturnAction,
   recordCodRefundPayoutAction,
   recordReturnItemConditionAction,
@@ -10,6 +11,7 @@ export {
 } from "./actions/return.actions";
 export { RETURN_WINDOW_DAYS } from "./constants/return.constants";
 export {
+  confirmReplacementReceivedSchema,
   decideReturnSchema,
   recordCodRefundPayoutSchema,
   recordReturnItemConditionSchema,
@@ -18,6 +20,7 @@ export {
   recordReturnShipmentSchema,
   requestReturnSchema,
   respondToReturnSchema,
+  type ConfirmReplacementReceivedInput,
   type DecideReturnInput,
   type RecordCodRefundPayoutInput,
   type RecordReturnItemConditionInput,
