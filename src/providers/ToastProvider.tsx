@@ -11,6 +11,8 @@ export interface ToastInput {
   tone?: "success" | "error";
   /** Optional link shown inside the toast, e.g. "View cart". */
   action?: { label: string; href: string };
+  /** Optional button that reverses what the toast reports, e.g. "Undo" after an accidental add. */
+  undo?: { label: string; onClick: () => void };
 }
 
 interface ToastValue {
@@ -66,6 +68,18 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               <CheckCircle2 className="h-5 w-5 shrink-0 text-success" aria-hidden="true" />
             )}
             <span className="min-w-0 flex-1 break-words">{toast.message}</span>
+            {toast.undo ? (
+              <button
+                type="button"
+                onClick={() => {
+                  toast.undo?.onClick();
+                  setToast(null);
+                }}
+                className="shrink-0 font-semibold text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {toast.undo.label}
+              </button>
+            ) : null}
             {toast.action ? (
               <Link
                 href={toast.action.href}
