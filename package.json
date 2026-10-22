@@ -9,7 +9,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test:security:api": "node --test scripts/test-shop-access-postgrest.mjs",
-    "test:unit": "node --experimental-strip-types --no-warnings --test scripts/test-product-save-flow.mjs scripts/test-guided-match.mjs scripts/test-export-my-data.mjs"
+    "test:unit": "node --experimental-strip-types --no-warnings --test scripts/test-product-save-flow.mjs scripts/test-guided-match.mjs scripts/test-export-my-data.mjs scripts/test-variant-combinations.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

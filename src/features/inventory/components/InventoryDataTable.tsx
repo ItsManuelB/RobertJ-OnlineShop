@@ -14,6 +14,7 @@ import {
   MANUAL_STOCK_ADJUSTMENT_REASONS,
   STOCK_ADJUSTMENT_REASON_LABELS,
 } from "@/features/inventory/constants/inventory.constants";
+import { MoveStockToOptionsForm } from "@/features/inventory/components/MoveStockToOptionsForm";
 import { StockAdjustmentForm } from "@/features/inventory/components/StockAdjustmentForm";
 import { StockHistoryPanel } from "@/features/inventory/components/StockHistoryPanel";
 import { StockStatusBadge } from "@/features/inventory/components/StockStatusBadge";
@@ -71,7 +72,7 @@ const selectClasses =
  */
 export function InventoryDataTable({ items, isAdmin, groupByShop = false }: InventoryDataTableProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [expanded, setExpanded] = useState<{ id: string; mode: "adjust" | "history" } | null>(null);
+  const [expanded, setExpanded] = useState<{ id: string; mode: "adjust" | "history" | "move" } | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [delta, setDelta] = useState("");
   const [reason, setReason] = useState(MANUAL_STOCK_ADJUSTMENT_REASONS[0]);
@@ -98,7 +99,7 @@ export function InventoryDataTable({ items, isAdmin, groupByShop = false }: Inve
       return next;
     });
   }
-  function toggleExpand(id: string, mode: "adjust" | "history") {
+  function toggleExpand(id: string, mode: "adjust" | "history" | "move") {
     setExpanded((prev) => (prev?.id === id && prev.mode === mode ? null : { id, mode }));
   }
 
@@ -272,6 +273,7 @@ export function InventoryDataTable({ items, isAdmin, groupByShop = false }: Inve
                       </p>
                       <div className="mt-1 flex flex-wrap gap-1.5">
                         {item.variantId ? <Badge tone="info">Variant</Badge> : null}
+                        {item.isUnassigned ? <Badge tone="warning">Unassigned stock</Badge> : null}
                         {isAdmin && !groupByShop && item.shopName ? (
                           <Badge tone="neutral">{item.shopName}</Badge>
                         ) : null}
@@ -295,7 +297,11 @@ export function InventoryDataTable({ items, isAdmin, groupByShop = false }: Inve
                     <td className="p-3 align-top text-sm font-medium text-foreground">{item.quantity}</td>
                     <td className="p-3 align-top text-sm text-muted-foreground">{item.lowStockThreshold}</td>
                     <td className="p-3 align-top">
-                      <StockStatusBadge status={item.stockStatus} />
+                      {item.isUnassigned ? (
+                        <span className="text-xs text-muted-foreground">Not sold</span>
+                      ) : (
+                        <StockStatusBadge status={item.stockStatus} />
+                      )}
                     </td>
                     <td className="p-3 align-top text-right">
                       <RowMenu
@@ -312,6 +318,18 @@ export function InventoryDataTable({ items, isAdmin, groupByShop = false }: Inve
                         >
                           Adjust stock
                         </button>
+                        {item.isUnassigned && item.quantity > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              toggleExpand(item.id, "move");
+                              setOpenMenuId(null);
+                            }}
+                            className="w-full rounded px-2 py-1.5 text-left text-sm text-foreground hover:bg-muted"
+                          >
+                            Move to options
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           onClick={() => {
@@ -330,6 +348,8 @@ export function InventoryDataTable({ items, isAdmin, groupByShop = false }: Inve
                       <td colSpan={groupByShop ? 6 : 7} className="border-b border-border bg-muted p-4">
                         {expanded.mode === "adjust" ? (
                           <StockAdjustmentForm item={item} onDone={() => setExpanded(null)} />
+                        ) : expanded.mode === "move" ? (
+                          <MoveStockToOptionsForm item={item} onDone={() => setExpanded(null)} />
                         ) : (
                           <StockHistoryPanel productId={item.productId} variantId={item.variantId} />
                         )}
@@ -391,10 +411,16 @@ export function InventoryDataTable({ items, isAdmin, groupByShop = false }: Inve
                 ) : null}
               </p>
               <p className="text-xs text-muted-foreground">
-                {item.quantity} in stock · threshold {item.lowStockThreshold}
+                {item.isUnassigned
+                  ? `${item.quantity} unassigned · not sold until moved into an option`
+                  : `${item.quantity} in stock · threshold ${item.lowStockThreshold}`}
               </p>
               <div className="mt-2 flex flex-wrap gap-1.5">
-                <StockStatusBadge status={item.stockStatus} />
+                {item.isUnassigned ? (
+                  <Badge tone="warning">Unassigned stock</Badge>
+                ) : (
+                  <StockStatusBadge status={item.stockStatus} />
+                )}
                 {item.variantId ? <Badge tone="info">Variant</Badge> : null}
                 {isAdmin && !groupByShop && item.shopName ? (
                   <>
@@ -421,6 +447,16 @@ export function InventoryDataTable({ items, isAdmin, groupByShop = false }: Inve
             >
               {expanded?.id === item.id && expanded.mode === "adjust" ? "Hide" : "Adjust stock"}
             </Button>
+            {item.isUnassigned && item.quantity > 0 ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="rjSm"
+                onClick={() => toggleExpand(item.id, "move")}
+              >
+                {expanded?.id === item.id && expanded.mode === "move" ? "Hide" : "Move to options"}
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="outline"
@@ -434,6 +470,8 @@ export function InventoryDataTable({ items, isAdmin, groupByShop = false }: Inve
             <div className="rounded-xl border border-border bg-muted p-4">
               {expanded.mode === "adjust" ? (
                 <StockAdjustmentForm item={item} onDone={() => setExpanded(null)} />
+              ) : expanded.mode === "move" ? (
+                <MoveStockToOptionsForm item={item} onDone={() => setExpanded(null)} />
               ) : (
                 <StockHistoryPanel productId={item.productId} variantId={item.variantId} />
               )}

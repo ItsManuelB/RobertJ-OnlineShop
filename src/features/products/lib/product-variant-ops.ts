@@ -7,6 +7,7 @@ import type {
   ProductVariantFormInput,
   UpdateProductVariantInput,
 } from "@/features/products/schemas/product-variant.schema";
+import { axisConsistencyError } from "@/features/products/lib/variant-combinations";
 import type { ProductVariant } from "@/features/products/types/product.types";
 import { fail, ok } from "@/lib/utils/result";
 import { toCents } from "@/lib/utils/currency";
@@ -67,6 +68,8 @@ export const draftVariantOps: VariantOps = {
       updatedAt: now,
     };
     if (current.some((existing) => sameCombination(existing, draft))) return fail(DUPLICATE_MESSAGE);
+    const inconsistent = axisConsistencyError(current, draft);
+    if (inconsistent) return fail(inconsistent);
     return ok(draft);
   },
 

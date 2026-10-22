@@ -1771,6 +1771,13 @@ export type Database = {
           total_quantity: number
         }[]
       }
+      allocate_stock_to_variants: {
+        Args: {
+          p_allocations: Json
+          p_product_id: string
+        }
+        Returns: number
+      }
       adjust_stock: {
         Args: {
           p_delta: number

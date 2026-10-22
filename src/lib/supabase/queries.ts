@@ -6351,13 +6351,15 @@ type ProductVariantRow = Database["public"]["Tables"]["product_variants"]["Row"]
  */
 const INVENTORY_COLUMNS = `
   id, product_id, variant_id, shop_id, quantity, low_stock_threshold, created_at, updated_at,
-  product:products!inventory_product_id_fkey ( title, slug, status ),
+  product:products!inventory_product_id_fkey ( title, slug, status, product_variants ( count ) ),
   shop:shops!inventory_shop_id_fkey ( name ),
   variant:product_variants!inventory_variant_id_fkey ( sku, color, size )
 `;
 
 type InventoryRowWithJoins = InventoryRow & {
-  product: Pick<ProductRow, "title" | "slug" | "status"> | null;
+  product:
+    | (Pick<ProductRow, "title" | "slug" | "status"> & { product_variants: Array<{ count: number }> })
+    | null;
   shop: { name: string } | null;
   variant: Pick<ProductVariantRow, "sku" | "color" | "size"> | null;
 };
@@ -6375,6 +6377,9 @@ function toInventoryItem(row: InventoryRowWithJoins): InventoryItem {
     variantLabel: row.variant
       ? [row.variant.color, row.variant.size].filter(Boolean).join(" / ") || null
       : null,
+    // A product-level row of a product that has options is not sold itself —
+    // its stock is what has not been moved into an option yet.
+    isUnassigned: row.variant_id === null && (row.product?.product_variants?.[0]?.count ?? 0) > 0,
     quantity: row.quantity,
     lowStockThreshold: row.low_stock_threshold,
     stockStatus: getStockStatus(row.quantity, row.low_stock_threshold),
@@ -6435,7 +6440,7 @@ export async function listDashboardInventoryPage(
     .select(
       `
         id, product_id, variant_id, shop_id, quantity, low_stock_threshold, created_at, updated_at,
-        product:products!inventory_product_id_fkey!inner ( title, slug, status ),
+        product:products!inventory_product_id_fkey!inner ( title, slug, status, product_variants ( count ) ),
         shop:shops!inventory_shop_id_fkey ( name ),
         variant:product_variants!inventory_variant_id_fkey ( sku, color, size )
       `,
@@ -6548,6 +6553,28 @@ export async function adjustStock(input: AdjustStockInput): Promise<InventoryIte
     throw new Error("Could not load the updated inventory record.");
   }
   return item;
+}
+
+/**
+ * Moves stock from a product's unassigned (product-level) inventory row into
+ * its option rows via the `allocate_stock_to_variants` RPC — one transaction,
+ * total preserved, refused if it asks for more than is unassigned. The RPC
+ * re-checks ownership and raises curated messages, surfaced as-is.
+ */
+export async function allocateStockToVariants(
+  productId: string,
+  allocations: Array<{ variantId: string; quantity: number }>,
+): Promise<number> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("allocate_stock_to_variants", {
+    p_product_id: productId,
+    p_allocations: allocations.map((a) => ({ variant_id: a.variantId, quantity: a.quantity })),
+  });
+
+  if (error) {
+    throw rpcError("Could not move the stock.", error);
+  }
+  return data ?? 0;
 }
 
 /**
@@ -7198,6 +7225,7 @@ export const getTopProducts = cache(async function getTopProducts(
 export async function getLowStockReport(shopId?: string | null): Promise<InventoryItem[]> {
   const items = await listDashboardInventory();
   return items
+    .filter((item) => !item.isUnassigned)
     .filter((item) => item.stockStatus !== "in_stock")
     .filter((item) => !shopId || item.shopId === shopId)
     .sort((a, b) => a.quantity - b.quantity);

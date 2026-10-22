@@ -34,9 +34,36 @@ test("size and color must be satisfied by the same option", () => {
   assert.equal(matchCandidates([p], { size: "L", color: "black" })[0].optionId, "o2");
 });
 
-test("a product without options cannot satisfy a size or color answer", () => {
-  assert.deepEqual(matchCandidates([prod("a")], { size: "M" }), []);
-  assert.deepEqual(matchCandidates([prod("a")], { color: "Red" }), []);
+test("a product without options is never an exact match for a size or color answer", () => {
+  const size = matchCandidates([prod("a")], { size: "M" });
+  assert.equal(size.length, 1);
+  assert.equal(size[0].fit, "unconfirmed");
+  assert.equal(size[0].note, "Size not confirmed");
+  const both = matchCandidates([prod("a")], { size: "M", color: "Red" });
+  assert.equal(both[0].note, "Size and color not confirmed");
+  assert.equal(both[0].optionId, null);
+});
+
+test("an unconfirmed product still has to be in stock, in budget and match other answers", () => {
+  assert.deepEqual(matchCandidates([prod("a", { quantity: 0 })], { size: "M" }), []);
+  assert.deepEqual(matchCandidates([prod("a")], { size: "M", maxPriceCents: 50000 }), []);
+  assert.deepEqual(matchCandidates([prod("a", { material: "Cotton" })], { size: "M", material: "Linen" }), []);
+});
+
+test("unconfirmed matches rank after exact and close ones", () => {
+  const confirmed = prod("c", { options: [opt("o1", { size: "M" })] });
+  const r = matchCandidates([prod("u"), confirmed], { size: "M" });
+  assert.deepEqual(ids(r), ["c", "u"]);
+  assert.deepEqual(r.map((x) => x.fit), ["exact", "unconfirmed"]);
+});
+
+test("options that carry color but no size leave size unconfirmed, color still matched", () => {
+  const p = prod("a", { options: [opt("o1", { color: "Blue" }), opt("o2", { color: "Red" })] });
+  const r = matchCandidates([p], { size: "M", color: "red" });
+  assert.equal(r[0].fit, "unconfirmed");
+  assert.equal(r[0].optionId, "o2");
+  assert.equal(r[0].note, "Size not confirmed");
+  assert.deepEqual(matchCandidates([p], { size: "M", color: "Green" }), []);
 });
 
 test("material and dimensions fall back to the product's own spec", () => {

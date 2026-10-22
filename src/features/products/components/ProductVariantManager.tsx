@@ -11,6 +11,7 @@ import { useSavedFlash } from "@/hooks/useSavedFlash";
 import { FormField } from "@/components/forms/FormField";
 import { draftVariantOps, liveVariantOps } from "@/features/products/lib/product-variant-ops";
 import { ProductVariantChecklist } from "@/features/products/components/ProductVariantChecklist";
+import { ProductVariantMatrixGenerator } from "@/features/products/components/ProductVariantMatrixGenerator";
 import { ProductVariantRow } from "@/features/products/components/ProductVariantRow";
 import {
   productVariantSchema,
@@ -128,6 +129,13 @@ export function ProductVariantManager({
     checklistAttribute?.allowedValues && checklistAttribute.allowedValues.length > 0
       ? checklistAttribute.allowedValues
       : null;
+
+  // Color + size both active: offer the combination generator instead of one-by-one adds.
+  const showMatrix = activeAxisKeys.includes("color") && activeAxisKeys.includes("size");
+  const picklistFor = (key: ProductAttributeKey) => {
+    const values = variantEligible.find((a) => a.attributeKey === key)?.allowedValues;
+    return values && values.length > 0 ? values : null;
+  };
 
   const [axisError, setAxisError] = useState<string | null>(null);
 
@@ -248,6 +256,20 @@ export function ProductVariantManager({
           ))}
         </ul>
       )}
+
+      {showMatrix ? (
+        <ProductVariantMatrixGenerator
+          product={product}
+          ops={ops}
+          variants={variants}
+          colorValues={picklistFor("color")}
+          sizeValues={picklistFor("size")}
+          onCreated={(created) => {
+            setVariants((prev) => [...prev, ...created]);
+            confirmSaved();
+          }}
+        />
+      ) : null}
 
       {checklistAttribute && checklistValues ? (
         <ProductVariantChecklist

@@ -7,7 +7,11 @@ import { ROUTES } from "@/constants/routes";
 import { fail, fromZodError, ok } from "@/lib/utils/result";
 import * as queries from "@/lib/supabase/queries";
 import type { ActionResult } from "@/types/action.types";
-import { adjustStockSchema, bulkAdjustStockSchema } from "@/features/inventory/schemas/inventory.schema";
+import {
+  adjustStockSchema,
+  allocateStockSchema,
+  bulkAdjustStockSchema,
+} from "@/features/inventory/schemas/inventory.schema";
 import type {
   InventoryItem,
   StockAdjustment,
@@ -89,6 +93,63 @@ export async function bulkAdjustStockAction(
     return ok({ updated, failed });
   } catch (error) {
     return fail(error instanceof Error ? error.message : "Could not adjust stock.");
+  }
+}
+
+/** One option of a product, as the "move stock into options" form lists it. */
+export interface ProductOptionStock {
+  variantId: string;
+  label: string;
+  quantity: number;
+}
+
+/** A product's options with their current stock — for the move-stock form. */
+export async function getProductOptionsAction(
+  productId: string,
+): Promise<ActionResult<ProductOptionStock[]>> {
+  try {
+    await queries.requireRole(DASHBOARD_ROLES);
+    const variants = await queries.listProductVariants(productId);
+    const options = await Promise.all(
+      variants.map(async (variant) => ({
+        variantId: variant.id,
+        label: [variant.color, variant.size, variant.material, variant.dimensions]
+          .filter(Boolean)
+          .join(" / "),
+        quantity: (await queries.getVariantInventory(variant.id))?.quantity ?? 0,
+      })),
+    );
+    return ok(options);
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "Could not load the options.");
+  }
+}
+
+/**
+ * Moves unassigned stock into the product's options. Total stock is
+ * preserved: the RPC takes exactly what it adds to the options from the
+ * product-level row, in one transaction.
+ */
+export async function allocateStockToOptionsAction(
+  input: unknown,
+): Promise<ActionResult<{ moved: number }>> {
+  const parsed = allocateStockSchema.safeParse(input);
+  if (!parsed.success) return fromZodError(parsed.error);
+
+  try {
+    const user = await queries.requireRole(DASHBOARD_ROLES);
+    await queries.requireRateLimit(`allocateStock:${user.id}`, 20, 60);
+    const moved = await queries.allocateStockToVariants(
+      parsed.data.productId,
+      parsed.data.allocations,
+    );
+    revalidatePath(ROUTES.adminInventory);
+    revalidatePath(ROUTES.adminProducts);
+    revalidatePath(ROUTES.sellerInventory);
+    revalidatePath(ROUTES.sellerProducts);
+    return ok({ moved });
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "Could not move the stock.");
   }
 }
 

@@ -12,6 +12,7 @@ import {
   productVariantSchema,
   updateProductVariantSchema,
 } from "@/features/products/schemas/product-variant.schema";
+import { axisConsistencyError } from "@/features/products/lib/variant-combinations";
 import type { ProductVariant } from "@/features/products/types/product.types";
 
 /** Same shape/role gate as `updateProductAction` — admin (owner = null) moderates any product, a seller is scoped to their own (or their shop's). */
@@ -46,6 +47,11 @@ export async function createProductVariantAction(
   try {
     const owner = await resolveOwner();
     const product = await queries.getProductOwnerInfo(parsed.data.productId, owner);
+    // Refuse an option whose choices differ from the product's others (e.g. a
+    // color-only row next to size-only rows): the product page can't sell it.
+    const existing = await queries.listProductVariants(parsed.data.productId);
+    const inconsistent = axisConsistencyError(existing, parsed.data);
+    if (inconsistent) return fail(inconsistent);
     const variant = await queries.createProductVariant(
       parsed.data.productId,
       product.sellerId,

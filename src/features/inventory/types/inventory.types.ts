@@ -19,6 +19,12 @@ export interface InventoryItem {
   variantId: string | null;
   /** e.g. "Blue / Medium" — null for a product-level row. */
   variantLabel: string | null;
+  /**
+   * True for the product-level row of a product that has options: that stock
+   * is not sellable (buyers pick an option) until it is moved into one.
+   * Excluded from low-stock reports.
+   */
+  isUnassigned: boolean;
   quantity: number;
   lowStockThreshold: number;
   stockStatus: StockStatus;
