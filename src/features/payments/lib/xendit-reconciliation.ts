@@ -57,6 +57,35 @@ export function findFreshOtherChannelAttempt(
 }
 
 /**
+ * When the buyer lands back from Xendit's hosted page (`?xendit_return=1`),
+ * ask Xendit what actually happened instead of waiting only for the webhook —
+ * a webhook that is delayed, or can't reach this server at all (localhost),
+ * would otherwise leave a paid order showing "Payment Pending". Reuses
+ * `reconcileStaleXenditAttempt`, i.e. the same `process_xendit_webhook` RPC
+ * the real webhook uses, so Xendit stays the only source of truth and nothing
+ * is marked paid on the buyer's say-so. Returns null when there is no
+ * finalized attempt to check; "blocked" means Xendit still says pending (or
+ * could not be reached) and the page should stay as it is.
+ */
+export async function reconcileReturnedXenditPayment(
+  order: { id: string; checkoutGroupId: string | null },
+  channel: string | null,
+): Promise<ReconciliationOutcome | null> {
+  if (channel !== "GCASH" && channel !== "PAYMAYA" && channel !== "CARD") return null;
+
+  const attempt = order.checkoutGroupId
+    ? await queries.getFinalizedPendingXenditGroupPayment(order.checkoutGroupId, channel)
+    : await queries.getFinalizedPendingXenditPayment(order.id, channel);
+  if (!attempt) return null;
+
+  return reconcileStaleXenditAttempt(
+    order.checkoutGroupId ?? attempt.id,
+    channel,
+    attempt,
+  );
+}
+
+/**
  * Before a stale-by-our-clock attempt is treated as abandoned -- whether
  * that means starting a fresh charge (fix #5A) or allowing the order to be
  * cancelled (fix #5B) -- ask Xendit directly what actually happened. Xendit's

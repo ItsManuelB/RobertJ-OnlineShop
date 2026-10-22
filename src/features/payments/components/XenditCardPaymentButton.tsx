@@ -58,24 +58,43 @@ export function XenditCardPaymentButton(props: XenditCardPaymentButtonProps) {
   // the three events we explicitly listen for; this guards every callback.
   const sessionGenerationRef = useRef(0);
 
+  // Tracks whether this component is on screen. Not tied to the generation
+  // counter on purpose: React Strict Mode (dev) mounts, runs the cleanup and
+  // mounts again, and the auto-start below fires only once per component — so a
+  // cleanup that bumped the generation would orphan that one session and leave
+  // the form on "Loading card form…" forever.
+  const mountedRef = useRef(false);
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       componentsRef.current = null;
-      sessionGenerationRef.current += 1;
     };
   }, []);
 
   const startCardPayment = useCallback(async () => {
     const generation = ++sessionGenerationRef.current;
-    const isCurrent = () => generation === sessionGenerationRef.current;
+    const isCurrent = () => mountedRef.current && generation === sessionGenerationRef.current;
 
     setError(null);
     setPhase("loading");
 
-    const result =
-      props.orderId !== undefined
-        ? await createXenditCardSessionAction(props.orderId)
-        : await createXenditGroupCardSessionAction(props.checkoutGroupId);
+    let result:
+      | { success: true; data: { componentsSdkKey: string } }
+      | { success: false; error: string };
+    try {
+      result =
+        props.orderId !== undefined
+          ? await createXenditCardSessionAction(props.orderId)
+          : await createXenditGroupCardSessionAction(props.checkoutGroupId);
+    } catch {
+      // A rejected action (network drop, server error) must not leave the
+      // form spinning with no way out.
+      if (!isCurrent()) return;
+      setError("Could not start the card payment. Please try again.");
+      setPhase("error");
+      return;
+    }
     if (!isCurrent()) return;
     if (!result.success) {
       setError(result.error);
