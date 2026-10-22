@@ -10,12 +10,14 @@ import * as queries from "@/lib/supabase/queries";
 import { createEwalletPaymentRequest, createCardPaymentSession } from "@/lib/xendit/client";
 import type { ActionResult } from "@/types/action.types";
 import {
+  CARD_IN_PROGRESS_MESSAGE,
   CHANNEL_SWITCH_BLOCKED_MESSAGE,
   RECONCILIATION_RETRY_MESSAGE,
-  findFreshOtherChannelAttempt,
+  findBlockingOtherChannelAttempt,
   isStaleXenditAttempt,
   reconcileReturnedXenditPayment,
   reconcileStaleXenditAttempt,
+  releaseAbandonedCardAttempt,
 } from "@/features/payments/lib/xendit-reconciliation";
 import {
   confirmXenditPaymentSchema,
@@ -73,7 +75,7 @@ export async function createXenditEwalletPaymentAction(
     parsed.data.orderId,
     parsed.data.channelCode,
   );
-  if (findFreshOtherChannelAttempt(otherAttempts)) return fail(CHANNEL_SWITCH_BLOCKED_MESSAGE);
+  if (await findBlockingOtherChannelAttempt(otherAttempts, (a) => a.id)) return fail(CHANNEL_SWITCH_BLOCKED_MESSAGE);
 
   let redirectUrl: string;
   try {
@@ -169,12 +171,14 @@ export async function createXenditCardSessionAction(
       // sandbox: calling POST /sessions twice with the same
       // customer.reference_id returns 409 DUPLICATE_ERROR ("The
       // reference_id entered has been used before"), even with an
-      // identical Idempotency-Key. Nothing to reconcile yet (not stale),
-      // so stop here with a clear message instead of letting that 409
-      // surface as a confusing "Couldn't start payment" error.
-      return fail(
-        "A card payment is already in progress for this order. Complete the payment form you already opened, or wait a few minutes and try again.",
-      );
+      // identical Idempotency-Key. So a new session needs a new attempt:
+      // release the old one only if Xendit confirms nothing was paid and
+      // the form isn't recent; otherwise stop with a clear message.
+      const released = await releaseAbandonedCardAttempt(existingAttempt.id, existingAttempt);
+      if (released === "already_paid") {
+        return fail("This order has already been paid. Refresh the page to see the updated status.");
+      }
+      if (released !== "cleared_for_retry") return fail(CARD_IN_PROGRESS_MESSAGE);
     }
   }
 
@@ -182,7 +186,7 @@ export async function createXenditCardSessionAction(
   // e-wallet action above — block starting Card while GCash/Maya might
   // still resolve on its own.
   const otherAttempts = await queries.getOtherFinalizedPendingXenditPayments(parsed.data.orderId, "CARD");
-  if (findFreshOtherChannelAttempt(otherAttempts)) return fail(CHANNEL_SWITCH_BLOCKED_MESSAGE);
+  if (await findBlockingOtherChannelAttempt(otherAttempts, (a) => a.id)) return fail(CHANNEL_SWITCH_BLOCKED_MESSAGE);
 
   let attempt: Awaited<ReturnType<typeof queries.beginXenditPaymentAttempt>> | undefined;
   try {
@@ -279,7 +283,7 @@ export async function createXenditGroupEwalletPaymentAction(
     parsed.data.checkoutGroupId,
     parsed.data.channelCode,
   );
-  if (findFreshOtherChannelAttempt(otherAttempts)) return fail(CHANNEL_SWITCH_BLOCKED_MESSAGE);
+  if (await findBlockingOtherChannelAttempt(otherAttempts, () => parsed.data.checkoutGroupId)) return fail(CHANNEL_SWITCH_BLOCKED_MESSAGE);
 
   let redirectUrl: string;
   try {
@@ -384,10 +388,15 @@ export async function createXenditGroupCardSessionAction(
       // this every time the first click had already succeeded. Kept as a
       // defense-in-depth guard even with that UI fix in place (e.g. two
       // separate order-detail tabs for different members of the same
-      // group).
-      return fail(
-        "A card payment is already in progress for this order. Complete the payment form you already opened, or wait a few minutes and try again.",
+      // group). Released only when Xendit confirms nothing was paid.
+      const released = await releaseAbandonedCardAttempt(
+        parsed.data.checkoutGroupId,
+        existingAttempt,
       );
+      if (released === "already_paid") {
+        return fail("This order has already been paid. Refresh the page to see the updated status.");
+      }
+      if (released !== "cleared_for_retry") return fail(CARD_IN_PROGRESS_MESSAGE);
     }
   }
 
@@ -397,7 +406,7 @@ export async function createXenditGroupCardSessionAction(
     parsed.data.checkoutGroupId,
     "CARD",
   );
-  if (findFreshOtherChannelAttempt(otherAttempts)) return fail(CHANNEL_SWITCH_BLOCKED_MESSAGE);
+  if (await findBlockingOtherChannelAttempt(otherAttempts, () => parsed.data.checkoutGroupId)) return fail(CHANNEL_SWITCH_BLOCKED_MESSAGE);
 
   let attempt: Awaited<ReturnType<typeof queries.beginXenditGroupPaymentAttempt>> | undefined;
   try {
