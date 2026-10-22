@@ -4559,11 +4559,11 @@ export interface AbandonedXenditOrderCandidate {
  * reads rows with a real `xendit_payment_request_id`.
  */
 export async function getAbandonedXenditOrdersForExpiry(
-  thresholdHours: number,
+  thresholdMinutes: number,
   fetchLimit: number,
 ): Promise<AbandonedXenditOrderCandidate[]> {
   const admin = createSupabaseAdminClient();
-  const cutoff = new Date(Date.now() - thresholdHours * 60 * 60 * 1000).toISOString();
+  const cutoff = new Date(Date.now() - thresholdMinutes * 60 * 1000).toISOString();
 
   const { data, error } = await admin
     .from(DATABASE_TABLES.ORDERS)

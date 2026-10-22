@@ -1,7 +1,7 @@
 /**
- * Netlify replacement for the Vercel Cron entry in `vercel.json`: once a day
- * (03:00 UTC, same as before) it calls the app's own sweep route, which
- * re-checks stuck Xendit payments and auto-cancels orders unpaid after 24h.
+ * Netlify replacement for the Vercel Cron entry in `vercel.json`: every 15
+ * minutes it calls the app's own sweep route, which
+ * re-checks stuck Xendit payments and auto-cancels orders unpaid after 60 minutes.
  * All the work stays in `src/app/api/cron/xendit-reconciliation/route.ts`;
  * this only triggers it with the `Authorization: Bearer <CRON_SECRET>` header
  * that route already requires. Scheduled functions run on the published
@@ -22,4 +22,4 @@ export default async function xenditReconciliation(): Promise<Response> {
   return new Response(null, { status: response.ok ? 200 : 502 });
 }
 
-export const config = { schedule: "0 3 * * *" };
+export const config = { schedule: "*/15 * * * *" };

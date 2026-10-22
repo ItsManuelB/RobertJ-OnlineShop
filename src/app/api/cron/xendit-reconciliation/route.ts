@@ -24,10 +24,11 @@ import {
  * only reads `payment_method_type = 'xendit'` rows.
  *
  * TD-9: after the payment-status sweep above, a second pass auto-expires
- * orders that are still unpaid 24h after placement — see `runExpirySweep`.
- * Deliberately the SAME cron/route (not a second scheduled job): daily
- * granularity is more than enough for a 24h threshold, and it means one
- * schedule to reason about instead of two.
+ * orders that are still unpaid 60 minutes after placement — see `runExpirySweep`.
+ * Deliberately the SAME cron/route (not a second scheduled job): it runs
+ * every 15 minutes (see netlify/functions/xendit-reconciliation.mts), which
+ * is fine granularity for a 60-minute threshold, and it means one schedule
+ * to reason about instead of two.
  */
 
 /** Oldest-first raw rows to consider per run — bounds the query, not the work actually done (see queries.ts docs). */
@@ -36,7 +37,7 @@ const FETCH_LIMIT = 200;
 const BATCH_LIMIT = 20;
 
 /** How long an unpaid online-payment order may sit before it's auto-cancelled. Business-set threshold, not inferred. */
-const EXPIRE_THRESHOLD_HOURS = 24;
+const EXPIRE_THRESHOLD_MINUTES = 60;
 /** Oldest-first raw order rows to consider per run. */
 const EXPIRE_FETCH_LIMIT = 200;
 /** Hard cap on how many orders are actually expired (i.e. potentially call Xendit + write a cancellation) per run. */
@@ -125,7 +126,7 @@ export async function GET(request: NextRequest) {
 
 /**
  * TD-9: cancels orders that are `payment_method = 'xendit'`, still
- * `order_status = 'pending'`, and still unpaid `EXPIRE_THRESHOLD_HOURS`
+ * `order_status = 'pending'`, and still unpaid `EXPIRE_THRESHOLD_MINUTES`
  * after `placed_at`. Before cancelling, always re-checks Xendit's real
  * status first (reusing the exact same reconciliation building blocks the
  * pre-cancellation guard uses) so an order Xendit still considers payable is
@@ -147,7 +148,7 @@ async function runExpirySweep(): Promise<ExpirySweepSummary> {
   let candidates: Awaited<ReturnType<typeof queries.getAbandonedXenditOrdersForExpiry>>;
   try {
     candidates = await queries.getAbandonedXenditOrdersForExpiry(
-      EXPIRE_THRESHOLD_HOURS,
+      EXPIRE_THRESHOLD_MINUTES,
       EXPIRE_FETCH_LIMIT,
     );
   } catch (error) {

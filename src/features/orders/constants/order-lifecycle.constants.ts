@@ -39,3 +39,6 @@ export const LIFECYCLE_TAB_LABELS: Record<LifecycleTab, string> = {
 export function isLifecycleTab(value: string | null | undefined): value is LifecycleTab {
   return (ORDER_LIFECYCLE_TABS as readonly string[]).includes(value ?? "");
 }
+
+/** How long an unpaid online-payment order is held before it is cancelled and its stock released. Mirrors `expire_unpaid_xendit_order` and the sweep route; shown to buyers only. */
+export const UNPAID_ORDER_EXPIRY_MINUTES = 60;

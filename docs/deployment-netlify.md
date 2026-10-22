@@ -46,14 +46,14 @@ Settings -> Webhooks: set the callback URL to
 `XENDIT_WEBHOOK_TOKEN`, for the payment-request, payment-session and refund
 events. Without it, a paid order never turns to "paid".
 
-## 5. Daily sweep (replaces Vercel Cron)
+## 5. Payment sweep (replaces Vercel Cron)
 
-`netlify/functions/xendit-reconciliation.mts` runs daily at 03:00 UTC, on the
+`netlify/functions/xendit-reconciliation.mts` runs every 15 minutes, on the
 published deploy only, and calls `/api/cron/xendit-reconciliation` with
 `Authorization: Bearer <CRON_SECRET>`. Check it under Netlify -> Functions ->
 `xendit-reconciliation` -> logs after the first run. Until it runs, stuck
 pending payments are not re-checked and unpaid orders are not auto-cancelled
-after 24 hours; checkout and the webhook are unaffected.
+after 60 minutes; checkout and the webhook are unaffected.
 
 ## 6. Smoke test after deploy
 
