@@ -5132,6 +5132,69 @@ export async function getPendingXenditRefundForReturn(
   };
 }
 
+/** A refund submitted to Xendit that our database still shows as `pending`. */
+export interface PendingXenditRefundForSweep {
+  id: string;
+  xenditRefundId: string;
+  amountCents: number;
+}
+
+/**
+ * Refund attempts Xendit accepted (they have an id) but whose
+ * `refund.succeeded`/`refund.failed` webhook never settled, oldest first.
+ * `minAgeMinutes` leaves recent ones to the webhook. Service-role read for the
+ * catch-up sweep, which has no user session.
+ */
+export async function getPendingXenditRefundsForSweep(
+  minAgeMinutes: number,
+  limit: number,
+): Promise<PendingXenditRefundForSweep[]> {
+  const admin = createSupabaseAdminClient();
+  const cutoff = new Date(Date.now() - minAgeMinutes * 60 * 1000).toISOString();
+  const { data, error } = await admin
+    .from(DATABASE_TABLES.XENDIT_REFUNDS)
+    .select("id, xendit_refund_id, amount_cents")
+    .eq("status", "pending")
+    .not("xendit_refund_id", "is", null)
+    .lte("created_at", cutoff)
+    .order("created_at", { ascending: true })
+    .limit(limit);
+
+  if (error) {
+    throw queryError("Failed to load pending Xendit refunds", error);
+  }
+  return (data ?? []).flatMap((row) =>
+    row.xendit_refund_id
+      ? [{ id: row.id, xenditRefundId: row.xendit_refund_id, amountCents: row.amount_cents }]
+      : [],
+  );
+}
+
+/**
+ * Applies Xendit's refund status through `process_xendit_refund_webhook` — the
+ * same RPC the real webhook uses, so no refund-status logic is duplicated and
+ * it stays idempotent against a webhook arriving afterwards.
+ */
+export async function applyXenditRefundStatus(input: {
+  xenditRefundId: string;
+  status: string;
+  failureCode: string;
+  amountCents: number;
+  rawPayload: Json;
+}): Promise<void> {
+  const admin = createSupabaseAdminClient();
+  const { error } = await admin.rpc("process_xendit_refund_webhook", {
+    p_xendit_refund_id: input.xenditRefundId,
+    p_status: input.status,
+    p_failure_code: input.failureCode,
+    p_amount_cents: input.amountCents,
+    p_raw_payload: input.rawPayload,
+  });
+  if (error) {
+    throw rpcError("Could not apply the refund status.", error);
+  }
+}
+
 /**
  * Records Xendit's synchronous response to the refund submission (id + raw
  * body) via the `record_xendit_refund_submission` RPC. Never changes the

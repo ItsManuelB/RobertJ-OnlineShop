@@ -4,6 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { getServerEnv } from "@/config/env";
 import * as queries from "@/lib/supabase/queries";
+import { reconcileXenditRefund } from "@/features/payments/lib/xendit-refund-reconciliation";
 import {
   isStaleXenditAttempt,
   reconcileStaleXenditAttempt,
@@ -42,6 +43,11 @@ const EXPIRE_THRESHOLD_MINUTES = 60;
 const EXPIRE_FETCH_LIMIT = 200;
 /** Hard cap on how many orders are actually expired (i.e. potentially call Xendit + write a cancellation) per run. */
 const EXPIRE_BATCH_LIMIT = 20;
+
+/** Leave a refund this long to its webhook before the sweep asks Xendit. */
+const REFUND_MIN_AGE_MINUTES = 5;
+/** Max pending refunds checked per run (each is one Xendit call). */
+const REFUND_BATCH_LIMIT = 20;
 
 interface SweepSummary {
   candidatesFetched: number;
@@ -120,8 +126,33 @@ export async function GET(request: NextRequest) {
   }
 
   const expiry = await runExpirySweep();
+  const refunds = await runRefundSweep();
 
-  return NextResponse.json({ received: true, ...summary, expiry });
+  return NextResponse.json({ received: true, ...summary, expiry, refunds });
+}
+
+/**
+ * Catch-up for refunds Xendit accepted but whose `refund.*` webhook never
+ * settled: asks Xendit for the real status and applies it through the same
+ * RPC the webhook uses (see `reconcileXenditRefund`). Never creates or
+ * retries a refund.
+ */
+async function runRefundSweep(): Promise<{ checked: number; settled: number; errors: number }> {
+  const summary = { checked: 0, settled: 0, errors: 0 };
+  let pending: Awaited<ReturnType<typeof queries.getPendingXenditRefundsForSweep>>;
+  try {
+    pending = await queries.getPendingXenditRefundsForSweep(REFUND_MIN_AGE_MINUTES, REFUND_BATCH_LIMIT);
+  } catch (error) {
+    console.error("[xendit refund sweep] failed to load pending refunds", error);
+    summary.errors++;
+    return summary;
+  }
+
+  for (const refund of pending) {
+    summary.checked++;
+    if ((await reconcileXenditRefund(refund.xenditRefundId)) === "settled") summary.settled++;
+  }
+  return summary;
 }
 
 /**

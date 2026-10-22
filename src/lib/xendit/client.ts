@@ -216,6 +216,18 @@ export async function getCardSessionStatus(
   );
 }
 
+/**
+ * GET /refunds/{id} — Xendit's current state for a refund we submitted. Used
+ * to catch up when the `refund.succeeded`/`refund.failed` webhook is late or
+ * never arrives; authoritative (it comes from Xendit, unlike the synchronous
+ * POST response), and applied through the same RPC the webhook uses.
+ */
+export async function getRefundStatus(refundId: string): Promise<XenditRefundResponse> {
+  return xenditFetch<XenditRefundResponse>(`/refunds/${encodeURIComponent(refundId)}`, {
+    method: "GET",
+  });
+}
+
 export interface CreateRefundInput {
   /** `payments.xendit_payment_request_id` — the same field for GCash, Maya, and Card once a payment is genuinely 'paid' (see Phase 5B-1: process_xendit_webhook already overwrites Card's session id with the real Payment Request ID on success). */
   paymentRequestId: string;

@@ -7,6 +7,7 @@ import { ROUTES } from "@/constants/routes";
 import { fail, fromZodError, ok } from "@/lib/utils/result";
 import * as queries from "@/lib/supabase/queries";
 import { createRefund } from "@/lib/xendit/client";
+import { reconcileXenditRefund } from "@/features/payments/lib/xendit-refund-reconciliation";
 import type { Json } from "@/lib/supabase/database.types";
 import type { ActionResult } from "@/types/action.types";
 import { revalidateOrderSurfaces } from "@/features/orders";
@@ -171,6 +172,8 @@ export async function decideReturnAction(
             response.id,
             response as unknown as Json,
           );
+          // Don't wait on the webhook alone: ask Xendit for the refund's real status now (best-effort; the webhook and the 15-minute sweep still settle it if this can't).
+          await reconcileXenditRefund(response.id);
         } catch (error) {
           await queries.failXenditRefundSubmission(
             pendingRefund.id,
