@@ -20,12 +20,13 @@ export async function AdminQuickAccess() {
   let pendingReturns: number;
 
   try {
-    const [attentionCounts, returns] = await Promise.all([
+    const [attentionCounts, returns, payouts] = await Promise.all([
       getOrderAttentionCounts(),
       listReturnRequests(RETURN_STATUS.sellerAccepted),
+      listReturnRequests(RETURN_STATUS.refundDue),
     ]);
     pendingOrders = attentionCounts.needsConfirmation;
-    pendingReturns = returns.length;
+    pendingReturns = returns.length + payouts.length;
   } catch {
     return <ErrorState message="We couldn't load quick actions right now." />;
   }

@@ -96,8 +96,21 @@ export const recordReturnReplacementShipmentSchema = z.object({
     .max(120, "Tracking number must be 120 characters or fewer."),
 });
 
+/** Payload for an admin recording how a COD buyer was paid back — mirrors `record_cod_refund_payout`'s own checks. */
+export const recordCodRefundPayoutSchema = z.object({
+  returnId: uuidSchema,
+  method: z.enum(["gcash", "bank_transfer", "cash"], { message: "Choose how the buyer was paid." }),
+  reference: z
+    .string()
+    .trim()
+    .min(1, "Please enter a reference number.")
+    .max(120, "Reference must be 120 characters or fewer."),
+  note: z.string().trim().max(500, "Note must be 500 characters or fewer.").optional(),
+});
+
 export type RequestReturnInput = z.infer<typeof requestReturnSchema>;
 export type RespondToReturnInput = z.infer<typeof respondToReturnSchema>;
 export type DecideReturnInput = z.infer<typeof decideReturnSchema>;
 export type RecordReturnItemConditionInput = z.infer<typeof recordReturnItemConditionSchema>;
+export type RecordCodRefundPayoutInput = z.infer<typeof recordCodRefundPayoutSchema>;
 export type RecordReturnReplacementShipmentInput = z.infer<typeof recordReturnReplacementShipmentSchema>;

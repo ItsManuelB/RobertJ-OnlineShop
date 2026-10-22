@@ -13,6 +13,7 @@ import type { ActionResult } from "@/types/action.types";
 import { revalidateOrderSurfaces } from "@/features/orders";
 import {
   decideReturnSchema,
+  recordCodRefundPayoutSchema,
   recordReturnItemConditionSchema,
   recordReturnReplacementShipmentSchema,
   requestReturnSchema,
@@ -20,6 +21,7 @@ import {
 } from "@/features/returns/schemas/return.schema";
 import type {
   AdminReturnDecision,
+  CodRefundMethod,
   ReturnItemCondition,
   ReturnRequestType,
   SellerReturnDecision,
@@ -195,6 +197,42 @@ export async function decideReturnAction(
   } catch (error) {
     return fail(
       error instanceof Error ? error.message : "Could not decide this return request.",
+    );
+  }
+}
+
+/**
+ * Admin-only: records how a COD buyer was actually paid back (GCash, bank
+ * transfer or cash, plus a reference) and finalises the refund. Cash can't be
+ * returned through the app, so `decide_return` leaves a COD approval at
+ * `refund_due`; this is the step that marks it refunded (payment, order and
+ * reports follow). Authorization and every precondition are enforced inside
+ * `record_cod_refund_payout`; `requireRole` here is defense-in-depth.
+ */
+export async function recordCodRefundPayoutAction(
+  returnId: string,
+  method: CodRefundMethod,
+  reference: string,
+  note?: string,
+): Promise<ActionResult<null>> {
+  const parsed = recordCodRefundPayoutSchema.safeParse({ returnId, method, reference, note });
+  if (!parsed.success) return fromZodError(parsed.error);
+
+  try {
+    await queries.requireRole(DASHBOARD_ROLES);
+    const { orderId } = await queries.recordCodRefundPayout(
+      parsed.data.returnId,
+      parsed.data.method,
+      parsed.data.reference,
+      parsed.data.note ?? null,
+    );
+    revalidatePath(ROUTES.adminReturns);
+    revalidatePath(ROUTES.sellerReturns);
+    await revalidateOrderSurfaces(orderId);
+    return ok(null);
+  } catch (error) {
+    return fail(
+      error instanceof Error ? error.message : "Could not record this refund payout.",
     );
   }
 }

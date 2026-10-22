@@ -55,6 +55,10 @@ export interface ReturnRequest {
   replacementCourier: string | null;
   replacementTrackingNumber: string | null;
   replacementShippedAt: string | null;
+  /** COD refunds only, set when an admin records the actual payout (`record_cod_refund_payout`). */
+  codRefundMethod: "gcash" | "bank_transfer" | "cash" | null;
+  codRefundReference: string | null;
+  codRefundedAt: string | null;
   createdAt: string;
 }
 
@@ -62,6 +66,8 @@ export interface ReturnRequest {
 export type SellerReturnDecision = "accept" | "reject";
 /** The only two outcomes `decide_return` accepts. */
 export type AdminReturnDecision = "approve" | "reject";
+/** How an admin paid a COD buyer outside the app — mirrors the `return_requests_cod_refund_method_check` constraint. */
+export type CodRefundMethod = "gcash" | "bank_transfer" | "cash";
 /** The only two outcomes `record_return_item_condition` accepts. */
 export type ReturnItemCondition = "sellable" | "not_sellable";
 

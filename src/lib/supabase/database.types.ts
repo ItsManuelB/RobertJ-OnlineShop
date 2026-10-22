@@ -1220,6 +1220,10 @@ export type Database = {
           admin_decision_note: string | null
           buyer_id: string
           condition_note: string | null
+          cod_refund_method: string | null
+          cod_refund_reference: string | null
+          cod_refunded_at: string | null
+          cod_refunded_by: string | null
           condition_recorded_by: string | null
           created_at: string
           evidence_path: string | null
@@ -1249,6 +1253,10 @@ export type Database = {
           admin_decision_note?: string | null
           buyer_id: string
           condition_note?: string | null
+          cod_refund_method?: string | null
+          cod_refund_reference?: string | null
+          cod_refunded_at?: string | null
+          cod_refunded_by?: string | null
           condition_recorded_by?: string | null
           created_at?: string
           evidence_path?: string | null
@@ -1278,6 +1286,10 @@ export type Database = {
           admin_decision_note?: string | null
           buyer_id?: string
           condition_note?: string | null
+          cod_refund_method?: string | null
+          cod_refund_reference?: string | null
+          cod_refunded_at?: string | null
+          cod_refunded_by?: string | null
           condition_recorded_by?: string | null
           created_at?: string
           evidence_path?: string | null
@@ -2596,6 +2608,15 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      record_cod_refund_payout: {
+        Args: {
+          p_method: string
+          p_note?: string
+          p_reference: string
+          p_return_id: string
+        }
+        Returns: Database["public"]["Tables"]["return_requests"]["Row"]
+      }
       record_return_replacement_shipment: {
         Args: {
           p_courier: string
@@ -2887,6 +2908,7 @@ export type Database = {
         | "admin_rejected"
         | "refunded"
         | "replacement_approved"
+        | "refund_due"
       stock_adjustment_reason:
         | "initial_stock"
         | "restock"
@@ -3076,6 +3098,7 @@ export const Constants = {
         "admin_rejected",
         "refunded",
         "replacement_approved",
+        "refund_due",
       ],
       stock_adjustment_reason: [
         "initial_stock",

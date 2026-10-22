@@ -123,6 +123,7 @@ import type {
 import type { BuyerActivityEvent } from "@/features/notifications/types/notification.types";
 import type {
   AdminReturnDecision,
+  CodRefundMethod,
   PendingXenditRefund,
   ReturnItemCondition,
   ReturnReasonCode,
@@ -4872,6 +4873,7 @@ const RETURN_REQUEST_COLUMNS = `
   admin_decision_note, admin_decided_at, admin_decided_by,
   refund_amount_cents, restocked_at, marked_unsellable_at, condition_note,
   replacement_courier, replacement_tracking_number, replacement_shipped_at, created_at, updated_at,
+  cod_refund_method, cod_refund_reference, cod_refunded_at,
   order:orders!return_requests_order_id_fkey ( order_number, currency, payment_method, payment_status ),
   buyer:profiles!return_requests_buyer_id_fkey ( full_name, username ),
   order_item:order_items!return_requests_order_item_id_fkey ( product_title )
@@ -4918,6 +4920,9 @@ function toReturnRequest(row: ReturnRequestRowWithJoins): ReturnRequest {
     replacementCourier: row.replacement_courier,
     replacementTrackingNumber: row.replacement_tracking_number,
     replacementShippedAt: row.replacement_shipped_at,
+    codRefundMethod: row.cod_refund_method as ReturnRequest["codRefundMethod"],
+    codRefundReference: row.cod_refund_reference,
+    codRefundedAt: row.cod_refunded_at,
     createdAt: row.created_at,
   };
 }
@@ -5093,6 +5098,32 @@ export async function recordReturnReplacementShipment(
 
   if (error) {
     throw new Error(mapPostgresError(error, "Could not record this replacement shipment."));
+  }
+  return { orderId: (data as { order_id: string }).order_id };
+}
+
+/**
+ * Admin-only: records how a COD buyer was actually paid back and finalises the
+ * refund (`record_cod_refund_payout`) — the sole write path that moves a
+ * `refund_due` return to `refunded`. All checks (admin, status, method,
+ * reference, amount cap) live in the RPC.
+ */
+export async function recordCodRefundPayout(
+  returnId: string,
+  method: CodRefundMethod,
+  reference: string,
+  note: string | null,
+): Promise<{ orderId: string }> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("record_cod_refund_payout", {
+    p_return_id: returnId,
+    p_method: method,
+    p_reference: reference,
+    p_note: note ?? undefined,
+  });
+
+  if (error) {
+    throw new Error(mapPostgresError(error, "Could not record this refund payout."));
   }
   return { orderId: (data as { order_id: string }).order_id };
 }

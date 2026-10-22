@@ -3,7 +3,10 @@ import Image from "next/image";
 import { Badge } from "@/components/ui/badge";
 import { RJ_CARD, THEMED_CARD } from "@/components/ui/card";
 import { RETURN_STATUS, RETURN_STATUS_LABELS, type ReturnStatus } from "@/constants/status";
-import { RETURN_REQUEST_TYPE_LABELS } from "@/features/returns/constants/return.constants";
+import {
+  COD_REFUND_METHOD_LABELS,
+  RETURN_REQUEST_TYPE_LABELS,
+} from "@/features/returns/constants/return.constants";
 import type { ReturnRequest } from "@/features/returns/types/return.types";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDateTime } from "@/lib/utils/date";
@@ -17,6 +20,7 @@ const RETURN_STATUS_TONE: Record<ReturnStatus, "neutral" | "info" | "success" | 
   admin_rejected: "danger",
   refunded: "success",
   replacement_approved: "warning",
+  refund_due: "warning",
 };
 
 export interface ReturnRequestStatusCardProps {
@@ -126,9 +130,26 @@ export async function ReturnRequestStatusCard({
         </div>
       ) : null}
 
+      {request.status === RETURN_STATUS.refundDue && request.refundAmountCents !== null ? (
+        <p className={cn("mt-3 text-sm font-semibold", ink)}>
+          Refund of {formatCurrency(request.refundAmountCents, request.currency)} approved
+          <span className={cn("ml-1 text-xs font-normal", muted)}>
+            — the payout to the buyer is still being sent.
+          </span>
+        </p>
+      ) : null}
+
       {request.status === RETURN_STATUS.refunded && request.refundAmountCents !== null ? (
         <p className={cn("mt-3 text-sm font-semibold", themed ? "text-success" : "text-rj-green")}>
           Refunded {formatCurrency(request.refundAmountCents, request.currency)}
+        </p>
+      ) : null}
+
+      {request.codRefundMethod && request.codRefundedAt ? (
+        <p className={cn("mt-1 text-xs", muted)}>
+          Paid out via {COD_REFUND_METHOD_LABELS[request.codRefundMethod]}
+          {request.codRefundReference ? ` — ref ${request.codRefundReference}` : ""} (
+          {formatDateTime(request.codRefundedAt)})
         </p>
       ) : null}
 

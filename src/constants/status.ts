@@ -100,6 +100,8 @@ export const RETURN_STATUS = {
   refunded: "refunded",
   /** Admin approved a `replacement_exchange` resolution — no payment/order_status change; see `record_return_replacement_shipment`. */
   replacementApproved: "replacement_approved",
+  /** COD refund approved by admin; nothing is marked refunded until `record_cod_refund_payout` records the real payout. */
+  refundDue: "refund_due",
 } as const satisfies Record<string, ReturnStatus>;
 
 export const RETURN_STATUS_LABELS: Record<ReturnStatus, string> = {
@@ -109,6 +111,7 @@ export const RETURN_STATUS_LABELS: Record<ReturnStatus, string> = {
   admin_rejected: "Rejected",
   refunded: "Refunded",
   replacement_approved: "Replacement approved",
+  refund_due: "Refund approved — payout pending",
 };
 
 /** Return states that can no longer transition. */

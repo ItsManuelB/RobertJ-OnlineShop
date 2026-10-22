@@ -91,3 +91,10 @@ export const RETURN_REASON_CODE_LABELS: Record<ReturnReasonCode, string> = {
  * reason still requires the item to have actually arrived.
  */
 export const SHIPPED_ELIGIBLE_REASON_CODE: ReturnReasonCode = "item_not_received";
+
+/** Buyer/admin-facing names for how a COD refund was paid out. Mirrors `CodRefundMethod`. */
+export const COD_REFUND_METHOD_LABELS = {
+  gcash: "GCash",
+  bank_transfer: "Bank transfer",
+  cash: "Cash",
+} as const;
