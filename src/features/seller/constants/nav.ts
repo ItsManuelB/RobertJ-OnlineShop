@@ -1,4 +1,4 @@
-import { BarChart3, Boxes, CreditCard, LayoutGrid, Package, ShoppingBag, Store, type LucideIcon } from "lucide-react";
+import { BarChart3, Boxes, CreditCard, LayoutGrid, Package, ShoppingBag, Store, Undo2, type LucideIcon } from "lucide-react";
 
 import { ROUTES } from "@/constants/routes";
 
@@ -23,6 +23,7 @@ export const SELLER_NAV_GROUPS: readonly SellerNavGroup[] = [
       { href: ROUTES.sellerProducts, label: "Products", icon: Package },
       { href: ROUTES.sellerInventory, label: "Inventory", icon: Boxes },
       { href: ROUTES.sellerOrders, label: "Orders", icon: ShoppingBag },
+      { href: ROUTES.sellerReturns, label: "Returns", icon: Undo2 },
       { href: ROUTES.sellerPayments, label: "Payments", icon: CreditCard },
     ],
   },
@@ -40,6 +41,7 @@ export const SELLER_PAGE_META: Record<string, { title: string; subtitle: string 
   [ROUTES.sellerProducts]: { title: "Products", subtitle: "Manage your product catalog" },
   [ROUTES.sellerInventory]: { title: "Inventory", subtitle: "Track your shop's stock levels" },
   [ROUTES.sellerOrders]: { title: "Orders", subtitle: "Fulfil and track your shop's orders" },
+  [ROUTES.sellerReturns]: { title: "Returns & Refunds", subtitle: "Respond to your shop's return and refund requests" },
   [ROUTES.sellerPayments]: { title: "Payments", subtitle: "Monitor your shop's transactions" },
   [ROUTES.sellerReports]: { title: "Reports", subtitle: "Analytics and performance for your shop" },
 };

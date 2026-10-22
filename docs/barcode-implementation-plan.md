@@ -1,5 +1,7 @@
 # Barcode Feature — Step 3 Architecture & Implementation Plan
 
+> **Update (2026-10):** the To Pack scan from the Orders list now opens a confirmation popup (`ScanPackConfirmDialog`) showing the order's items, with **Mark ready for pickup** / **Open order** / **Close**, instead of navigating straight to the order. Scanning is still read-only — the status change happens only on the seller's click, through the same `advanceOrderStatusAction` path. `resolveSellerOrderByNumberAction` returns an items/buyer summary for To Pack orders to feed the popup. The guardrails below otherwise still apply; read them as describing the original scope.
+
 > **Status:** Planning only. No code, DB, dependency, config, or UI changed by this document.
 > **Prerequisites:** `docs/barcode-audit` findings (Step 1) + Step 2 read-only validation (PASS WITH CONDITIONS). All Step 2 conditions are **approved**:
 > - `@zxing/browser` approved as the camera-scanning dependency, **dynamically imported** only when the scanner opens.

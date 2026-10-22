@@ -2,7 +2,11 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
-import { DATE_PRESETS, type DatePresetId } from "@/features/reports/constants/report.constants";
+import {
+  DATE_PRESETS,
+  REPORT_TIMEZONE_LABEL,
+  type DatePresetId,
+} from "@/features/reports/constants/report.constants";
 import { resolvePreset } from "@/features/reports/utils/report-range";
 import { cn } from "@/lib/utils/cn";
 
@@ -12,7 +16,7 @@ export interface DashboardDateFilterProps {
 }
 
 const CONTROL =
-  "h-9 rounded-md border border-rj-gray-200 bg-rj-white px-3 text-sm text-rj-black focus-visible:border-rj-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rj-red/30";
+  "h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30";
 
 /**
  * Lighter sibling of `ReportsFilters` for the Overview KPI row — same
@@ -27,10 +31,23 @@ export function DashboardDateFilter({ from, to }: DashboardDateFilterProps) {
   const searchParams = useSearchParams();
 
   function commit(range: { from: string; to: string }) {
-    const params = new URLSearchParams(searchParams.toString());
+    const current = searchParams.toString();
+    const params = new URLSearchParams(current);
     params.set("from", range.from);
     params.set("to", range.to);
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    const next = params.toString();
+
+    // Re-selecting the already-active range (e.g. clicking "Today" again to
+    // pull in an order placed moments ago) resolves to the exact same URL —
+    // router.replace() to an unchanged URL is a no-op in Next.js (no new
+    // request, no refetch), so the stale numbers would otherwise stick until
+    // some other click happens to change the URL. router.refresh() forces
+    // the server round-trip that a same-URL replace() can't.
+    if (next === current) {
+      router.refresh();
+      return;
+    }
+    router.replace(`${pathname}?${next}`, { scroll: false });
   }
 
   const activePreset = DATE_PRESETS.find((preset) => {
@@ -54,10 +71,10 @@ export function DashboardDateFilter({ from, to }: DashboardDateFilterProps) {
               aria-pressed={isActive}
               onClick={() => commit(resolvePreset(preset.id as DatePresetId))}
               className={cn(
-                "rounded-full border px-3 py-1 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rj-red/30",
+                "rounded-full border px-3 py-1 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30",
                 isActive
-                  ? "border-rj-black bg-rj-black text-rj-white"
-                  : "border-rj-gray-200 text-rj-gray-600 hover:border-rj-black",
+                  ? "border-filter-active bg-filter-active text-filter-active-foreground"
+                  : "border-border text-muted-foreground hover:border-primary",
               )}
             >
               {preset.label}
@@ -66,7 +83,7 @@ export function DashboardDateFilter({ from, to }: DashboardDateFilterProps) {
         })}
       </div>
 
-      <label className="flex flex-col gap-1 text-xs font-medium text-rj-gray-500">
+      <label className="flex flex-col gap-1 text-xs font-medium text-rj-gray-500 dark:text-muted-foreground">
         From
         <input
           type="date"
@@ -76,7 +93,7 @@ export function DashboardDateFilter({ from, to }: DashboardDateFilterProps) {
           className={CONTROL}
         />
       </label>
-      <label className="flex flex-col gap-1 text-xs font-medium text-rj-gray-500">
+      <label className="flex flex-col gap-1 text-xs font-medium text-rj-gray-500 dark:text-muted-foreground">
         To
         <input
           type="date"
@@ -86,6 +103,10 @@ export function DashboardDateFilter({ from, to }: DashboardDateFilterProps) {
           className={CONTROL}
         />
       </label>
+
+      <p className="w-full text-[11px] text-rj-gray-400 dark:text-muted-foreground">
+        Dates use the {REPORT_TIMEZONE_LABEL} day boundary.
+      </p>
     </div>
   );
 }

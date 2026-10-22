@@ -60,7 +60,7 @@ export function XenditPaymentOptions(props: XenditPaymentOptionsProps) {
       <p className="text-sm text-rj-gray-600">You have a payment in progress.</p>
       <a
         href={existingCheckoutUrl}
-        className="inline-flex w-fit items-center rounded-full bg-rj-red px-6 py-2.5 text-sm font-bold text-white transition-colors hover:bg-rj-red-dark"
+        className="inline-flex w-fit items-center rounded-full bg-rj-red px-6 py-2.5 text-sm font-bold text-rj-white transition-colors hover:bg-rj-red-dark"
       >
         Continue to payment
       </a>

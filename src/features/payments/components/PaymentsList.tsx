@@ -2,11 +2,21 @@ import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { PaginationControls } from "@/features/products/components/PaginationControls";
 import { PaymentAttentionStrip } from "@/features/payments/components/PaymentAttentionStrip";
+import { PaymentSummaryCards } from "@/features/payments/components/PaymentSummaryCards";
 import { PaymentsDataTable } from "@/features/payments/components/PaymentsDataTable";
 import { dashboardPaymentListParamsSchema } from "@/features/payments/schemas/payment.schema";
-import type { DashboardPaymentListParams, Payment } from "@/features/payments/types/payment.types";
+import type {
+  DashboardPaymentListParams,
+  Payment,
+  PaymentHistorySummary,
+} from "@/features/payments/types/payment.types";
 import { isStaleXenditAttempt } from "@/features/payments/lib/xendit-reconciliation";
-import { getPaymentReceiptSignedUrl, getStalePaymentCount, listPaymentHistory } from "@/lib/supabase/queries";
+import {
+  getPaymentHistorySummary,
+  getPaymentReceiptSignedUrl,
+  getStalePaymentCount,
+  listPaymentHistory,
+} from "@/lib/supabase/queries";
 import type { PaginatedResult } from "@/types/pagination.types";
 
 export interface PaymentsListProps {
@@ -34,19 +44,27 @@ export async function PaymentsList({ searchParams, showAdminTools = false }: Pay
   const params: DashboardPaymentListParams = parsed.data;
 
   let result: PaginatedResult<Payment>;
+  let summary: PaymentHistorySummary;
   let staleCount = 0;
   try {
     if (showAdminTools) {
-      [result, staleCount] = await Promise.all([listPaymentHistory(params), getStalePaymentCount()]);
+      [result, summary, staleCount] = await Promise.all([
+        listPaymentHistory(params),
+        getPaymentHistorySummary(params),
+        getStalePaymentCount(),
+      ]);
     } else {
-      result = await listPaymentHistory(params);
+      [result, summary] = await Promise.all([
+        listPaymentHistory(params),
+        getPaymentHistorySummary(params),
+      ]);
     }
   } catch {
     return <ErrorState message="We couldn't load payment history right now." />;
   }
 
   const { items, page, totalPages, total } = result;
-  const filtering = Boolean(params.search || params.status || params.paymentMethodType || params.staleOnly);
+  const filtering = Boolean(params.search || params.status || params.paymentMethodType || params.paymentSource || params.staleOnly);
 
   // Legacy QR receipts are stored in a private bucket — resolve a short-lived
   // signed URL per row here (server-side) so the (client) data table can
@@ -73,6 +91,7 @@ export async function PaymentsList({ searchParams, showAdminTools = false }: Pay
   return (
     <div className="flex flex-col gap-6">
       {showAdminTools ? <PaymentAttentionStrip staleCount={staleCount} /> : null}
+      <PaymentSummaryCards summary={summary} paymentSource={params.paymentSource} />
 
       {items.length === 0 ? (
         filtering ? (

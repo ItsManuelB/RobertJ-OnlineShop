@@ -78,7 +78,7 @@ function SearchForm({ id, value, onChange, onSubmit, variant, autoFocus, onFocus
         <button
           type="submit"
           aria-label="Search"
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-rj-red text-white transition-colors hover:bg-rj-red-dark"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-rj-red text-rj-white transition-colors hover:bg-rj-red-dark"
         >
           <Search className="h-3 w-3" aria-hidden="true" />
         </button>

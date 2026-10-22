@@ -81,6 +81,9 @@ const DEFAULT_PAGE_META = { title: "Admin Portal", subtitle: "" };
 
 /** Falls back to the closest matching prefix (e.g. `/admin/orders/123` → Orders) since detail routes aren't listed individually. */
 export function getAdminPageMeta(pathname: string): { title: string; subtitle: string } {
+  if (pathname.startsWith(`${ROUTES.adminShops}/`) && pathname.endsWith("/dashboard")) {
+    return { title: "Shop Dashboard", subtitle: "View performance for one shop" };
+  }
   if (ADMIN_PAGE_META[pathname]) return ADMIN_PAGE_META[pathname];
   const match = Object.keys(ADMIN_PAGE_META)
     .filter((route) => pathname.startsWith(`${route}/`))

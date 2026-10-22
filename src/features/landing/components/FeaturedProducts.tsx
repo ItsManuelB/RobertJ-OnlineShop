@@ -9,6 +9,7 @@ import {
   getProductSoldCounts,
   listProductIdsWithVariants,
   getSessionUser,
+  getShopNamesByIds,
   getShopNamesBySellerIds,
   listFeaturedProducts,
   listWishlistProductIds,
@@ -49,6 +50,18 @@ export async function FeaturedProducts() {
       ? await getShopNamesBySellerIds(sellerIds).catch(() => new Map<string, string>())
       : new Map<string, string>();
 
+  const shopIds = [
+    ...new Set(
+      products
+        .map((product) => product.shopId)
+        .filter((id): id is string => id !== null),
+    ),
+  ];
+  const shopNamesByShopId =
+    shopIds.length > 0
+      ? await getShopNamesByIds(shopIds).catch(() => new Map<string, string>())
+      : new Map<string, string>();
+
   const soldCounts =
     products.length > 0
       ? await getProductSoldCounts(products.map((product) => product.id)).catch(
@@ -70,6 +83,7 @@ export async function FeaturedProducts() {
     // on role: only a genuine `seller` account is ever a real shop owner.
     shop:
       (product.sellerId ? shopNames.get(product.sellerId) : null) ??
+      (product.shopId ? shopNamesByShopId.get(product.shopId) : null) ??
       (product.sellerRole === USER_ROLES.seller ? product.sellerName : null) ??
       "RobertJ Seller",
     priceCents: product.priceCents,

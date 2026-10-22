@@ -93,6 +93,7 @@ export async function OrderListSection({
     () => new Map<string, { shopId: string; shopName: string }>(),
   );
   const shopLabelFor = (order: Order) =>
+    order.shopName ??
     (order.sellerId ? shopMembership.get(order.sellerId)?.shopName : null) ??
     (order.sellerRole === USER_ROLES.seller ? order.sellerName : null) ??
     "RobertJ Seller";

@@ -7,6 +7,7 @@ import { AdminLayout, type AdminNotification } from "@/features/admin";
 import {
   getLowStockReport,
   getOrderAttentionCounts,
+  getOverduePendingReturnCount,
   listReturnRequests,
   requireRole,
 } from "@/lib/supabase/queries";
@@ -17,12 +18,19 @@ import {
  * `getOrderAttentionCounts().needsConfirmation` — the same definition as
  * `AdminKpiRow`'s KPI tile and `AdminQuickAccess`'s badge — so this bell
  * never disagrees with the rest of the dashboard.
+ *
+ * Fulfillment/returns audit finding B1: "Returns overdue" is distinct from
+ * "Returns awaiting decision" below — it's requests still `pending` (the
+ * seller hasn't responded at all) that have crossed `decide_return`'s own
+ * overdue threshold, which is the one case admin previously had NO way to
+ * even see, let alone act on (the RPC refused anything still `pending`).
  */
 async function getAdminNotifications(): Promise<AdminNotification[]> {
-  const [attentionCounts, lowStock, pendingReturns] = await Promise.all([
+  const [attentionCounts, lowStock, pendingReturns, overdueReturns] = await Promise.all([
     getOrderAttentionCounts(),
     getLowStockReport(),
     listReturnRequests(RETURN_STATUS.sellerAccepted),
+    getOverduePendingReturnCount(),
   ]);
 
   const notifications: AdminNotification[] = [];
@@ -52,6 +60,15 @@ async function getAdminNotifications(): Promise<AdminNotification[]> {
       description: `${pendingReturns.length} return request${pendingReturns.length === 1 ? "" : "s"} need your review`,
       href: ROUTES.adminReturns,
       tone: "warning",
+    });
+  }
+  if (overdueReturns > 0) {
+    notifications.push({
+      id: "overdue-returns",
+      title: "Returns overdue",
+      description: `${overdueReturns} return request${overdueReturns === 1 ? "" : "s"} unanswered by the seller — you can decide ${overdueReturns === 1 ? "it" : "them"} directly`,
+      href: ROUTES.adminReturns,
+      tone: "danger",
     });
   }
 

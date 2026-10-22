@@ -10,11 +10,12 @@ export const metadata: Metadata = { title: "Payments — Seller Portal" };
 
 function PaymentsListSkeleton() {
   return (
-    <div className="flex flex-col gap-3" role="status" aria-live="polite">
+    <div className="flex flex-col gap-4" role="status" aria-live="polite">
       <span className="sr-only">Loading payment history</span>
-      {Array.from({ length: 3 }).map((_, index) => (
-        <Skeleton key={index} className="h-20 w-full rounded-2xl" />
-      ))}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+        {Array.from({ length: 5 }).map((_, index) => <Skeleton key={index} className="h-28 rounded-xl" />)}
+      </div>
+      {Array.from({ length: 3 }).map((_, index) => <Skeleton key={`row-${index}`} className="h-20 w-full rounded-2xl" />)}
     </div>
   );
 }

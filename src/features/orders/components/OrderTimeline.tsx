@@ -3,6 +3,7 @@ import { Check } from "lucide-react";
 import { RJ_CARD, THEMED_CARD } from "@/components/ui/card";
 import type { OrderStatus } from "@/constants/status";
 import { cn } from "@/lib/utils/cn";
+import { formatDateTime } from "@/lib/utils/date";
 import {
   getOrderStatusLabel,
   ORDER_TIMELINE_STEPS,
@@ -13,12 +14,46 @@ const TERMINAL_STATUSES: ReadonlySet<OrderStatus> = new Set([
   "refunded",
 ]);
 
+export interface OrderTimelineProps {
+  status: OrderStatus;
+  themed?: boolean;
+  /**
+   * Per-step timestamps, keyed the same as `ORDER_TIMELINE_STEPS`. Optional —
+   * omitting this (or any single key) keeps the step label without a time,
+   * same as before this timestamp was added. `confirmedAt`/`processingAt` are
+   * null for every order placed before those columns existed; there is no
+   * real timestamp to backfill, so those steps just render without a time.
+   */
+  placedAt?: string | null;
+  confirmedAt?: string | null;
+  processingAt?: string | null;
+  shippedAt?: string | null;
+  deliveredAt?: string | null;
+}
+
 /**
  * Forward fulfilment stepper (Pending → … → Delivered) with `aria-current="step"`
  * on the live step. Cancelled/Refunded are terminal and render a single marker
  * instead of the forward steps. `themed`: see OrderHeader.
  */
-export function OrderTimeline({ status, themed = false }: { status: OrderStatus; themed?: boolean }) {
+export function OrderTimeline({
+  status,
+  themed = false,
+  placedAt,
+  confirmedAt,
+  processingAt,
+  shippedAt,
+  deliveredAt,
+}: OrderTimelineProps) {
+  const stepTimestamp: Record<OrderStatus, string | null | undefined> = {
+    pending: placedAt,
+    confirmed: confirmedAt,
+    processing: processingAt,
+    shipped: shippedAt,
+    delivered: deliveredAt,
+    cancelled: undefined,
+    refunded: undefined,
+  };
   const ink = themed ? "text-foreground" : "text-rj-black";
   const muted = themed ? "text-muted-foreground" : "text-rj-gray-600";
 
@@ -76,6 +111,7 @@ export function OrderTimeline({ status, themed = false }: { status: OrderStatus;
           const isDone = index < currentIndex;
           const isCurrent = index === currentIndex;
           const isLast = index === ORDER_TIMELINE_STEPS.length - 1;
+          const timestamp = stepTimestamp[step];
           const doneTrack = themed ? "bg-primary" : "bg-rj-red";
           const idleTrack = themed ? "bg-border" : "bg-rj-gray-200";
           return (
@@ -106,9 +142,9 @@ export function OrderTimeline({ status, themed = false }: { status: OrderStatus;
                           !isDone && !isCurrent && "border-border bg-card text-muted-foreground",
                         ]
                       : [
-                          isDone && "border-rj-red bg-rj-red text-white",
+                          isDone && "border-rj-red bg-rj-red text-rj-white",
                           isCurrent &&
-                            "border-rj-red bg-rj-red text-white ring-2 ring-rj-red/30",
+                            "border-rj-red bg-rj-red text-rj-white ring-2 ring-rj-red/30",
                           !isDone && !isCurrent && "border-rj-gray-200 bg-rj-white text-rj-gray-400",
                         ],
                   )}
@@ -135,6 +171,11 @@ export function OrderTimeline({ status, themed = false }: { status: OrderStatus;
               >
                 {getOrderStatusLabel(step)}
               </span>
+              {timestamp ? (
+                <span className={cn("text-center text-[9px] leading-tight", muted)}>
+                  {formatDateTime(timestamp)}
+                </span>
+              ) : null}
             </li>
           );
         })}

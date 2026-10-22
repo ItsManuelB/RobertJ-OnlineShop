@@ -18,6 +18,8 @@ export interface ActionCenterCardProps {
   ordersHref?: string;
   /** Where the low-stock row's "Review →" sends. Defaults to the Seller Portal's own Inventory. Pass `ROUTES.adminInventory` for Admin. */
   inventoryHref?: string;
+  /** Where the return-requests row's "Review →" sends. Defaults to the Seller Portal's own Returns queue. Pass `ROUTES.adminReturns` for Admin. */
+  returnsHref?: string;
 }
 
 /**
@@ -34,9 +36,11 @@ export interface ActionCenterCardProps {
 export async function ActionCenterCard({
   ordersHref = ROUTES.sellerOrders,
   inventoryHref = ROUTES.sellerInventory,
+  returnsHref = ROUTES.sellerReturns,
 }: ActionCenterCardProps = {}) {
   let needsConfirmation: number;
   let codAwaitingCollection: number;
+  let pendingReturnRequests: number;
   let lowStockCount: number;
 
   try {
@@ -46,6 +50,7 @@ export async function ActionCenterCard({
     ]);
     needsConfirmation = attention.needsConfirmation;
     codAwaitingCollection = attention.codAwaitingCollection;
+    pendingReturnRequests = attention.pendingReturnRequests;
     lowStockCount = lowStock.length;
   } catch {
     return <ErrorState message="We couldn't load your action items right now." />;
@@ -65,6 +70,13 @@ export async function ActionCenterCard({
       tone: "warning",
       text: `${codAwaitingCollection} COD ${noun} awaiting cash collection`,
       href: `${ordersHref}?attentionOnly=true`,
+    });
+  }
+  if (pendingReturnRequests > 0) {
+    rows.push({
+      tone: "warning",
+      text: `${pendingReturnRequests} return request${pendingReturnRequests === 1 ? "" : "s"} awaiting your response`,
+      href: returnsHref,
     });
   }
   if (lowStockCount > 0) {

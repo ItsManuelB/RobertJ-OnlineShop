@@ -37,7 +37,7 @@ export interface GuidedSelectorQuizProps {
 }
 
 const CHIP_ACTIVE =
-  "rounded-full border-[1.5px] border-rj-black bg-rj-black px-4 py-2 text-xs font-bold text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rj-red/30";
+  "rounded-full border-[1.5px] border-rj-black bg-rj-black px-4 py-2 text-xs font-bold text-rj-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rj-red/30";
 const CHIP_IDLE =
   "rounded-full border-[1.5px] border-rj-gray-200 bg-transparent px-4 py-2 text-xs font-bold text-rj-gray-600 transition-colors hover:border-rj-black hover:text-rj-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rj-red/30";
 
@@ -186,7 +186,8 @@ export function GuidedSelectorQuiz({ trigger }: GuidedSelectorQuizProps) {
   const showOccasion = !categoryId || selectedCategory?.supportsOccasionMatching !== false;
 
   const exactCount = matches?.filter((match) => match.fit === "exact").length ?? 0;
-  const closeCount = (matches?.length ?? 0) - exactCount;
+  const closeCount = matches?.filter((match) => match.fit === "close").length ?? 0;
+  const unconfirmedCount = matches?.filter((match) => match.fit === "unconfirmed").length ?? 0;
 
   function handleSearch() {
     setFormError(null);
@@ -387,6 +388,7 @@ export function GuidedSelectorQuiz({ trigger }: GuidedSelectorQuizProps) {
                     <p className="text-sm text-rj-gray-600" aria-live="polite">
                       {exactCount} match{exactCount === 1 ? "" : "es"}
                       {closeCount > 0 ? ` · ${closeCount} close` : ""}
+                      {unconfirmedCount > 0 ? ` · ${unconfirmedCount} to confirm` : ""}
                     </p>
                     <button
                       type="button"
@@ -436,6 +438,11 @@ export function GuidedSelectorQuiz({ trigger }: GuidedSelectorQuizProps) {
                               </p>
                               {match.fit === "close" && match.note ? (
                                 <p className="text-[11px] font-semibold text-rj-red-dark">Close: {match.note}</p>
+                              ) : null}
+                              {match.fit === "unconfirmed" && match.note ? (
+                                <p className="text-[11px] font-semibold text-rj-gray-600">
+                                  {match.note} — check with the seller
+                                </p>
                               ) : null}
                               {match.variantLabel ? (
                                 <p className="text-[11px] text-rj-gray-500">{match.variantLabel}</p>

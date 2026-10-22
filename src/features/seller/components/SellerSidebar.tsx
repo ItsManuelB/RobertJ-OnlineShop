@@ -109,7 +109,7 @@ export function SellerSidebar({ user, pathname, onNavigate, onClose }: SellerSid
             </p>
           </div>
         </Link>
-        <SignOutButton className="flex w-full items-center gap-3 rounded-lg border border-transparent px-3 py-2.5 text-sm text-sidebar-muted-foreground transition-all duration-150 hover:border-danger/20 hover:bg-sidebar-border/50 hover:text-danger">
+        <SignOutButton themeScope="seller" className="flex w-full items-center gap-3 rounded-lg border border-transparent px-3 py-2.5 text-sm text-sidebar-muted-foreground transition-all duration-150 hover:border-danger/20 hover:bg-sidebar-border/50 hover:text-danger">
           <LogOut className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
           <span className="font-medium">Sign Out</span>
         </SignOutButton>

@@ -1,4 +1,3 @@
-import { BarChart, type BarChartDatum } from "@/components/charts/BarChart";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { Card, CardContent } from "@/components/ui/card";
 import { DeltaBadge } from "@/components/ui/delta-badge";
@@ -7,10 +6,11 @@ import type { ReportFilters } from "@/features/reports/types/report.types";
 import { getPreviousPeriod } from "@/features/reports/utils/report-range";
 import { formatCurrency } from "@/lib/utils/currency";
 import { getSalesSummary } from "@/lib/supabase/queries";
+import { PaymentSourceBreakdown } from "@/features/reports/components/PaymentSourceBreakdown";
 
 /**
  * Seller-only counterpart to `SalesSummaryPanel` — same six KPI tiles and
- * payment-method split, plus a period-over-period delta chip on the four
+ * payment-source split, plus a period-over-period delta chip on the four
  * metrics where a trend comparison is meaningful (Revenue, Orders placed,
  * Paid orders, Units sold — not Avg order value or Cancelled, which are
  * ratios/edge counts a raw +/-% would misrepresent). Kept as a separate
@@ -31,16 +31,6 @@ export async function SellerSalesSummaryPanel({ filters }: { filters: ReportFilt
   } catch {
     return <ErrorState message="We couldn't load the sales summary right now." />;
   }
-
-  const paymentSplit: BarChartDatum[] = [
-    { label: "Cash on Delivery", value: summary.codPaidOrders, valueLabel: `${summary.codPaidOrders}`, tone: "success" },
-    { label: "Online Payment (Xendit)", value: summary.xenditPaidOrders, valueLabel: `${summary.xenditPaidOrders}`, tone: "info" },
-    { label: "QR transfer (legacy)", value: summary.qrPaidOrders, valueLabel: `${summary.qrPaidOrders}`, tone: "neutral" },
-    { label: "Awaiting payment", value: summary.pendingPaymentOrders, valueLabel: `${summary.pendingPaymentOrders}`, tone: "warning" },
-  ];
-
-  const hasPaymentData =
-    summary.codPaidOrders + summary.xenditPaidOrders + summary.qrPaidOrders + summary.pendingPaymentOrders > 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -90,13 +80,9 @@ export async function SellerSalesSummaryPanel({ filters }: { filters: ReportFilt
       <Card>
         <CardContent className="flex flex-col gap-4 p-5">
           <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
-            Payment method (paid orders)
+            Payment source (paid orders)
           </p>
-          {hasPaymentData ? (
-            <BarChart data={paymentSplit} ariaLabel="Paid orders by payment method" />
-          ) : (
-            <p className="text-sm text-muted-foreground">No confirmed or pending payments in this range yet.</p>
-          )}
+          <PaymentSourceBreakdown filters={filters} />
         </CardContent>
       </Card>
     </div>

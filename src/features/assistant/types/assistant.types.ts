@@ -63,7 +63,11 @@ export interface GuidedSelectionMatch {
   /** e.g. "Blue / Medium", or null when the match isn't variant-specific. */
   variantLabel: string | null;
   matchedPriceCents: number;
-  /** "exact" satisfies every answer; "close" misses only the budget, by `note`. */
-  fit: "exact" | "close";
+  /**
+   * "exact" satisfies every answer; "close" misses only the budget, by `note`;
+   * "unconfirmed" fits the rest but the product has no size/color data to
+   * check (`note` says which) — shown last, never as an exact match.
+   */
+  fit: "exact" | "close" | "unconfirmed";
   note: string | null;
 }

@@ -62,6 +62,7 @@ import type {
 } from "@/features/assistant/types/assistant.types";
 import { isOccasion } from "@/constants/occasions";
 import { filterImagesForColor } from "@/lib/utils/variant-images";
+import { channelsForPaymentSourceFilter } from "@/features/payments/lib/payment-source";
 import type { CartItem } from "@/features/cart/types/cart.types";
 import { matchCandidates, type MatchOption } from "@/features/assistant/lib/guided-match";
 import {
@@ -89,6 +90,7 @@ import type {
   DashboardPaymentListParams,
   Payment,
   PaymentAttempt,
+  PaymentHistorySummary,
 } from "@/features/payments/types/payment.types";
 import type { Shop, ShopWithMember } from "@/features/shops/types/shop.types";
 import type { AdminUser } from "@/features/users/types/user.types";
@@ -110,6 +112,7 @@ import type {
   RestockPriorityItem,
   SalesSummary,
   SalesTrendPoint,
+  PaymentSourceSummaryRow,
   TopProduct,
 } from "@/features/reports/types/report.types";
 import type {
@@ -121,10 +124,14 @@ import type {
   AdminReturnDecision,
   PendingXenditRefund,
   ReturnItemCondition,
+  ReturnReasonCode,
   ReturnRequest,
+  ReturnRequestType,
   SellerReturnDecision,
 } from "@/features/returns/types/return.types";
 import type { AdminActionLogEntry } from "@/features/audit-log/types/audit-log.types";
+import type { UpdatePlatformSettingsInput } from "@/features/settings/schemas/settings.schema";
+import type { PlatformSettings } from "@/features/settings/types/settings.types";
 
 /**
  * Centralized, reusable Supabase data-access layer.
@@ -852,12 +859,43 @@ function friendlyProductError(error: { message?: string } | null): string | null
   return /products_active_requires_stock/.test(error?.message ?? "") ? ACTIVE_NEEDS_STOCK_MESSAGE : null;
 }
 
+/**
+ * Re-validates a category's hard-required specs (e.g. Decors' Dimensions)
+ * against the actual values being saved. `ProductEditorFieldSections`'s
+ * required-field rendering is a client convenience, not a trust boundary —
+ * per CLAUDE.md's "never trust the client" rule, the same check must be
+ * enforced here. Only `material`/`dimensions` can ever be `is_required` in
+ * practice: `category_attributes_required_not_variant` forbids pairing
+ * `is_required` with `is_variant_eligible`, and color/size have no spec-level
+ * column on `products` to require in the first place.
+ */
+async function assertRequiredCategorySpecs(
+  categoryId: string,
+  specs: { material?: string | null; dimensions?: string | null },
+): Promise<void> {
+  const attributes = await listCategoryAttributes(categoryId);
+  const missing = attributes.filter(
+    (attribute) =>
+      attribute.isRequired &&
+      (attribute.attributeKey === "material" || attribute.attributeKey === "dimensions") &&
+      !specs[attribute.attributeKey],
+  );
+  if (missing.length === 0) return;
+
+  const labels = missing.map((attribute) => (attribute.attributeKey === "material" ? "Material" : "Dimensions"));
+  throw new Error(`${labels.join(" and ")} ${labels.length > 1 ? "are" : "is"} required for this category.`);
+}
+
 export async function createProduct(
   input: CreateProductInput,
   sellerId: string,
   shopId: string,
   clientId?: string,
 ): Promise<Product> {
+  if (input.categoryId) {
+    await assertRequiredCategorySpecs(input.categoryId, { material: input.material, dimensions: input.dimensions });
+  }
+
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from(DATABASE_TABLES.PRODUCTS)
@@ -916,9 +954,7 @@ export async function getDashboardProduct(
 
   if (owner) {
     query = query.or(
-      owner.shopId
-        ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
-        : `seller_id.eq.${owner.sellerId}`,
+      owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`,
     );
   }
 
@@ -956,23 +992,34 @@ export async function updateProduct(
   const supabase = await createSupabaseServerClient();
   const { id, price, categoryId, description, location, quantity, material, dimensions, occasions, ...rest } = input;
 
+  // Fetched regardless of `owner`: the ownership filter below is the same
+  // defense-in-depth re-check as before, but category_id/material/dimensions
+  // are needed either way to resolve the *effective* values for the
+  // required-spec check just below — an update that doesn't touch
+  // material/dimensions/category must be checked against what's already on
+  // the row, not treated as blank.
+  let existingQuery = supabase
+    .from(DATABASE_TABLES.PRODUCTS)
+    .select("id, category_id, material, dimensions")
+    .eq("id", id);
   if (owner) {
-    const ownerFilter = owner.shopId
-      ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
-      : `seller_id.eq.${owner.sellerId}`;
-    const { data: existing, error: readError } = await supabase
-      .from(DATABASE_TABLES.PRODUCTS)
-      .select("id")
-      .eq("id", id)
-      .or(ownerFilter)
-      .maybeSingle();
+    const ownerFilter = owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`;
+    existingQuery = existingQuery.or(ownerFilter);
+  }
+  const { data: existing, error: readError } = await existingQuery.maybeSingle();
+  if (readError) {
+    throw new Error(`Failed to load product: ${readError.message}`);
+  }
+  if (!existing) {
+    throw new Error("Product not found.");
+  }
 
-    if (readError) {
-      throw new Error(`Failed to load product: ${readError.message}`);
-    }
-    if (!existing) {
-      throw new Error("Product not found.");
-    }
+  const effectiveCategoryId = categoryId !== undefined ? categoryId : existing.category_id;
+  if (effectiveCategoryId) {
+    await assertRequiredCategorySpecs(effectiveCategoryId, {
+      material: material !== undefined ? material : existing.material,
+      dimensions: dimensions !== undefined ? dimensions : existing.dimensions,
+    });
   }
 
   if (quantity !== undefined) {
@@ -1035,9 +1082,7 @@ export async function archiveProduct(
   const supabase = await createSupabaseServerClient();
 
   if (owner) {
-    const ownerFilter = owner.shopId
-      ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
-      : `seller_id.eq.${owner.sellerId}`;
+    const ownerFilter = owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`;
     const { data: existing, error: readError } = await supabase
       .from(DATABASE_TABLES.PRODUCTS)
       .select("id")
@@ -1096,9 +1141,7 @@ export async function restoreProduct(
     .eq("id", id);
 
   if (owner) {
-    const ownerFilter = owner.shopId
-      ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
-      : `seller_id.eq.${owner.sellerId}`;
+    const ownerFilter = owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`;
     existingQuery = existingQuery.or(ownerFilter);
   }
 
@@ -1141,21 +1184,16 @@ export async function restoreProduct(
 }
 
 /**
- * Cheap ownership check for a seller before an image write — same "own it,
- * or it's in my shop" rule as `updateProduct`/`archiveProduct` (and, since
- * the accompanying migration, the `product_images`/storage RLS policies
- * too). A shop's product can have a `seller_id` that predates shop
- * assignment or belongs to a different shop member; checking `seller_id`
- * alone rejected uploads on products the seller can otherwise see and edit.
+ * Cheap authorization check for a seller before an image write. Assigned
+ * products follow the caller's current shop; seller_id is a fallback only
+ * for legacy products without a shop assignment, matching database RLS.
  */
 export async function productBelongsToOwner(
   productId: string,
   owner: { sellerId: string; shopId: string | null },
 ): Promise<boolean> {
   const supabase = await createSupabaseServerClient();
-  const ownerFilter = owner.shopId
-    ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
-    : `seller_id.eq.${owner.sellerId}`;
+  const ownerFilter = owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`;
   const { data, error } = await supabase
     .from(DATABASE_TABLES.PRODUCTS)
     .select("id")
@@ -1186,9 +1224,7 @@ export async function getProductOwnerInfo(
     .eq("id", productId);
 
   if (owner) {
-    const ownerFilter = owner.shopId
-      ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
-      : `seller_id.eq.${owner.sellerId}`;
+    const ownerFilter = owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`;
     query = query.or(ownerFilter);
   }
 
@@ -1315,8 +1351,9 @@ export async function setProductImageVariant(
   }
   if (
     owner &&
-    image.products.seller_id !== owner.sellerId &&
-    !(owner.shopId && image.products.shop_id === owner.shopId)
+    (owner.shopId
+      ? image.products.shop_id !== owner.shopId
+      : image.products.seller_id !== owner.sellerId)
   ) {
     throw new Error("Image not found.");
   }
@@ -1388,8 +1425,9 @@ export async function deleteProductImage(
   }
   if (
     owner &&
-    image.products.seller_id !== owner.sellerId &&
-    !(owner.shopId && image.products.shop_id === owner.shopId)
+    (owner.shopId
+      ? image.products.shop_id !== owner.shopId
+      : image.products.seller_id !== owner.sellerId)
   ) {
     throw new Error("Image not found.");
   }
@@ -2204,7 +2242,7 @@ type OrderItemRow = Database["public"]["Tables"]["order_items"]["Row"];
 const ORDER_COLUMNS = `
   id, order_number, buyer_id, seller_id, shop_id, subtotal_cents, shipping_fee_cents,
   total_cents, currency, payment_status, payment_method, order_status, shipping_address, notes,
-  placed_at, paid_at, shipped_at, delivered_at, cancelled_at, checkout_group_id,
+  placed_at, confirmed_at, processing_at, paid_at, shipped_at, delivered_at, cancelled_at, checkout_group_id,
   cancellation_reason, cancelled_by, buyer_confirmed_received_at,
   buyer:profiles!orders_buyer_id_fkey ( full_name, username ),
   seller:profiles!orders_seller_id_fkey ( full_name, username, role ),
@@ -2285,6 +2323,8 @@ function toOrder(row: OrderRowWithItems): Order {
       variantLabel: item.variant_label,
     })),
     placedAt: row.placed_at,
+    confirmedAt: row.confirmed_at,
+    processingAt: row.processing_at,
     paidAt: row.paid_at,
     shippedAt: row.shipped_at,
     deliveredAt: row.delivered_at,
@@ -2323,7 +2363,6 @@ export async function listBuyerOrders(
   if (params.status) {
     query = query.eq("order_status", params.status);
   }
-
   query = query.order("placed_at", { ascending: false });
 
   const { from, to } = toRange(params);
@@ -2592,24 +2631,53 @@ export async function getBuyerOrderSummary(
  * (a seller's rows are scoped to `seller_id = auth.uid()`, an admin sees
  * every order).
  */
-export async function getDashboardOrderSummary(): Promise<OrderSummary> {
+function manilaDateRangeBounds(from: string, to: string): { start: string; endExclusive: string } {
+  const [year, month, day] = to.split("-").map(Number);
+  const nextDay = new Date(Date.UTC(year, month - 1, day + 1)).toISOString().slice(0, 10);
+
+  return {
+    start: new Date(`${from}T00:00:00+08:00`).toISOString(),
+    endExclusive: new Date(`${nextDay}T00:00:00+08:00`).toISOString(),
+  };
+}
+
+export async function getDashboardOrderSummary(
+  filters?: { from: string; to: string; shopId?: string | null },
+): Promise<OrderSummary> {
   const supabase = await createSupabaseServerClient();
+  const bounds = filters ? manilaDateRangeBounds(filters.from, filters.to) : null;
 
   const counts = await Promise.all(
     ORDER_STATUS_FLOW.map(async (status) => {
-      const { count, error } = await supabase
+      let query = supabase
         .from(DATABASE_TABLES.ORDERS)
         .select("id", { count: "exact", head: true })
         .eq("order_status", status);
+
+      if (filters?.shopId) query = query.eq("shop_id", filters.shopId);
+      if (bounds) query = query.gte("placed_at", bounds.start).lt("placed_at", bounds.endExclusive);
+
+      const { count, error } = await query;
       return [status, error ? 0 : (count ?? 0)] as const;
     }),
   );
 
   const statusCounts = Object.fromEntries(counts) as Record<OrderStatus, number>;
 
-  const recent = await listDashboardOrders({ page: 1, pageSize: 5 });
+  let recentQuery = supabase
+    .from(DATABASE_TABLES.ORDERS)
+    .select(ORDER_COLUMNS);
 
-  return { statusCounts, recentOrders: recent.items };
+  if (filters?.shopId) recentQuery = recentQuery.eq("shop_id", filters.shopId);
+  if (bounds) recentQuery = recentQuery.gte("placed_at", bounds.start).lt("placed_at", bounds.endExclusive);
+
+  const { data, error } = await recentQuery.order("placed_at", { ascending: false }).limit(5);
+  if (error) throw queryError("Failed to load recent orders", error);
+
+  return {
+    statusCounts,
+    recentOrders: (data ?? []).map((row) => toOrder(row as OrderRowWithItems)),
+  };
 }
 
 /**
@@ -2658,20 +2726,21 @@ export async function cancelBuyerOrder(
 }
 
 /**
- * Every order visible to the caller for management purposes — no manual
- * seller/admin filtering, matching `listDashboardInventory()`'s "RLS is the
- * primary boundary" pattern: a seller sees their own orders
- * (`seller_id = auth.uid()`), an admin sees every order. Safe to rely on RLS
- * alone here because `orders`' SELECT policy has no public/unscoped clause
- * (unlike `products` — see `listDashboardProducts()`'s owner-filter note).
+ * Dashboard order list. Sellers receive an explicit seller/shop filter because
+ * order RLS also allows buyers to see their own purchases from other shops;
+ * admins pass `null` and retain the full order view. RLS remains the security
+ * boundary behind either query.
  */
+export type DashboardOrderOwner = { sellerId: string; shopId: string | null };
+
 export async function listDashboardOrders(
   params: OrderListParams,
+  owner: DashboardOrderOwner | null = null,
 ): Promise<PaginatedResult<Order>> {
   const supabase = await createSupabaseServerClient();
 
   if (params.attentionOnly) {
-    return listDashboardOrdersNeedingAttention(supabase, params);
+    return listDashboardOrdersNeedingAttention(supabase, params, owner);
   }
 
   let query = supabase
@@ -2684,14 +2753,27 @@ export async function listDashboardOrders(
   if (params.status) {
     query = query.eq("order_status", params.status);
   }
+  if (params.confirmationRequired) {
+    query = query
+      .eq("order_status", ORDER_STATUS.pending)
+      .or(`payment_method.eq.cod,payment_status.eq.${PAYMENT_STATUS.paid}`);
+  }
   if (params.paymentMethod) {
     query = query.eq("payment_method", params.paymentMethod);
   }
-  if (params.dateRange) {
+  if (params.from && params.to) {
+    const bounds = manilaDateRangeBounds(params.from, params.to);
+    query = query.gte("placed_at", bounds.start).lt("placed_at", bounds.endExclusive);
+  } else if (params.dateRange) {
     query = query.gte("placed_at", dateRangeBoundary(params.dateRange));
   }
   if (params.shopId) {
     query = query.eq("shop_id", params.shopId);
+  }
+  if (owner) {
+    query = query.or(
+      owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`,
+    );
   }
 
   query = query.order("placed_at", { ascending: false });
@@ -2740,6 +2822,7 @@ const ATTENTION_SCAN_LIMIT = 500;
 async function listDashboardOrdersNeedingAttention(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
   params: OrderListParams,
+  owner: DashboardOrderOwner | null,
 ): Promise<PaginatedResult<Order>> {
   let needsConfirmation = supabase
     .from(DATABASE_TABLES.ORDERS)
@@ -2770,6 +2853,11 @@ async function listDashboardOrdersNeedingAttention(
     needsConfirmation = needsConfirmation.eq("shop_id", params.shopId);
     codAwaitingCollection = codAwaitingCollection.eq("shop_id", params.shopId);
   }
+  if (owner) {
+    const ownerFilter = owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`;
+    needsConfirmation = needsConfirmation.or(ownerFilter);
+    codAwaitingCollection = codAwaitingCollection.or(ownerFilter);
+  }
 
   const [confirmResult, codResult] = await Promise.all([
     needsConfirmation.order("placed_at", { ascending: false }).limit(ATTENTION_SCAN_LIMIT),
@@ -2799,7 +2887,7 @@ async function listDashboardOrdersNeedingAttention(
  * two conditions as `listDashboardOrdersNeedingAttention`, but a `head`
  * count-only query instead of fetching rows.
  */
-export async function getOrderAttentionCounts(): Promise<{
+export async function getOrderAttentionCounts(shopId?: string | null): Promise<{
   needsConfirmation: number;
   codAwaitingCollection: number;
   /**
@@ -2809,37 +2897,125 @@ export async function getOrderAttentionCounts(): Promise<{
    * exactly that state — same head-count pattern as the other two.
    */
   returnsAwaitingRestock: number;
+  /**
+   * Fulfillment/returns audit finding B1: a freshly-filed return had no
+   * seller-facing signal at all (not here, not in the bell, not anywhere)
+   * until this count — a seller could only ever discover one by opening
+   * that exact order's page. RLS scopes this to the caller's own shop
+   * (seller) or everything (admin), same as every other count here.
+   */
+  pendingReturnRequests: number;
 }> {
   const supabase = await createSupabaseServerClient();
-  const [confirmResult, codResult, restockResult] = await Promise.all([
-    supabase
+  let confirmQuery = supabase
       .from(DATABASE_TABLES.ORDERS)
       .select("id", { count: "exact", head: true })
       .eq("order_status", ORDER_STATUS.pending)
-      .or(`payment_method.eq.cod,payment_status.eq.${PAYMENT_STATUS.paid}`),
-    supabase
+      .or(`payment_method.eq.cod,payment_status.eq.${PAYMENT_STATUS.paid}`);
+  let codQuery = supabase
       .from(DATABASE_TABLES.ORDERS)
       .select("id", { count: "exact", head: true })
       .eq("payment_method", "cod")
       .eq("payment_status", PAYMENT_STATUS.pending)
-      .in("order_status", [ORDER_STATUS.shipped, ORDER_STATUS.delivered]),
-    supabase
+      .in("order_status", [ORDER_STATUS.shipped, ORDER_STATUS.delivered]);
+  let restockQuery = supabase
       .from(DATABASE_TABLES.RETURN_REQUESTS)
       .select("id", { count: "exact", head: true })
       .eq("status", RETURN_STATUS.refunded)
       .is("restocked_at", null)
-      .is("marked_unsellable_at", null),
+      .is("marked_unsellable_at", null);
+  let pendingReturnQuery = supabase
+      .from(DATABASE_TABLES.RETURN_REQUESTS)
+      .select("id", { count: "exact", head: true })
+      .eq("status", RETURN_STATUS.pending);
+
+  if (shopId) {
+    confirmQuery = confirmQuery.eq("shop_id", shopId);
+    codQuery = codQuery.eq("shop_id", shopId);
+    restockQuery = restockQuery.eq("shop_id", shopId);
+    pendingReturnQuery = pendingReturnQuery.eq("shop_id", shopId);
+  }
+
+  const [confirmResult, codResult, restockResult, pendingReturnResult] = await Promise.all([
+    confirmQuery,
+    codQuery,
+    restockQuery,
+    pendingReturnQuery,
   ]);
 
   if (confirmResult.error) throw queryError("Failed to load order counts", confirmResult.error);
   if (codResult.error) throw queryError("Failed to load order counts", codResult.error);
   if (restockResult.error) throw queryError("Failed to load order counts", restockResult.error);
+  if (pendingReturnResult.error) throw queryError("Failed to load order counts", pendingReturnResult.error);
 
   return {
     needsConfirmation: confirmResult.count ?? 0,
     codAwaitingCollection: codResult.count ?? 0,
     returnsAwaitingRestock: restockResult.count ?? 0,
+    pendingReturnRequests: pendingReturnResult.count ?? 0,
   };
+}
+
+/**
+ * Fulfillment/returns audit finding B1: how many `pending` return requests
+ * have gone unanswered past `decide_return`'s own overdue threshold (see
+ * `20261020030000_return_overdue_admin_escalation.sql`'s literal
+ * `interval '3 days'`) — admin-only signal that a request is not just
+ * waiting on the seller anymore, but actionable right now.
+ */
+export async function getOverduePendingReturnCount(): Promise<number> {
+  const supabase = await createSupabaseServerClient();
+  // Mirrors `decide_return`'s own `interval '3 days'` (the RPC is the real
+  // enforcement; this is only for the admin bell's count) and the matching
+  // UI constant, `RETURN_SELLER_RESPONSE_SLA_DAYS` — same "two places, kept
+  // in sync by comment" pattern as `RETURN_WINDOW_DAYS`.
+  const since = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+
+  const { count, error } = await supabase
+    .from(DATABASE_TABLES.RETURN_REQUESTS)
+    .select("id", { count: "exact", head: true })
+    .eq("status", RETURN_STATUS.pending)
+    .lt("created_at", since);
+
+  if (error) throw queryError("Failed to load overdue return requests", error);
+  return count ?? 0;
+}
+
+/** How far back `getRecentlyConfirmedOrders` looks — unlike the counts above
+ * (which naturally resolve as the seller acts), a buyer's receipt
+ * confirmation needs no further seller action, so without a time box it
+ * would surface every order ever confirmed, forever. */
+const RECENTLY_CONFIRMED_WINDOW_HOURS = 72;
+
+/**
+ * Orders the signed-in seller fulfilled whose buyer confirmed receipt within
+ * the last `RECENTLY_CONFIRMED_WINDOW_HOURS` — surfaced as a seller
+ * notification (the "Order Received" flow has no seller-facing signal
+ * otherwise; see `getSellerNotifications` in `app/seller/layout.tsx`). Relies
+ * on RLS alone for the seller scope, same pattern as
+ * `getOrderAttentionCounts`.
+ */
+export async function getRecentlyConfirmedOrders(
+  limit = 5,
+): Promise<Array<{ id: string; orderNumber: string; buyerConfirmedReceivedAt: string }>> {
+  const supabase = await createSupabaseServerClient();
+  const since = new Date(Date.now() - RECENTLY_CONFIRMED_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
+
+  const { data, error } = await supabase
+    .from(DATABASE_TABLES.ORDERS)
+    .select("id, order_number, buyer_confirmed_received_at")
+    .not("buyer_confirmed_received_at", "is", null)
+    .gte("buyer_confirmed_received_at", since)
+    .order("buyer_confirmed_received_at", { ascending: false })
+    .limit(limit);
+
+  if (error) throw queryError("Failed to load recently confirmed orders", error);
+
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    orderNumber: row.order_number,
+    buyerConfirmedReceivedAt: row.buyer_confirmed_received_at as string,
+  }));
 }
 
 /**
@@ -2853,8 +3029,9 @@ const EXPORT_ROW_LIMIT = 1000;
 
 export async function listOrdersForExport(
   params: Omit<OrderListParams, "page" | "pageSize">,
+  owner: DashboardOrderOwner | null = null,
 ): Promise<Order[]> {
-  const result = await listDashboardOrders({ ...params, page: 1, pageSize: EXPORT_ROW_LIMIT });
+  const result = await listDashboardOrders({ ...params, page: 1, pageSize: EXPORT_ROW_LIMIT }, owner);
   return result.items;
 }
 
@@ -2865,13 +3042,8 @@ export async function listOrdersForExport(
  * already scope it — collapsing them would blur that intent.
  */
 /**
- * `sellerId`: defense-in-depth beyond RLS, same precedent as `getBuyerOrder`'s
- * explicit `buyer_id` filter — pass the caller's own id for a seller, `null`
- * for an admin (unconditional access, matching RLS's own `is_admin()`
- * bypass). Deliberately just `seller_id`, not `is_shop_member`-aware: orders
- * are intentionally not shop-scoped yet (see the shop-scoping migrations'
- * own "orders are NOT touched here" notes) — this mirrors the existing RLS
- * boundary exactly rather than expanding or narrowing it.
+ * `owner`: defense-in-depth beyond RLS. Assigned orders follow current shop
+ * membership; seller_id is used only for legacy orders with no shop_id.
  */
 /**
  * `owner`: `null` = admin (no filter, sees every order); otherwise scoped to
@@ -2894,9 +3066,7 @@ export const getDashboardOrder = cache(
 
     if (owner) {
       query = query.or(
-        owner.shopId
-          ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
-          : `seller_id.eq.${owner.sellerId}`,
+        owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`,
       );
     }
 
@@ -2910,6 +3080,34 @@ export const getDashboardOrder = cache(
   },
 );
 
+/** Loads a selected set of dashboard orders in one owner-scoped query. */
+export async function getDashboardOrdersByIds(
+  orderIds: string[],
+  owner: { sellerId: string; shopId: string | null } | null,
+): Promise<Order[]> {
+  if (orderIds.length === 0) return [];
+
+  const supabase = await createSupabaseServerClient();
+  let query = supabase
+    .from(DATABASE_TABLES.ORDERS)
+    .select(ORDER_COLUMNS)
+    .in("id", orderIds);
+
+  if (owner) {
+    query = query.or(
+      owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`,
+    );
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    throw queryError("Failed to load selected orders", error);
+  }
+
+  return (data ?? []).map((row) => toOrder(row as OrderRowWithItems));
+}
+
 /**
  * Resolves an order's id from its `order_number` (exact match), scoped to the
  * seller/shop for non-admins. Used by the barcode scanner to open the
@@ -2921,18 +3119,16 @@ export const getDashboardOrder = cache(
 export async function getDashboardOrderByNumber(
   orderNumber: string,
   owner: { sellerId: string; shopId: string | null } | null,
-): Promise<{ id: string } | null> {
+): Promise<{ id: string; status: OrderStatus } | null> {
   const supabase = await createSupabaseServerClient();
   let query = supabase
     .from(DATABASE_TABLES.ORDERS)
-    .select("id")
+    .select("id, order_status")
     .eq("order_number", orderNumber);
 
   if (owner) {
     query = query.or(
-      owner.shopId
-        ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
-        : `seller_id.eq.${owner.sellerId}`,
+      owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`,
     );
   }
 
@@ -2942,7 +3138,7 @@ export async function getDashboardOrderByNumber(
     throw queryError("Failed to look up order", error);
   }
 
-  return data ? { id: data.id } : null;
+  return data ? { id: data.id, status: data.order_status } : null;
 }
 
 /**
@@ -2981,9 +3177,7 @@ export async function advanceOrderStatus(
   const supabase = await createSupabaseServerClient();
 
   const ownerFilter = owner
-    ? owner.shopId
-      ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
-      : `seller_id.eq.${owner.sellerId}`
+    ? owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`
     : null;
 
   let readQuery = supabase
@@ -3105,6 +3299,25 @@ export async function getOrderShipment(
   }
   if (!data) return null;
   return toOrderShipment(data);
+}
+
+/**
+ * Shipment records for a page of orders in one query (no N+1) — used by the
+ * dashboard Shipped tab to show courier/tracking. RLS scopes visibility to
+ * the caller's own orders, so ids outside their shop simply return nothing.
+ */
+export async function listOrderShipments(orderIds: string[]): Promise<OrderShipment[]> {
+  if (orderIds.length === 0) return [];
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from(DATABASE_TABLES.ORDER_SHIPMENTS)
+    .select("order_id, courier, tracking_number, packed_at")
+    .in("order_id", orderIds);
+
+  if (error) {
+    throw queryError("Failed to load shipment details", error);
+  }
+  return (data ?? []).map(toOrderShipment);
 }
 
 /**
@@ -3933,6 +4146,25 @@ export async function finalizeXenditGroupPaymentRequest(input: {
 }
 
 /**
+ * Best-effort forensic log for a failed Xendit Card `/sessions` creation
+ * call, via `log_xendit_card_session_failure` — the outbound counterpart to
+ * the inbound `log_unrecognized_xendit_webhook_payload`. Called only from
+ * `createXenditCardSessionAction`/`createXenditGroupCardSessionAction`'s own
+ * catch blocks, so a logging failure here must never mask or replace the
+ * original error the buyer already sees — swallowed, not thrown.
+ */
+export async function logXenditCardSessionFailure(paymentId: string, errorMessage: string): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc("log_xendit_card_session_failure", {
+    p_payment_id: paymentId,
+    p_error_message: errorMessage,
+  });
+  if (error) {
+    console.error("[queries] Failed to log Xendit Card session failure", error);
+  }
+}
+
+/**
  * The authoritative combined amount for a checkout group's specific payment
  * attempt — summed server-side from only that `channelCode`'s still-`pending`
  * payment rows (RLS-scoped to the caller's own orders), never accepted from
@@ -4442,8 +4674,22 @@ export async function listPaymentHistory(
   if (params.status) {
     query = query.eq("status", params.status);
   }
-  if (params.paymentMethodType) {
+  if (params.paymentMethodType && !params.paymentSource) {
     query = query.eq("payment_method_type", params.paymentMethodType);
+  }
+  if (params.paymentSource) {
+    switch (params.paymentSource) {
+      case "cod":
+        query = query.eq("payment_method_type", "cod");
+        break;
+      case "gcash":
+      case "paymaya":
+      case "xendit_card":
+        query = query
+          .eq("payment_method_type", "xendit")
+          .in("payment_channel", channelsForPaymentSourceFilter(params.paymentSource));
+        break;
+    }
   }
   if (params.staleOnly) {
     const staleBoundary = new Date(Date.now() - 30 * 60 * 1000).toISOString();
@@ -4470,6 +4716,43 @@ export async function listPaymentHistory(
     page: params.page,
     pageSize: params.pageSize,
     totalPages: Math.max(1, Math.ceil(total / params.pageSize)),
+  };
+}
+
+const EMPTY_PAYMENT_HISTORY_SUMMARY: PaymentHistorySummary = {
+  paymentCount: 0,
+  paidCount: 0,
+  pendingCount: 0,
+  failedCount: 0,
+  refundedCount: 0,
+  paidAmountCents: 0,
+};
+
+/** All-match summary for the Payments cards, independent of table pagination. */
+export async function getPaymentHistorySummary(
+  params: DashboardPaymentListParams,
+): Promise<PaymentHistorySummary> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("dashboard_payment_history_summary", {
+    p_payment_source: params.paymentSource ?? undefined,
+    p_payment_method_type: params.paymentMethodType && !params.paymentSource
+      ? params.paymentMethodType
+      : undefined,
+    p_status: params.status ?? undefined,
+    p_search: params.search ?? undefined,
+    p_stale_only: params.staleOnly ?? false,
+  });
+
+  if (error) throw queryError("Failed to load payment summary", error);
+  const row = data?.[0];
+  if (!row) return EMPTY_PAYMENT_HISTORY_SUMMARY;
+  return {
+    paymentCount: row.payment_count,
+    paidCount: row.paid_count,
+    pendingCount: row.pending_count,
+    failedCount: row.failed_count,
+    refundedCount: row.refunded_count,
+    paidAmountCents: row.paid_amount_cents,
   };
 }
 
@@ -4512,18 +4795,24 @@ export async function listPaymentsForExport(
  * `orders`) since the row already carries its own snapshot of who filed it.
  */
 const RETURN_REQUEST_COLUMNS = `
-  id, order_id, order_item_id, buyer_id, seller_id, reason, evidence_path, status,
+  id, order_id, order_item_id, buyer_id, seller_id, reason, reason_code, request_type, evidence_path, status,
   seller_decision_note, seller_decided_at, seller_decided_by,
   admin_decision_note, admin_decided_at, admin_decided_by,
-  refund_amount_cents, restocked_at, marked_unsellable_at, condition_note, created_at, updated_at,
-  order:orders!return_requests_order_id_fkey ( order_number, currency ),
+  refund_amount_cents, restocked_at, marked_unsellable_at, condition_note,
+  replacement_courier, replacement_tracking_number, replacement_shipped_at, created_at, updated_at,
+  order:orders!return_requests_order_id_fkey ( order_number, currency, payment_method, payment_status ),
   buyer:profiles!return_requests_buyer_id_fkey ( full_name, username ),
   order_item:order_items!return_requests_order_item_id_fkey ( product_title )
 `;
 
 type ReturnRequestRow = Database["public"]["Tables"]["return_requests"]["Row"];
 type ReturnRequestRowWithJoins = ReturnRequestRow & {
-  order: { order_number: string; currency: string } | null;
+  order: {
+    order_number: string;
+    currency: string;
+    payment_method: Database["public"]["Enums"]["order_payment_method"];
+    payment_status: PaymentStatus;
+  } | null;
   buyer: Pick<ProfileRow, "full_name" | "username"> | null;
   order_item: { product_title: string } | null;
 };
@@ -4534,12 +4823,16 @@ function toReturnRequest(row: ReturnRequestRowWithJoins): ReturnRequest {
     orderId: row.order_id,
     orderNumber: row.order?.order_number ?? "",
     currency: row.order?.currency ?? "PHP",
+    orderPaymentMethod: row.order?.payment_method ?? null,
+    orderPaymentStatus: row.order?.payment_status ?? null,
     orderItemId: row.order_item_id,
     orderItemTitle: row.order_item?.product_title ?? null,
     buyerId: row.buyer_id,
     buyerName: row.buyer?.full_name ?? row.buyer?.username ?? null,
     sellerId: row.seller_id,
     reason: row.reason,
+    reasonCode: row.reason_code,
+    requestType: row.request_type,
     evidencePath: row.evidence_path,
     status: row.status,
     sellerDecisionNote: row.seller_decision_note,
@@ -4550,6 +4843,9 @@ function toReturnRequest(row: ReturnRequestRowWithJoins): ReturnRequest {
     restockedAt: row.restocked_at,
     markedUnsellableAt: row.marked_unsellable_at,
     conditionNote: row.condition_note,
+    replacementCourier: row.replacement_courier,
+    replacementTrackingNumber: row.replacement_tracking_number,
+    replacementShippedAt: row.replacement_shipped_at,
     createdAt: row.created_at,
   };
 }
@@ -4601,14 +4897,18 @@ export async function getReturnEvidenceSignedUrl(path: string): Promise<string> 
 export async function requestReturn(
   orderId: string,
   orderItemId: string | null,
-  reason: string,
+  reasonCode: ReturnReasonCode,
+  requestType: ReturnRequestType,
+  explanation: string | null,
   evidencePath: string | null,
 ): Promise<void> {
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.rpc("request_return", {
     p_order_id: orderId,
     p_order_item_id: orderItemId ?? undefined,
-    p_reason: reason,
+    p_reason_code: reasonCode,
+    p_request_type: requestType,
+    p_explanation: explanation ?? undefined,
     p_evidence_path: evidencePath ?? undefined,
   });
 
@@ -4653,12 +4953,14 @@ export async function decideReturn(
   returnId: string,
   decision: AdminReturnDecision,
   note: string | null,
+  resolutionType: ReturnRequestType = "money_refund",
 ): Promise<{ orderId: string }> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc("decide_return", {
     p_return_id: returnId,
     p_decision: decision,
     p_note: note ?? undefined,
+    p_resolution_type: resolutionType,
   });
 
   if (error) {
@@ -4690,6 +4992,33 @@ export async function recordReturnItemCondition(
 
   if (error) {
     throw new Error(mapPostgresError(error, "Could not record this item's condition."));
+  }
+  return { orderId: (data as { order_id: string }).order_id };
+}
+
+/**
+ * The order's own seller (or shop member) or an admin ships the
+ * replacement item for a `replacement_approved` return request — the sole
+ * write path for `replacement_courier`/`replacement_tracking_number`/
+ * `replacement_shipped_at`. Mirrors `recordOrderShipment`'s shape exactly;
+ * ownership and the `replacement_approved`/not-already-shipped
+ * preconditions are re-enforced inside `record_return_replacement_shipment`
+ * itself.
+ */
+export async function recordReturnReplacementShipment(
+  returnId: string,
+  courier: string,
+  trackingNumber: string,
+): Promise<{ orderId: string }> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("record_return_replacement_shipment", {
+    p_return_id: returnId,
+    p_courier: courier,
+    p_tracking_number: trackingNumber,
+  });
+
+  if (error) {
+    throw new Error(mapPostgresError(error, "Could not record this replacement shipment."));
   }
   return { orderId: (data as { order_id: string }).order_id };
 }
@@ -4914,6 +5243,63 @@ export async function listAdminActionLog(
 }
 
 // ============================================================================
+// Platform Settings
+// ============================================================================
+
+const PLATFORM_SETTINGS_COLUMNS =
+  "support_email, support_phone, business_address, business_hours, updated_at";
+
+type PlatformSettingsRow = Pick<
+  Database["public"]["Tables"]["platform_settings"]["Row"],
+  "support_email" | "support_phone" | "business_address" | "business_hours" | "updated_at"
+>;
+
+function toPlatformSettings(row: PlatformSettingsRow): PlatformSettings {
+  return {
+    supportEmail: row.support_email,
+    supportPhone: row.support_phone,
+    businessAddress: row.business_address,
+    businessHours: row.business_hours,
+    updatedAt: row.updated_at,
+  };
+}
+
+/**
+ * The singleton settings row. Public-readable (it feeds the storefront footer),
+ * so it uses the cookie-free anon client and keeps footer-bearing routes
+ * static-eligible. Returns `null` if the row is missing or unreadable so
+ * callers can fall back to `siteConfig` instead of breaking the page.
+ */
+export const getPlatformSettings = cache(async (): Promise<PlatformSettings | null> => {
+  const supabase = createSupabaseAnonClient();
+  const { data, error } = await supabase
+    .from(DATABASE_TABLES.PLATFORM_SETTINGS)
+    .select(PLATFORM_SETTINGS_COLUMNS)
+    .maybeSingle();
+
+  if (error) {
+    throw queryError("Failed to load platform settings", error);
+  }
+  return data ? toPlatformSettings(data) : null;
+});
+
+/** Sole write path: the admin-only `admin_update_platform_settings` RPC (also writes the audit row). */
+export async function updatePlatformSettings(input: UpdatePlatformSettingsInput): Promise<PlatformSettings> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("admin_update_platform_settings", {
+    p_support_email: input.supportEmail,
+    p_support_phone: input.supportPhone,
+    p_business_address: input.businessAddress,
+    p_business_hours: input.businessHours,
+  });
+
+  if (error) {
+    throw curatedRpcError("Could not save the settings.", error, ADMIN_USER_RPC_SAFE_ERROR_CODES);
+  }
+  return toPlatformSettings(data);
+}
+
+// ============================================================================
 // Shops
 // ============================================================================
 
@@ -5013,6 +5399,33 @@ export async function getShopNamesBySellerIds(
       row.shop_name,
     ]),
   );
+}
+
+/**
+ * `shopId -> shopName` for buyer-facing surfaces whose product/order rows
+ * carry `shop_id` directly (post-TD-1) but whose `seller_id` is null — e.g. a
+ * product whose original seller account was hard-deleted
+ * (`admin_hard_delete_seller_account` sets `products.seller_id` to null while
+ * leaving `shop_id` untouched). `getShopNamesBySellerIds` can't resolve these
+ * (it has no seller id to key off), silently falling through to the generic
+ * "RobertJ Seller" label even though the product's real shop is known. Reads
+ * `shops` directly (public SELECT per `20260821010000_public_shop_readability.sql`)
+ * rather than the seller-keyed RPC. Empty input short-circuits without a round trip.
+ */
+export async function getShopNamesByIds(
+  shopIds: string[],
+): Promise<Map<string, string>> {
+  if (shopIds.length === 0) return new Map();
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from(DATABASE_TABLES.SHOPS)
+    .select("id, name")
+    .in("id", shopIds);
+
+  if (error) {
+    throw queryError("Failed to resolve shop names", error);
+  }
+  return new Map((data ?? []).map((row) => [row.id as string, row.name as string]));
 }
 
 /**
@@ -5386,7 +5799,9 @@ export async function listShopsWithMembers(): Promise<ShopWithMember[]> {
     throw queryError("Failed to load shops", error);
   }
 
-  return (data ?? []).map((row) => toShopWithMember(row as ShopRowWithMembers));
+  return (data ?? [])
+    .map((row) => toShopWithMember(row as ShopRowWithMembers))
+    .sort((a, b) => compareNatural(a.name, b.name));
 }
 
 /** The exact `errcode`s `admin_hard_delete_shop` is documented to `raise
@@ -5641,9 +6056,7 @@ export async function listDashboardProducts(
 
   if (owner) {
     query = query.or(
-      owner.shopId
-        ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
-        : `seller_id.eq.${owner.sellerId}`,
+      owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`,
     );
   }
 
@@ -5672,9 +6085,7 @@ export async function getProductCount(
 
   if (owner) {
     query = query.or(
-      owner.shopId
-        ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
-        : `seller_id.eq.${owner.sellerId}`,
+      owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`,
     );
   }
 
@@ -5705,9 +6116,7 @@ export async function listDashboardProductsPage(
 
   if (owner) {
     query = query.or(
-      owner.shopId
-        ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
-        : `seller_id.eq.${owner.sellerId}`,
+      owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`,
     );
   }
   if (params.search) {
@@ -5767,9 +6176,7 @@ export async function bulkUpdateProductStatus(
 
   if (owner) {
     query = query.or(
-      owner.shopId
-        ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
-        : `seller_id.eq.${owner.sellerId}`,
+      owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`,
     );
   }
 
@@ -5794,9 +6201,7 @@ export async function bulkAssignProductCategory(
 
   if (owner) {
     query = query.or(
-      owner.shopId
-        ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
-        : `seller_id.eq.${owner.sellerId}`,
+      owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`,
     );
   }
 
@@ -5946,13 +6351,15 @@ type ProductVariantRow = Database["public"]["Tables"]["product_variants"]["Row"]
  */
 const INVENTORY_COLUMNS = `
   id, product_id, variant_id, shop_id, quantity, low_stock_threshold, created_at, updated_at,
-  product:products!inventory_product_id_fkey ( title, slug, status ),
+  product:products!inventory_product_id_fkey ( title, slug, status, product_variants ( count ) ),
   shop:shops!inventory_shop_id_fkey ( name ),
   variant:product_variants!inventory_variant_id_fkey ( sku, color, size )
 `;
 
 type InventoryRowWithJoins = InventoryRow & {
-  product: Pick<ProductRow, "title" | "slug" | "status"> | null;
+  product:
+    | (Pick<ProductRow, "title" | "slug" | "status"> & { product_variants: Array<{ count: number }> })
+    | null;
   shop: { name: string } | null;
   variant: Pick<ProductVariantRow, "sku" | "color" | "size"> | null;
 };
@@ -5970,6 +6377,9 @@ function toInventoryItem(row: InventoryRowWithJoins): InventoryItem {
     variantLabel: row.variant
       ? [row.variant.color, row.variant.size].filter(Boolean).join(" / ") || null
       : null,
+    // A product-level row of a product that has options is not sold itself —
+    // its stock is what has not been moved into an option yet.
+    isUnassigned: row.variant_id === null && (row.product?.product_variants?.[0]?.count ?? 0) > 0,
     quantity: row.quantity,
     lowStockThreshold: row.low_stock_threshold,
     stockStatus: getStockStatus(row.quantity, row.low_stock_threshold),
@@ -6030,7 +6440,7 @@ export async function listDashboardInventoryPage(
     .select(
       `
         id, product_id, variant_id, shop_id, quantity, low_stock_threshold, created_at, updated_at,
-        product:products!inventory_product_id_fkey!inner ( title, slug, status ),
+        product:products!inventory_product_id_fkey!inner ( title, slug, status, product_variants ( count ) ),
         shop:shops!inventory_shop_id_fkey ( name ),
         variant:product_variants!inventory_variant_id_fkey ( sku, color, size )
       `,
@@ -6041,10 +6451,13 @@ export async function listDashboardInventoryPage(
     const term = params.search.replace(/[,()]/g, " ").trim();
     if (term) query = query.ilike("product.title", `%${term}%`);
   }
+  if (params.shopId) query = query.eq("shop_id", params.shopId);
   if (params.stockStatus === "out_of_stock") {
     query = query.lte("quantity", 0);
   } else if (params.stockStatus === "low_stock") {
     query = query.gt("quantity", 0).lte("quantity", DEFAULT_LOW_STOCK_THRESHOLD);
+  } else if (params.stockStatus === "needs_attention") {
+    query = query.lte("quantity", DEFAULT_LOW_STOCK_THRESHOLD);
   } else if (params.stockStatus === "in_stock") {
     query = query.gt("quantity", DEFAULT_LOW_STOCK_THRESHOLD);
   }
@@ -6140,6 +6553,28 @@ export async function adjustStock(input: AdjustStockInput): Promise<InventoryIte
     throw new Error("Could not load the updated inventory record.");
   }
   return item;
+}
+
+/**
+ * Moves stock from a product's unassigned (product-level) inventory row into
+ * its option rows via the `allocate_stock_to_variants` RPC — one transaction,
+ * total preserved, refused if it asks for more than is unassigned. The RPC
+ * re-checks ownership and raises curated messages, surfaced as-is.
+ */
+export async function allocateStockToVariants(
+  productId: string,
+  allocations: Array<{ variantId: string; quantity: number }>,
+): Promise<number> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("allocate_stock_to_variants", {
+    p_product_id: productId,
+    p_allocations: allocations.map((a) => ({ variant_id: a.variantId, quantity: a.quantity })),
+  });
+
+  if (error) {
+    throw rpcError("Could not move the stock.", error);
+  }
+  return data ?? 0;
 }
 
 /**
@@ -6477,9 +6912,7 @@ export async function updateProductVariant(
   const supabase = await createSupabaseServerClient();
 
   if (owner) {
-    const ownerFilter = owner.shopId
-      ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
-      : `seller_id.eq.${owner.sellerId}`;
+    const ownerFilter = owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`;
     const { data: existing, error: readError } = await supabase
       .from(DATABASE_TABLES.PRODUCT_VARIANTS)
       .select("id")
@@ -6586,9 +7019,7 @@ export async function deleteProductVariant(
   const supabase = await createSupabaseServerClient();
 
   if (owner) {
-    const ownerFilter = owner.shopId
-      ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
-      : `seller_id.eq.${owner.sellerId}`;
+    const ownerFilter = owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`;
     const { data: existing, error: readError } = await supabase
       .from(DATABASE_TABLES.PRODUCT_VARIANTS)
       .select("id")
@@ -6686,6 +7117,27 @@ export const getSalesSummary = cache(async function getSalesSummary(
   };
 });
 
+/** Gross paid order counts/amounts by normalized payment source, scoped by the report RPC. */
+export const getPaymentSourceSummary = cache(async function getPaymentSourceSummary(
+  from: string,
+  to: string,
+  shopId: string | null = null,
+): Promise<PaymentSourceSummaryRow[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("report_payment_source_summary", {
+    p_from: from,
+    p_to: to,
+    p_shop_id: shopId ?? undefined,
+  });
+
+  if (error) throw queryError("Failed to load payment source summary", error);
+  return (data ?? []).map((row) => ({
+    source: row.source_key as PaymentSourceSummaryRow["source"],
+    orderCount: row.order_count,
+    amountCents: row.amount_cents,
+  }));
+});
+
 /** Order count + paid revenue per time bucket (only non-empty buckets). */
 export const getSalesTimeseries = cache(async function getSalesTimeseries(
   from: string,
@@ -6773,6 +7225,7 @@ export const getTopProducts = cache(async function getTopProducts(
 export async function getLowStockReport(shopId?: string | null): Promise<InventoryItem[]> {
   const items = await listDashboardInventory();
   return items
+    .filter((item) => !item.isUnassigned)
     .filter((item) => item.stockStatus !== "in_stock")
     .filter((item) => !shopId || item.shopId === shopId)
     .sort((a, b) => a.quantity - b.quantity);
@@ -6981,6 +7434,18 @@ export async function getRepeatCustomerRate(from: string, to: string): Promise<R
 function callbackUrl(next?: string) {
   const base = `${publicEnv.NEXT_PUBLIC_SITE_URL}${ROUTES.authCallback}`;
   return next ? `${base}?next=${encodeURIComponent(next)}` : base;
+}
+
+/**
+ * Forces the provider to show its account picker instead of silently
+ * reusing whatever identity is still active in the browser's provider-side
+ * session (e.g. Google) after this app's own sign-out. `signOut` only ends
+ * our Supabase session; it cannot and should not clear Google/Facebook's
+ * own SSO cookie, so without this the consent screen is skipped and the
+ * previous account is re-selected automatically.
+ */
+function accountChooserParams(provider: OAuthProvider): Record<string, string> {
+  return provider === "google" ? { prompt: "select_account" } : { auth_type: "reauthenticate" };
 }
 
 /**
@@ -7193,7 +7658,7 @@ export async function signInWithOAuth(provider: OAuthProvider, next?: string): P
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider,
-    options: { redirectTo: callbackUrl(next) },
+    options: { redirectTo: callbackUrl(next), queryParams: accountChooserParams(provider) },
   });
   if (error) throw new Error(error.message);
   if (!data.url) throw new Error("The sign-in provider did not return a redirect URL.");
@@ -7339,7 +7804,7 @@ export async function linkOAuthIdentity(provider: OAuthProvider, next?: string):
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.auth.linkIdentity({
     provider,
-    options: { redirectTo: callbackUrl(next) },
+    options: { redirectTo: callbackUrl(next), queryParams: accountChooserParams(provider) },
   });
   if (error) throw new Error(error.message);
   if (!data.url) throw new Error("The sign-in provider did not return a redirect URL.");
@@ -7893,9 +8358,7 @@ export async function updateRecommendationRule(
   const supabase = await createSupabaseServerClient();
 
   if (owner) {
-    const ownerFilter = owner.shopId
-      ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
-      : `seller_id.eq.${owner.sellerId}`;
+    const ownerFilter = owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`;
     const { data: existing, error: readError } = await supabase
       .from(DATABASE_TABLES.RECOMMENDATION_RULES)
       .select("id")
@@ -7936,9 +8399,7 @@ export async function deleteRecommendationRule(
   const supabase = await createSupabaseServerClient();
 
   if (owner) {
-    const ownerFilter = owner.shopId
-      ? `seller_id.eq.${owner.sellerId},shop_id.eq.${owner.shopId}`
-      : `seller_id.eq.${owner.sellerId}`;
+    const ownerFilter = owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`;
     const { data: existing, error: readError } = await supabase
       .from(DATABASE_TABLES.RECOMMENDATION_RULES)
       .select("id")

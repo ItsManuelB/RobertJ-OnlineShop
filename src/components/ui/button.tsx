@@ -15,7 +15,7 @@ const buttonVariants = cva(
         danger: "bg-danger text-danger-foreground hover:bg-danger/90",
         // RobertJ landing-system CTAs (pill, rj palette). `cn()`/twMerge
         // resolves the overlap with the base classes (radius, weight, motion).
-        rj: "rounded-full bg-rj-red font-bold text-white shadow-lg shadow-rj-red/25 transition-all hover:bg-rj-red-dark active:scale-95",
+        rj: "rounded-full bg-rj-red font-bold text-rj-white shadow-lg shadow-rj-red/25 transition-all hover:bg-rj-red-dark active:scale-95",
         rjOutline:
           "rounded-full border-[1.5px] border-rj-black font-bold text-rj-black transition-colors hover:bg-rj-black hover:text-rj-white",
       },

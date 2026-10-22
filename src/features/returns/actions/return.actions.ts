@@ -13,21 +13,26 @@ import { revalidateOrderSurfaces } from "@/features/orders";
 import {
   decideReturnSchema,
   recordReturnItemConditionSchema,
+  recordReturnReplacementShipmentSchema,
   requestReturnSchema,
   respondToReturnSchema,
 } from "@/features/returns/schemas/return.schema";
 import type {
   AdminReturnDecision,
   ReturnItemCondition,
+  ReturnRequestType,
   SellerReturnDecision,
 } from "@/features/returns/types/return.types";
 
 /**
- * Buyer submits a return/refund request for one of their own delivered
+ * Buyer submits a return/refund/replacement request for one of their own
  * orders, with an optional evidence photo. Ownership, order status
- * ('delivered'), and duplicate-request checks all happen inside the
- * `request_return` RPC (`queries.requestReturn`) — this action validates
- * input and uploads the file, nothing more.
+ * (`delivered`, a paid cancellation, or — fulfillment/returns audit finding
+ * A1/A3 — a `shipped` order reported `item_not_received` past a short grace
+ * period), the "Other" explanation's required-and-length validation, and
+ * duplicate-request checks all happen inside the `request_return` RPC
+ * (`queries.requestReturn`) — this action validates input and uploads the
+ * file, nothing more.
  */
 export async function requestReturnAction(
   _prevState: ActionResult<null> | null,
@@ -36,7 +41,9 @@ export async function requestReturnAction(
   const parsed = requestReturnSchema.safeParse({
     orderId: formData.get("orderId"),
     orderItemId: formData.get("orderItemId") || undefined,
-    reason: formData.get("reason"),
+    requestType: formData.get("requestType"),
+    reasonCode: formData.get("reasonCode"),
+    explanation: formData.get("explanation") || undefined,
     evidence: formData.get("evidence"),
   });
   if (!parsed.success) return fromZodError(parsed.error);
@@ -53,7 +60,9 @@ export async function requestReturnAction(
     await queries.requestReturn(
       parsed.data.orderId,
       parsed.data.orderItemId ?? null,
-      parsed.data.reason,
+      parsed.data.reasonCode,
+      parsed.data.requestType,
+      parsed.data.explanation ?? null,
       evidencePath,
     );
 
@@ -61,6 +70,7 @@ export async function requestReturnAction(
     // detail page, plus the admin queue), not just the buyer.
     await revalidateOrderSurfaces(parsed.data.orderId);
     revalidatePath(ROUTES.adminReturns);
+    revalidatePath(ROUTES.sellerReturns);
     return ok(null);
   } catch (error) {
     return fail(
@@ -94,6 +104,7 @@ export async function respondToReturnAction(
     // just seller/admin surfaces.
     await revalidateOrderSurfaces(orderId);
     revalidatePath(ROUTES.adminReturns);
+    revalidatePath(ROUTES.sellerReturns);
     return ok(null);
   } catch (error) {
     return fail(
@@ -119,13 +130,21 @@ export async function respondToReturnAction(
  * stays "pending" from our own database's point of view until the real
  * `refund.succeeded`/`refund.failed` webhook confirms it — this action
  * never marks anything refunded itself.
+ *
+ * `resolutionType` is only consulted when `decision === "approve"`.
+ * `money_refund`/`return_and_refund` run the exact refund logic above,
+ * unchanged. `replacement_exchange` skips payment/order_status entirely —
+ * `decide_return` moves the request to `replacement_approved` instead, so
+ * `getPendingXenditRefundForReturn` below naturally finds nothing and the
+ * Xendit branch is a no-op for that outcome.
  */
 export async function decideReturnAction(
   returnId: string,
   decision: AdminReturnDecision,
   note?: string,
+  resolutionType?: ReturnRequestType,
 ): Promise<ActionResult<null>> {
-  const parsed = decideReturnSchema.safeParse({ returnId, decision, note });
+  const parsed = decideReturnSchema.safeParse({ returnId, decision, note, resolutionType });
   if (!parsed.success) return fail("Invalid request.");
 
   try {
@@ -134,6 +153,7 @@ export async function decideReturnAction(
       parsed.data.returnId,
       parsed.data.decision,
       parsed.data.note ?? null,
+      parsed.data.resolutionType,
     );
 
     if (parsed.data.decision === "approve") {
@@ -166,6 +186,7 @@ export async function decideReturnAction(
     // The buyer sees the refund/rejection on their own order page too, not
     // just seller/admin surfaces.
     revalidatePath(ROUTES.adminReturns);
+    revalidatePath(ROUTES.sellerReturns);
     await revalidateOrderSurfaces(orderId);
     return ok(null);
   } catch (error) {
@@ -200,10 +221,48 @@ export async function recordReturnItemConditionAction(
     );
     await revalidateOrderSurfaces(orderId);
     revalidatePath(ROUTES.adminReturns);
+    revalidatePath(ROUTES.sellerReturns);
     return ok(null);
   } catch (error) {
     return fail(
       error instanceof Error ? error.message : "Could not record this item's condition.",
+    );
+  }
+}
+
+/**
+ * The order's own seller (or admin) ships the replacement item for a
+ * `replacement_approved` return request — the sole write path for
+ * `record_return_replacement_shipment`. Authorization and the
+ * `replacement_approved`/not-already-shipped preconditions are enforced
+ * inside the RPC itself; `requireRole` here is defense-in-depth.
+ */
+export async function recordReturnReplacementShipmentAction(
+  returnId: string,
+  courier: string,
+  trackingNumber: string,
+): Promise<ActionResult<null>> {
+  const parsed = recordReturnReplacementShipmentSchema.safeParse({
+    returnId,
+    courier,
+    trackingNumber,
+  });
+  if (!parsed.success) return fromZodError(parsed.error);
+
+  try {
+    await queries.requireRole(DASHBOARD_ROLES);
+    const { orderId } = await queries.recordReturnReplacementShipment(
+      parsed.data.returnId,
+      parsed.data.courier,
+      parsed.data.trackingNumber,
+    );
+    await revalidateOrderSurfaces(orderId);
+    revalidatePath(ROUTES.adminReturns);
+    revalidatePath(ROUTES.sellerReturns);
+    return ok(null);
+  } catch (error) {
+    return fail(
+      error instanceof Error ? error.message : "Could not record this replacement shipment.",
     );
   }
 }

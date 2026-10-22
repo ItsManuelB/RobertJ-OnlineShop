@@ -57,7 +57,7 @@ export function SmartAssistantPreview() {
               <button
                 type="button"
                 onClick={onClick}
-                className="rounded-full bg-rj-red px-7 py-3.5 text-sm font-bold text-white shadow-lg shadow-rj-red/25 transition-colors hover:bg-rj-red-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rj-red/30 focus-visible:ring-offset-2"
+                className="rounded-full bg-rj-red px-7 py-3.5 text-sm font-bold text-rj-white shadow-lg shadow-rj-red/25 transition-colors hover:bg-rj-red-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rj-red/30 focus-visible:ring-offset-2"
               >
                 Start Guided Selection
               </button>
@@ -71,7 +71,7 @@ export function SmartAssistantPreview() {
             {/* Header */}
             <div className="flex items-center gap-3 border-b border-rj-gray-800 bg-rj-gray-800 px-5 py-4">
               <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-rj-red to-rj-red-dark">
-                <ListChecks className="h-[15px] w-[15px] text-white" aria-hidden="true" />
+                <ListChecks className="h-[15px] w-[15px] text-rj-white" aria-hidden="true" />
               </div>
               <div className="flex-1">
                 <div className="text-[13px] font-semibold text-rj-white">Guided Selection</div>
@@ -103,7 +103,7 @@ export function SmartAssistantPreview() {
                   <button
                     type="button"
                     onClick={onClick}
-                    className="mt-1 w-full rounded-full bg-rj-red py-3 text-[13px] font-bold text-white transition-colors hover:bg-rj-red-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rj-red/30"
+                    className="mt-1 w-full rounded-full bg-rj-red py-3 text-[13px] font-bold text-rj-white transition-colors hover:bg-rj-red-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rj-red/30"
                   >
                     Find My Match
                   </button>

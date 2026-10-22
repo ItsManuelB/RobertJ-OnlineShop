@@ -12,6 +12,7 @@ import {
   getProductSoldCounts,
   listProductIdsWithVariants,
   getSessionUser,
+  getShopNamesByIds,
   getShopNamesBySellerIds,
   listWishlistProductIds,
 } from "@/lib/supabase/queries";
@@ -75,19 +76,23 @@ function toTileItem(
   wishlistedIds: ReadonlySet<string>,
   isAuthenticated: boolean,
   shopNames: ReadonlyMap<string, string>,
+  shopNamesByShopId: ReadonlyMap<string, string>,
   soldCounts: ReadonlyMap<string, number>,
   canPurchase: boolean,
   hasOptions: boolean,
 ): ProductTileItem {
   // Real shop name when the seller belongs to one (see
-  // `resolve_shop_membership`); falls back to the seller's own profile
-  // name for a legacy/unassigned seller (TD-1) — but only when `seller_id`
-  // actually resolves to a `seller` account. An admin-authored or
-  // demoted-account product has no shop and no business showing that
-  // account's personal name on the storefront, so it goes straight to the
-  // generic label instead.
+  // `resolve_shop_membership`); next, the product's own `shop_id` directly
+  // (covers a product whose seller account was hard-deleted — `seller_id`
+  // goes null but `shop_id` survives, see `getShopNamesByIds`); then falls
+  // back to the seller's own profile name for a legacy/unassigned seller —
+  // but only when `seller_id` actually resolves to a `seller` account. An
+  // admin-authored or demoted-account product has no shop and no business
+  // showing that account's personal name on the storefront, so it goes
+  // straight to the generic label instead.
   const shopName =
     (product.sellerId ? shopNames.get(product.sellerId) : null) ??
+    (product.shopId ? shopNamesByShopId.get(product.shopId) : null) ??
     (product.sellerRole === USER_ROLES.seller ? product.sellerName : null) ??
     "RobertJ Seller";
 
@@ -184,24 +189,40 @@ export async function ProductGrid({
       products.map((product) => product.sellerId).filter((id): id is string => id !== null),
     ),
   ];
+  const shopIds = [
+    ...new Set(
+      products.map((product) => product.shopId).filter((id): id is string => id !== null),
+    ),
+  ];
   const productIds = products.map((product) => product.id);
-  const [wishlistedIds, shopNames, soldCounts, optionProductIds] = await Promise.all([
-    user
-      ? listWishlistProductIds(user.id)
-          .then((ids) => new Set(ids))
-          .catch(() => new Set<string>())
-      : Promise.resolve(new Set<string>()),
-    getShopNamesBySellerIds(sellerIds).catch(() => new Map<string, string>()),
-    getProductSoldCounts(productIds).catch(() => new Map<string, number>()),
-    // Degrades to "no options known" (quick-add as before) if this lookup fails.
-    listProductIdsWithVariants(productIds).catch(() => new Set<string>()),
-  ]);
+  const [wishlistedIds, shopNames, shopNamesByShopId, soldCounts, optionProductIds] =
+    await Promise.all([
+      user
+        ? listWishlistProductIds(user.id)
+            .then((ids) => new Set(ids))
+            .catch(() => new Set<string>())
+        : Promise.resolve(new Set<string>()),
+      getShopNamesBySellerIds(sellerIds).catch(() => new Map<string, string>()),
+      getShopNamesByIds(shopIds).catch(() => new Map<string, string>()),
+      getProductSoldCounts(productIds).catch(() => new Map<string, number>()),
+      // Degrades to "no options known" (quick-add as before) if this lookup fails.
+      listProductIdsWithVariants(productIds).catch(() => new Set<string>()),
+    ]);
 
   // Guests + buyers can transact; seller/admin browse read-only, so their
   // tiles hide the quick-add and wishlist heart.
   const viewerCanPurchase = user === null || canPurchase(user.role as UserRole);
   const items = products.map((product) =>
-    toTileItem(product, wishlistedIds, user !== null, shopNames, soldCounts, viewerCanPurchase, optionProductIds.has(product.id)),
+    toTileItem(
+      product,
+      wishlistedIds,
+      user !== null,
+      shopNames,
+      shopNamesByShopId,
+      soldCounts,
+      viewerCanPurchase,
+      optionProductIds.has(product.id),
+    ),
   );
 
   if (viewMode === "list") {

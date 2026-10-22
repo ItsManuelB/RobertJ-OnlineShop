@@ -21,6 +21,10 @@ export const ACTIVITY_EVENT_COPY: Record<
     icon: "📦",
     label: (orderNumber) => `Order ${orderNumber} was delivered.`,
   },
+  receipt_confirmed: {
+    icon: "✅",
+    label: (orderNumber) => `You confirmed receipt of order ${orderNumber}.`,
+  },
   order_cancelled: {
     icon: "✕",
     label: (orderNumber) => `Order ${orderNumber} was cancelled.`,
@@ -36,5 +40,25 @@ export const ACTIVITY_EVENT_COPY: Record<
   payment_failed: {
     icon: "⚠️",
     label: (orderNumber) => `Payment could not be verified for order ${orderNumber}.`,
+  },
+  return_filed: {
+    icon: "📝",
+    label: (orderNumber) => `You filed a return request for order ${orderNumber}.`,
+  },
+  return_rejected_by_seller: {
+    icon: "⚠️",
+    label: (orderNumber) => `Your seller rejected the return request for order ${orderNumber}.`,
+  },
+  return_rejected: {
+    icon: "✕",
+    label: (orderNumber) => `Your return request for order ${orderNumber} was rejected.`,
+  },
+  return_refunded: {
+    icon: "💸",
+    label: (orderNumber) => `Your return for order ${orderNumber} was refunded.`,
+  },
+  return_replacement_approved: {
+    icon: "📦",
+    label: (orderNumber) => `A replacement was approved for order ${orderNumber}.`,
   },
 };

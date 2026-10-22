@@ -1,9 +1,10 @@
 "use client";
 
 import { Fragment, useState, useTransition } from "react";
+import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RowMenu } from "@/components/ui/row-menu";
@@ -13,15 +14,49 @@ import {
   MANUAL_STOCK_ADJUSTMENT_REASONS,
   STOCK_ADJUSTMENT_REASON_LABELS,
 } from "@/features/inventory/constants/inventory.constants";
+import { MoveStockToOptionsForm } from "@/features/inventory/components/MoveStockToOptionsForm";
 import { StockAdjustmentForm } from "@/features/inventory/components/StockAdjustmentForm";
 import { StockHistoryPanel } from "@/features/inventory/components/StockHistoryPanel";
 import { StockStatusBadge } from "@/features/inventory/components/StockStatusBadge";
 import type { InventoryItem } from "@/features/inventory/types/inventory.types";
+import { ROUTES } from "@/constants/routes";
+import { compareNatural } from "@/lib/utils/sort";
+import { cn } from "@/lib/utils/cn";
 
 export interface InventoryDataTableProps {
   items: InventoryItem[];
   /** Shown only for an admin, to distinguish shops in a cross-shop list. */
   isAdmin: boolean;
+  /** Groups the current paginated rows only; seller inventory stays flat. */
+  groupByShop?: boolean;
+}
+
+interface InventoryShopGroup {
+  key: string;
+  name: string;
+  items: InventoryItem[];
+}
+
+function inventoryShopKey(item: InventoryItem): string {
+  return item.shopId ?? `unassigned:${item.shopName ?? "shop"}`;
+}
+
+function groupInventoryItems(items: InventoryItem[]): InventoryShopGroup[] {
+  const groups = new Map<string, InventoryShopGroup>();
+  for (const item of items) {
+    const key = inventoryShopKey(item);
+    const group = groups.get(key);
+    if (group) {
+      group.items.push(item);
+    } else {
+      groups.set(key, {
+        key,
+        name: item.shopName?.trim() || "Unassigned shop",
+        items: [item],
+      });
+    }
+  }
+  return [...groups.values()].sort((a, b) => compareNatural(a.name, b.name));
 }
 
 const selectClasses =
@@ -35,9 +70,9 @@ const selectClasses =
  * `StockHistoryPanel`, unchanged) — they just live inside a table row now
  * instead of a standalone card.
  */
-export function InventoryDataTable({ items, isAdmin }: InventoryDataTableProps) {
+export function InventoryDataTable({ items, isAdmin, groupByShop = false }: InventoryDataTableProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [expanded, setExpanded] = useState<{ id: string; mode: "adjust" | "history" } | null>(null);
+  const [expanded, setExpanded] = useState<{ id: string; mode: "adjust" | "history" | "move" } | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [delta, setDelta] = useState("");
   const [reason, setReason] = useState(MANUAL_STOCK_ADJUSTMENT_REASONS[0]);
@@ -49,6 +84,9 @@ export function InventoryDataTable({ items, isAdmin }: InventoryDataTableProps) 
   const allSelected = items.length > 0 && items.every((i) => selected.has(i.id));
   const someSelected = items.some((i) => selected.has(i.id));
   const selectedCount = selected.size;
+  const shopGroups = groupByShop ? groupInventoryItems(items) : [];
+  const shopGroupByKey = new Map(shopGroups.map((group) => [group.key, group]));
+  const displayItems = groupByShop ? shopGroups.flatMap((group) => group.items) : items;
 
   function toggleAll(checked: boolean) {
     setSelected(checked ? new Set(items.map((i) => i.id)) : new Set());
@@ -61,7 +99,7 @@ export function InventoryDataTable({ items, isAdmin }: InventoryDataTableProps) 
       return next;
     });
   }
-  function toggleExpand(id: string, mode: "adjust" | "history") {
+  function toggleExpand(id: string, mode: "adjust" | "history" | "move") {
     setExpanded((prev) => (prev?.id === id && prev.mode === mode ? null : { id, mode }));
   }
 
@@ -174,6 +212,11 @@ export function InventoryDataTable({ items, isAdmin }: InventoryDataTableProps) 
                 />
               </th>
               <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Product</th>
+              {groupByShop ? null : (
+                <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Shop
+                </th>
+              )}
               <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Quantity</th>
               <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Threshold</th>
               <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</th>
@@ -181,133 +224,261 @@ export function InventoryDataTable({ items, isAdmin }: InventoryDataTableProps) 
             </tr>
           </thead>
           <tbody>
-            {items.map((item) => (
-              <Fragment key={item.id}>
-                <tr className="border-b border-border last:border-0">
-                  <td className="p-3 align-top">
-                    <Checkbox
-                      checked={selected.has(item.id)}
-                      onChange={(event) => toggleOne(item.id, event.target.checked)}
-                      aria-label={`Select ${item.productTitle}`}
-                    />
-                  </td>
-                  <td className="p-3 align-top">
-                    <p className="text-sm font-semibold text-foreground">
-                      {item.productTitle}
-                      {item.variantLabel ? (
-                        <span className="font-normal text-muted-foreground"> — {item.variantLabel}</span>
-                      ) : null}
-                    </p>
-                    <div className="mt-1 flex flex-wrap gap-1.5">
-                      {item.variantId ? <Badge tone="info">Variant</Badge> : null}
-                      {isAdmin && item.shopName ? <Badge tone="neutral">{item.shopName}</Badge> : null}
-                    </div>
-                  </td>
-                  <td className="p-3 align-top text-sm font-medium text-foreground">{item.quantity}</td>
-                  <td className="p-3 align-top text-sm text-muted-foreground">{item.lowStockThreshold}</td>
-                  <td className="p-3 align-top"><StockStatusBadge status={item.stockStatus} /></td>
-                  <td className="p-3 align-top text-right">
-                    <RowMenu open={openMenuId === item.id} onOpenChange={(open) => setOpenMenuId(open ? item.id : null)}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          toggleExpand(item.id, "adjust");
-                          setOpenMenuId(null);
-                        }}
-                        className="w-full rounded px-2 py-1.5 text-left text-sm text-foreground hover:bg-muted"
+            {displayItems.map((item, index) => {
+              const groupKey = inventoryShopKey(item);
+              const group = shopGroupByKey.get(groupKey);
+              const startsGroup =
+                groupByShop && (index === 0 || inventoryShopKey(displayItems[index - 1]) !== groupKey);
+
+              return (
+                <Fragment key={item.id}>
+                  {startsGroup && group ? (
+                    <tr className="border-b border-border bg-muted/60">
+                      <th
+                        colSpan={6}
+                        scope="row"
+                        className="px-3 py-2 text-left text-xs font-semibold text-foreground"
                       >
-                        Adjust stock
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          toggleExpand(item.id, "history");
-                          setOpenMenuId(null);
-                        }}
-                        className="w-full rounded px-2 py-1.5 text-left text-sm text-foreground hover:bg-muted"
-                      >
-                        History
-                      </button>
-                    </RowMenu>
-                  </td>
-                </tr>
-                {expanded?.id === item.id ? (
-                  <tr>
-                    <td colSpan={6} className="border-b border-border bg-muted p-4">
-                      {expanded.mode === "adjust" ? (
-                        <StockAdjustmentForm item={item} onDone={() => setExpanded(null)} />
+                        <div className="flex flex-wrap items-center gap-3">
+                          <span>{group.name}</span>
+                          <span className="font-normal text-muted-foreground">
+                            · {group.items.length} row{group.items.length === 1 ? "" : "s"} on this page
+                          </span>
+                          {group.items[0]?.shopId ? (
+                            <Link
+                              href={ROUTES.adminShopDashboard(group.items[0].shopId)}
+                              className={cn(buttonVariants({ variant: "outline", size: "sm" }), "text-[11px]")}
+                            >
+                              View Dashboard
+                            </Link>
+                          ) : null}
+                        </div>
+                      </th>
+                    </tr>
+                  ) : null}
+                  <tr className="border-b border-border last:border-0">
+                    <td className="p-3 align-top">
+                      <Checkbox
+                        checked={selected.has(item.id)}
+                        onChange={(event) => toggleOne(item.id, event.target.checked)}
+                        aria-label={`Select ${item.productTitle}`}
+                      />
+                    </td>
+                    <td className="p-3 align-top">
+                      <p className="text-sm font-semibold text-foreground">
+                        {item.productTitle}
+                        {item.variantLabel ? (
+                          <span className="font-normal text-muted-foreground"> — {item.variantLabel}</span>
+                        ) : null}
+                      </p>
+                      <div className="mt-1 flex flex-wrap gap-1.5">
+                        {item.variantId ? <Badge tone="info">Variant</Badge> : null}
+                        {item.isUnassigned ? <Badge tone="warning">Unassigned stock</Badge> : null}
+                        {isAdmin && !groupByShop && item.shopName ? (
+                          <Badge tone="neutral">{item.shopName}</Badge>
+                        ) : null}
+                      </div>
+                    </td>
+                    {groupByShop ? null : (
+                      <td className="p-3 align-top text-sm text-muted-foreground">
+                        <div className="flex flex-col items-start gap-2">
+                          <span>{item.shopName ?? "Unassigned shop"}</span>
+                          {isAdmin && item.shopId ? (
+                            <Link
+                              href={ROUTES.adminShopDashboard(item.shopId)}
+                              className={cn(buttonVariants({ variant: "outline", size: "sm" }), "text-[11px]")}
+                            >
+                              View Dashboard
+                            </Link>
+                          ) : null}
+                        </div>
+                      </td>
+                    )}
+                    <td className="p-3 align-top text-sm font-medium text-foreground">{item.quantity}</td>
+                    <td className="p-3 align-top text-sm text-muted-foreground">{item.lowStockThreshold}</td>
+                    <td className="p-3 align-top">
+                      {item.isUnassigned ? (
+                        <span className="text-xs text-muted-foreground">Not sold</span>
                       ) : (
-                        <StockHistoryPanel productId={item.productId} variantId={item.variantId} />
+                        <StockStatusBadge status={item.stockStatus} />
                       )}
                     </td>
+                    <td className="p-3 align-top text-right">
+                      <RowMenu
+                        open={openMenuId === item.id}
+                        onOpenChange={(open) => setOpenMenuId(open ? item.id : null)}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => {
+                            toggleExpand(item.id, "adjust");
+                            setOpenMenuId(null);
+                          }}
+                          className="w-full rounded px-2 py-1.5 text-left text-sm text-foreground hover:bg-muted"
+                        >
+                          Adjust stock
+                        </button>
+                        {item.isUnassigned && item.quantity > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              toggleExpand(item.id, "move");
+                              setOpenMenuId(null);
+                            }}
+                            className="w-full rounded px-2 py-1.5 text-left text-sm text-foreground hover:bg-muted"
+                          >
+                            Move to options
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            toggleExpand(item.id, "history");
+                            setOpenMenuId(null);
+                          }}
+                          className="w-full rounded px-2 py-1.5 text-left text-sm text-foreground hover:bg-muted"
+                        >
+                          History
+                        </button>
+                      </RowMenu>
+                    </td>
                   </tr>
-                ) : null}
-              </Fragment>
-            ))}
+                  {expanded?.id === item.id ? (
+                    <tr>
+                      <td colSpan={groupByShop ? 6 : 7} className="border-b border-border bg-muted p-4">
+                        {expanded.mode === "adjust" ? (
+                          <StockAdjustmentForm item={item} onDone={() => setExpanded(null)} />
+                        ) : expanded.mode === "move" ? (
+                          <MoveStockToOptionsForm item={item} onDone={() => setExpanded(null)} />
+                        ) : (
+                          <StockHistoryPanel productId={item.productId} variantId={item.variantId} />
+                        )}
+                      </td>
+                    </tr>
+                  ) : null}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>
 
       {/* ---------------- Mobile cards ---------------- */}
       <div className="flex flex-col gap-3 sm:hidden">
-        {items.map((item) => (
-          <Card key={item.id}>
-            <CardContent className="flex flex-col gap-3 p-4">
-              <div className="flex items-start gap-3">
-                <Checkbox
-                  checked={selected.has(item.id)}
-                  onChange={(event) => toggleOne(item.id, event.target.checked)}
-                  aria-label={`Select ${item.productTitle}`}
-                  className="mt-1"
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-foreground">
-                    {item.productTitle}
-                    {item.variantLabel ? (
-                      <span className="font-normal text-muted-foreground"> — {item.variantLabel}</span>
-                    ) : null}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {item.quantity} in stock · threshold {item.lowStockThreshold}
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    <StockStatusBadge status={item.stockStatus} />
-                    {item.variantId ? <Badge tone="info">Variant</Badge> : null}
-                    {isAdmin && item.shopName ? <Badge tone="neutral">{item.shopName}</Badge> : null}
-                  </div>
+        {groupByShop
+          ? shopGroups.map((group) => (
+              <section key={group.key} className="flex flex-col gap-3" aria-label={`Inventory for ${group.name}`}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="text-xs font-semibold text-foreground">
+                    {group.name}
+                    <span className="ml-2 font-normal text-muted-foreground">
+                      · {group.items.length} row{group.items.length === 1 ? "" : "s"} on this page
+                    </span>
+                  </h2>
+                  {group.items[0]?.shopId ? (
+                    <Link
+                      href={ROUTES.adminShopDashboard(group.items[0].shopId)}
+                      className={cn(buttonVariants({ variant: "outline", size: "sm" }), "text-[11px]")}
+                    >
+                      View Dashboard
+                    </Link>
+                  ) : null}
                 </div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="rjSm"
-                  onClick={() => toggleExpand(item.id, "adjust")}
-                >
-                  {expanded?.id === item.id && expanded.mode === "adjust" ? "Hide" : "Adjust stock"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="rjSm"
-                  onClick={() => toggleExpand(item.id, "history")}
-                >
-                  {expanded?.id === item.id && expanded.mode === "history" ? "Hide" : "History"}
-                </Button>
-              </div>
-              {expanded?.id === item.id ? (
-                <div className="rounded-xl border border-border bg-muted p-4">
-                  {expanded.mode === "adjust" ? (
-                    <StockAdjustmentForm item={item} onDone={() => setExpanded(null)} />
-                  ) : (
-                    <StockHistoryPanel productId={item.productId} variantId={item.variantId} />
-                  )}
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
-        ))}
+                {group.items.map((item) => renderMobileCard(item))}
+              </section>
+            ))
+          : items.map((item) => renderMobileCard(item))}
       </div>
     </div>
   );
+
+  function renderMobileCard(item: InventoryItem) {
+    return (
+      <Card key={item.id}>
+        <CardContent className="flex flex-col gap-3 p-4">
+          <div className="flex items-start gap-3">
+            <Checkbox
+              checked={selected.has(item.id)}
+              onChange={(event) => toggleOne(item.id, event.target.checked)}
+              aria-label={`Select ${item.productTitle}`}
+              className="mt-1"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-foreground">
+                {item.productTitle}
+                {item.variantLabel ? (
+                  <span className="font-normal text-muted-foreground"> — {item.variantLabel}</span>
+                ) : null}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {item.isUnassigned
+                  ? `${item.quantity} unassigned · not sold until moved into an option`
+                  : `${item.quantity} in stock · threshold ${item.lowStockThreshold}`}
+              </p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {item.isUnassigned ? (
+                  <Badge tone="warning">Unassigned stock</Badge>
+                ) : (
+                  <StockStatusBadge status={item.stockStatus} />
+                )}
+                {item.variantId ? <Badge tone="info">Variant</Badge> : null}
+                {isAdmin && !groupByShop && item.shopName ? (
+                  <>
+                    <Badge tone="neutral">{item.shopName}</Badge>
+                    {item.shopId ? (
+                      <Link
+                        href={ROUTES.adminShopDashboard(item.shopId)}
+                        className={cn(buttonVariants({ variant: "outline", size: "sm" }), "text-[11px]")}
+                      >
+                        View Dashboard
+                      </Link>
+                    ) : null}
+                  </>
+                ) : null}
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="rjSm"
+              onClick={() => toggleExpand(item.id, "adjust")}
+            >
+              {expanded?.id === item.id && expanded.mode === "adjust" ? "Hide" : "Adjust stock"}
+            </Button>
+            {item.isUnassigned && item.quantity > 0 ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="rjSm"
+                onClick={() => toggleExpand(item.id, "move")}
+              >
+                {expanded?.id === item.id && expanded.mode === "move" ? "Hide" : "Move to options"}
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              variant="outline"
+              size="rjSm"
+              onClick={() => toggleExpand(item.id, "history")}
+            >
+              {expanded?.id === item.id && expanded.mode === "history" ? "Hide" : "History"}
+            </Button>
+          </div>
+          {expanded?.id === item.id ? (
+            <div className="rounded-xl border border-border bg-muted p-4">
+              {expanded.mode === "adjust" ? (
+                <StockAdjustmentForm item={item} onDone={() => setExpanded(null)} />
+              ) : expanded.mode === "move" ? (
+                <MoveStockToOptionsForm item={item} onDone={() => setExpanded(null)} />
+              ) : (
+                <StockHistoryPanel productId={item.productId} variantId={item.variantId} />
+              )}
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+    );
+  }
 }

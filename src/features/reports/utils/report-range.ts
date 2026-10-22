@@ -1,4 +1,5 @@
 import { fromCents } from "@/lib/utils/currency";
+import { PAYMENT_SOURCE_LABELS } from "@/features/payments/lib/payment-source";
 
 import {
   DATE_PRESETS,
@@ -8,6 +9,7 @@ import {
   type DatePresetId,
 } from "../constants/report.constants";
 import type {
+  PaymentSourceSummaryRow,
   ReportFilters,
   ReportGranularity,
   SalesSummary,
@@ -208,6 +210,7 @@ export function buildReportCsv(
   filters: ReportFilters,
   summary: SalesSummary,
   trend: SalesTrendPoint[],
+  paymentSources: PaymentSourceSummaryRow[],
 ): string {
   const lines: string[] = [];
   lines.push(csvCell("RoberJ Sales Report"));
@@ -230,6 +233,22 @@ export function buildReportCsv(
   for (const [label, value] of summaryRows) {
     lines.push([csvCell(label), csvCell(value)].join(","));
   }
+  lines.push("");
+
+  lines.push(csvCell("Paid orders by payment source"));
+  lines.push(["Payment source", "Orders", "Gross paid (PHP)"].map(csvCell).join(","));
+  for (const row of paymentSources) {
+    lines.push([
+      csvCell(PAYMENT_SOURCE_LABELS[row.source]),
+      csvCell(row.orderCount),
+      csvCell(fromCents(row.amountCents)),
+    ].join(","));
+  }
+  lines.push([
+    csvCell("Total paid"),
+    csvCell(paymentSources.reduce((total, row) => total + row.orderCount, 0)),
+    csvCell(fromCents(paymentSources.reduce((total, row) => total + row.amountCents, 0))),
+  ].join(","));
   lines.push("");
 
   lines.push(csvCell("Sales over time"));

@@ -102,7 +102,7 @@ export function NotificationBell({ events }: NotificationBellProps) {
         <Bell className="h-[18px] w-[18px] text-rj-black" aria-hidden="true" />
         {unreadCount > 0 ? (
           <span
-            className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-rj-red px-0.5 text-[9px] font-bold text-white"
+            className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-rj-red px-0.5 text-[9px] font-bold text-rj-white"
             style={{ animation: "pop 0.2s ease" }}
           >
             {unreadCount}

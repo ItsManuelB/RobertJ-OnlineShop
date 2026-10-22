@@ -9,6 +9,7 @@ import type { Order } from "@/features/orders/types/order.types";
 import type { OrderGroupInfo } from "@/features/orders/utils/order-grouping";
 import { formatCurrency } from "@/lib/utils/currency";
 import { cn } from "@/lib/utils/cn";
+import { formatDateTime } from "@/lib/utils/date";
 
 import { OrderCardActions } from "./OrderCardActions";
 import { OrderStatusBadge } from "./OrderStatusBadge";
@@ -86,6 +87,8 @@ export function BuyerOrderCard({ order, shopName, shopId, groupInfo = null }: Bu
           paymentMethod={order.paymentMethod}
         />
       </div>
+
+      <p className="text-xs text-rj-gray-500">Placed {formatDateTime(order.placedAt)}</p>
 
       <ul className="flex flex-col divide-y divide-rj-gray-100 border-t border-rj-gray-100">
         {order.items.map((item) => (

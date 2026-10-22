@@ -3,6 +3,7 @@ import type { StockAdjustmentReason } from "@/features/inventory/constants/inven
 
 /** Derived, not stored: quantity <= 0 is out of stock, <= threshold is low. */
 export type StockStatus = "out_of_stock" | "low_stock" | "in_stock";
+export type InventoryStatusFilter = StockStatus | "needs_attention";
 
 /** Domain model returned by the inventory service — one row per product, or
  * one row per variant for a product that has variants (Phase 3b). */
@@ -18,6 +19,12 @@ export interface InventoryItem {
   variantId: string | null;
   /** e.g. "Blue / Medium" — null for a product-level row. */
   variantLabel: string | null;
+  /**
+   * True for the product-level row of a product that has options: that stock
+   * is not sellable (buyers pick an option) until it is moved into one.
+   * Excluded from low-stock reports.
+   */
+  isUnassigned: boolean;
   quantity: number;
   lowStockThreshold: number;
   stockStatus: StockStatus;
@@ -46,7 +53,8 @@ export interface DashboardInventoryListParams {
   page: number;
   pageSize: number;
   search?: string;
-  stockStatus?: StockStatus;
+  shopId?: string;
+  stockStatus?: InventoryStatusFilter;
 }
 
 /** Computes the derived stock status from a raw quantity/threshold pair. */

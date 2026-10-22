@@ -34,7 +34,7 @@ export async function TopProductsPanel({ filters }: { filters: ReportFilters }) 
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-rj-gray-100 text-left text-muted-foreground">
+                <tr className="border-b border-subtle-border text-left text-muted-foreground">
                   <th scope="col" className="py-2 pr-3 font-medium">
                     Product
                   </th>
@@ -48,7 +48,7 @@ export async function TopProductsPanel({ filters }: { filters: ReportFilters }) 
               </thead>
               <tbody>
                 {products.map((p) => (
-                  <tr key={p.productId} className="border-b border-rj-gray-50 last:border-0">
+                  <tr key={p.productId} className="border-b border-table-divider last:border-0">
                     <td className="py-2 pr-3 text-foreground">{p.productTitle}</td>
                     <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">
                       {p.unitsSold}

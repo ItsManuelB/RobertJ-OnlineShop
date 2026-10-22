@@ -25,6 +25,18 @@ export interface ShippingAddress {
 }
 
 /**
+ * Barangay/city/province/region joined for display on a single line,
+ * skipping whichever are blank — shared by `ShippingLabel` and
+ * `OrderReceipt` so the two printable documents can never drift on how an
+ * address is formatted.
+ */
+export function formatAddressCityLine(address: ShippingAddress): string {
+  return [address.barangay, address.city, address.province, address.region]
+    .filter(Boolean)
+    .join(", ");
+}
+
+/**
  * One immutable line item. `productTitle`, `unitPriceCents`, and `subtotalCents`
  * are snapshots taken at checkout; `productSlug`/`imageUrl` are joined live from
  * the product when RLS still exposes it (a sold/archived product resolves to null
@@ -57,6 +69,20 @@ export interface OrderShipment {
   courier: string | null;
   trackingNumber: string | null;
   packedAt: string | null;
+}
+
+/** What the dashboard Shipped tab shows per order: courier, tracking and whole days since it shipped. */
+export interface ShippedOrderInfo {
+  courier: string | null;
+  trackingNumber: string | null;
+  daysInTransit: number | null;
+}
+
+/** What the dashboard Delivered tab shows per order: days since delivery and how long the buyer can still file a return. */
+export interface DeliveredOrderInfo {
+  daysSinceDelivery: number | null;
+  /** 0 once the return window has closed; null when the delivery date is unknown. */
+  returnDaysLeft: number | null;
 }
 
 /** Domain model returned by the order service to the rest of the app. */
@@ -94,6 +120,10 @@ export interface Order {
   shopName: string | null;
   items: OrderItem[];
   placedAt: string;
+  /** Null until the seller/shop-member/admin advances the order to `confirmed` — including for orders placed before this column existed, which can never be backfilled. */
+  confirmedAt: string | null;
+  /** Null until advanced to `processing` — same backfill caveat as `confirmedAt`. */
+  processingAt: string | null;
   paidAt: string | null;
   shippedAt: string | null;
   deliveredAt: string | null;
@@ -140,6 +170,11 @@ export interface OrderListParams {
   paymentMethod?: "cod" | "xendit";
   /** Dashboard-only: relative window off `placed_at`. */
   dateRange?: "today" | "7d" | "30d";
+  /** Dashboard-only: exact inclusive Manila calendar range. */
+  from?: string;
+  to?: string;
+  /** Dashboard-only: pending orders eligible for confirmation. */
+  confirmationRequired?: boolean;
   /**
    * Dashboard-only: only orders needing a seller action right now — see
    * `isOrderNeedingAttention()`. Overrides `status` when set (attention
@@ -171,6 +206,25 @@ export function isOrderNeedingAttention(order: Pick<Order, "status" | "paymentMe
     order.paymentStatus === "pending" &&
     (order.status === "shipped" || order.status === "delivered");
   return needsConfirmation || codAwaitingCollection;
+}
+
+/**
+ * Whether a printed shipping label is relevant for this order — available
+ * from `confirmed` (To Pack) onward, so it can double as the picking/packing
+ * ticket the seller attaches to the box while packing, through the normal
+ * forward flow (`confirmed` → `processing` → `shipped` → `delivered`), plus
+ * a `cancelled` order that reached `shipped` first (a failed/returned
+ * delivery — `shippedAt` is stamped once and never cleared, so it's the
+ * durable signal). A `cancelled` order that never shipped never had a label.
+ */
+export function isShippingLabelEligible(order: Pick<Order, "status" | "shippedAt">): boolean {
+  if (order.status === "cancelled") return order.shippedAt !== null;
+  return (
+    order.status === "confirmed" ||
+    order.status === "processing" ||
+    order.status === "shipped" ||
+    order.status === "delivered"
+  );
 }
 
 /**

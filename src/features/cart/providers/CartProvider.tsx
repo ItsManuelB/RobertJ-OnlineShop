@@ -54,6 +54,21 @@ import type { CartLineItem, MergeGuestCartResult } from "@/lib/supabase/queries"
  */
 const LEGACY_STORAGE_KEY = "roberj.cart.v1";
 
+/**
+ * A guest cart left untouched this long is cleared on next read, so it can't
+ * outlive the person who started it on a shared/public device — see
+ * `readCartForIdentity`/the persist effect below. Rolling, not fixed: every
+ * write (any add/remove/quantity change) refreshes `savedAt`, so an actively
+ * shopping guest is never cut off mid-session.
+ */
+const GUEST_CART_TTL_MS = 24 * 60 * 60 * 1000;
+
+/** What's actually written to the guest bucket — `CartState` itself (and every other consumer of it) stays unaware of expiry. */
+interface StoredGuestCart {
+  state: CartState;
+  savedAt: number;
+}
+
 /** Identity-scoped bucket: one real account gets its own key, every signed-out visitor shares "guest". */
 function getCartStorageKey(userId: string | null): string {
   return userId ? `${LEGACY_STORAGE_KEY}:${userId}` : `${LEGACY_STORAGE_KEY}:guest`;
@@ -68,6 +83,10 @@ function getCartStorageKey(userId: string | null): string {
  * hand it to a specific, newly authenticated account. The legacy key is
  * consumed (removed) as soon as it's read, migrated or not, so it can never
  * be read again later by a different identity.
+ *
+ * The guest bucket is additionally expired by `GUEST_CART_TTL_MS`: a cart
+ * saved before this fix shipped (or just-migrated from the legacy key) has no
+ * `savedAt` and is treated as freshly saved rather than wiped on sight.
  */
 function readCartForIdentity(userId: string | null): CartState {
   if (typeof window === "undefined") return initialCartState;
@@ -76,7 +95,15 @@ function readCartForIdentity(userId: string | null): CartState {
   const raw = window.localStorage.getItem(storageKey);
   if (raw) {
     try {
-      return JSON.parse(raw) as CartState;
+      const parsed = JSON.parse(raw) as CartState | StoredGuestCart;
+      if (userId === null && "savedAt" in parsed) {
+        if (Date.now() - parsed.savedAt > GUEST_CART_TTL_MS) {
+          window.localStorage.removeItem(storageKey);
+          return initialCartState;
+        }
+        return parsed.state;
+      }
+      return parsed as CartState;
     } catch {
       window.localStorage.removeItem(storageKey);
       return initialCartState;
@@ -389,7 +416,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
     // localStorage, or a stale per-account bucket would resurface exactly
     // the cross-device drift this phase exists to fix.
     if (loadedUserId.current !== null) return;
-    window.localStorage.setItem(getCartStorageKey(null), JSON.stringify(state));
+    const stored: StoredGuestCart = { state, savedAt: Date.now() };
+    window.localStorage.setItem(getCartStorageKey(null), JSON.stringify(stored));
   }, [state]);
 
   const value = useMemo<CartContextValue>(() => {

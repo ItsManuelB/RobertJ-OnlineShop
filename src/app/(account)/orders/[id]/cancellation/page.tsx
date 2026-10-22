@@ -51,6 +51,7 @@ export default async function OrderCancellationPage({ params }: OrderCancellatio
   ]);
   const membership = (order.sellerId ? shopMembership.get(order.sellerId) : null) ?? null;
   const shopLabel =
+    order.shopName ??
     membership?.shopName ??
     (order.sellerRole === USER_ROLES.seller ? order.sellerName : null) ??
     "RobertJ Seller";

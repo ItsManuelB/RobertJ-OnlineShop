@@ -30,9 +30,11 @@ export async function InventoryTable({ searchParams, isAdmin }: InventoryTablePr
   }
 
   const { items, page, totalPages, total } = result;
+  const rawView = Array.isArray(searchParams.view) ? searchParams.view[0] : searchParams.view;
+  const groupByShop = isAdmin && rawView !== "flat";
 
   if (items.length === 0) {
-    const filtering = Boolean(parsed.data.search || parsed.data.stockStatus);
+    const filtering = Boolean(parsed.data.search || parsed.data.stockStatus || (isAdmin && parsed.data.shopId));
     return (
       <EmptyState
         title={filtering ? "No matching stock rows" : "No stock to manage yet"}
@@ -48,9 +50,10 @@ export async function InventoryTable({ searchParams, isAdmin }: InventoryTablePr
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-muted-foreground" aria-live="polite">
-        {total} row{total === 1 ? "" : "s"}
+        Showing {items.length} row{items.length === 1 ? "" : "s"} on this page · {total} matching row
+        {total === 1 ? "" : "s"} total
       </p>
-      <InventoryDataTable items={items} isAdmin={isAdmin} />
+      <InventoryDataTable items={items} isAdmin={isAdmin} groupByShop={groupByShop} />
       {totalPages > 1 ? <PaginationControls page={page} totalPages={totalPages} themed /> : null}
     </div>
   );

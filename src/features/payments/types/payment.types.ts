@@ -1,4 +1,5 @@
 import type { PaymentStatus } from "@/constants/status";
+import type { PaymentSourceFilter } from "@/features/payments/lib/payment-source";
 
 /** A payment attempt (COD collection, or Xendit online payment), as seen in payment history views. */
 export interface Payment {
@@ -39,8 +40,20 @@ export interface DashboardPaymentListParams {
   search?: string;
   status?: PaymentStatus;
   paymentMethodType?: PaymentMethodType;
+  /** Fine-grained source filter shared by Seller and Admin. */
+  paymentSource?: PaymentSourceFilter;
   /** Admin-only: narrows to stale, still-pending Xendit attempts awaiting reconciliation — see `isStaleXenditAttempt`. */
   staleOnly?: boolean;
+}
+
+/** Full filtered payment-history summary, independent of table pagination. */
+export interface PaymentHistorySummary {
+  paymentCount: number;
+  paidCount: number;
+  pendingCount: number;
+  failedCount: number;
+  refundedCount: number;
+  paidAmountCents: number;
 }
 
 /**

@@ -12,16 +12,25 @@ export interface RecentOrdersCardProps {
   /** Overridable for the Admin Portal, which links into `/admin/orders` instead of `/dashboard/orders`. */
   viewAllHref?: string;
   orderHref?: (id: string) => string;
+  /** Optional exact date range for a scoped shop dashboard. Dates use the report timezone boundary. */
+  from?: string;
+  to?: string;
+  shopId?: string;
 }
 
 /** The 5 most recent orders visible to the caller (own shop, or every shop for admin). */
 export async function RecentOrdersCard({
   viewAllHref = ROUTES.dashboardOrders,
   orderHref = ROUTES.dashboardOrderDetail,
+  from,
+  to,
+  shopId,
 }: RecentOrdersCardProps = {}) {
   let recentOrders;
   try {
-    ({ recentOrders } = await getDashboardOrderSummary());
+    ({ recentOrders } = await getDashboardOrderSummary(
+      from && to ? { from, to, shopId } : undefined,
+    ));
   } catch {
     return <ErrorState message="We couldn't load recent orders right now." />;
   }
@@ -37,7 +46,14 @@ export async function RecentOrdersCard({
         </div>
 
         {recentOrders.length === 0 ? (
-          <EmptyState title="No orders yet" description="New orders will show up here." />
+          <EmptyState
+            title={from && to ? "No orders in this range" : "No orders yet"}
+            description={
+              from && to
+                ? "Try a wider date range to see this shop's earlier orders."
+                : "New orders will show up here."
+            }
+          />
         ) : (
           <div className="flex flex-col gap-3">
             {recentOrders.map((order) => (

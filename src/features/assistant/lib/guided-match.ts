@@ -14,6 +14,11 @@
  *  - Budget is checked against the matched option's live price (its own price,
  *    else the product's). A product just outside the budget is kept as a
  *    "close" match with a note, never silently mixed in with exact ones.
+ *  - A size or color the buyer asked for is only matched against options that
+ *    carry that attribute. When a product has NO size (or color) data at all,
+ *    it is not silently dropped and not claimed as a match: it is returned as
+ *    "unconfirmed" with a note, ranked after exact and close matches, and still
+ *    has to satisfy every other answer (stock, budget, material, ...).
  *  - Occasion comes from seller tags. A matching tag ranks first; a product
  *    with no occasion tag at all still qualifies (ranked lower); a product
  *    tagged only for other occasions is excluded.
@@ -57,8 +62,8 @@ export interface MatchResult {
   optionId: string | null;
   optionLabel: string | null;
   matchedPriceCents: number;
-  fit: "exact" | "close";
-  /** Why a "close" match is close, e.g. "₱120.00 over your budget". */
+  fit: "exact" | "close" | "unconfirmed";
+  /** Why a "close" match is close ("₱120.00 over your budget") or what an "unconfirmed" one lacks ("Size not confirmed"). */
   note: string | null;
 }
 
@@ -96,23 +101,37 @@ interface Resolved {
   optionId: string | null;
   label: string | null;
   priceCents: number;
+  /** Asked-for attributes this product has no data for, e.g. ["size"]. */
+  unconfirmed: string[];
+}
+
+function hasData(candidate: MatchCandidate, key: "size" | "color"): boolean {
+  return candidate.options.some((option) => norm(option[key]) !== "");
 }
 
 /** Every purchasable (option or whole product) that satisfies the attribute answers, ignoring budget. */
 function resolveAttributes(candidate: MatchCandidate, query: MatchQuery): Resolved[] {
-  const size = asked(query.size);
-  const color = asked(query.color);
   const material = asked(query.material);
   const dimensions = asked(query.dimensions);
+  // An axis the product has no data for can't be checked: skip it and say so.
+  const unconfirmed: string[] = [];
+  let size = asked(query.size);
+  let color = asked(query.color);
+  if (size && !hasData(candidate, "size")) {
+    unconfirmed.push("size");
+    size = "";
+  }
+  if (color && !hasData(candidate, "color")) {
+    unconfirmed.push("color");
+    color = "";
+  }
   const narrowing = Boolean(size || color || material || dimensions);
 
   if (candidate.options.length === 0) {
     if (candidate.quantity <= 0) return [];
-    // A product without options has no size/color data to match against.
-    if (size || color) return [];
     if (material && norm(candidate.material) !== material) return [];
     if (dimensions && norm(candidate.dimensions) !== dimensions) return [];
-    return [{ optionId: null, label: null, priceCents: candidate.priceCents }];
+    return [{ optionId: null, label: null, priceCents: candidate.priceCents, unconfirmed }];
   }
 
   return candidate.options
@@ -125,6 +144,7 @@ function resolveAttributes(candidate: MatchCandidate, query: MatchQuery): Resolv
       optionId: narrowing ? option.id : null,
       label: narrowing ? optionLabel(option) : null,
       priceCents: option.priceCents ?? candidate.priceCents,
+      unconfirmed,
     }));
 }
 
@@ -140,6 +160,7 @@ export function matchCandidates(candidates: MatchCandidate[], query: MatchQuery,
 
   const exact: { result: MatchResult; rank: number; order: number }[] = [];
   const close: { result: MatchResult; distance: number; order: number }[] = [];
+  const unconfirmed: { result: MatchResult; order: number }[] = [];
 
   candidates.forEach((candidate, order) => {
     const rank = occasionRank(candidate.tags, occasion);
@@ -154,6 +175,20 @@ export function matchCandidates(candidates: MatchCandidate[], query: MatchQuery,
 
     if (inBudget.length > 0) {
       const best = inBudget.reduce((a, b) => (b.priceCents < a.priceCents ? b : a));
+      if (best.unconfirmed.length > 0) {
+        unconfirmed.push({
+          order,
+          result: {
+            candidateId: candidate.id,
+            optionId: best.optionId,
+            optionLabel: best.label,
+            matchedPriceCents: best.priceCents,
+            fit: "unconfirmed",
+            note: `${best.unconfirmed.join(" and ").replace(/^./, (c) => c.toUpperCase())} not confirmed`,
+          },
+        });
+        return;
+      }
       exact.push({
         order,
         rank,
@@ -169,7 +204,9 @@ export function matchCandidates(candidates: MatchCandidate[], query: MatchQuery,
       return;
     }
 
-    // Outside the budget: keep it only when it is within the margin.
+    // Outside the budget: keep it only when it is within the margin. A product
+    // with unconfirmed attributes is not also offered as "close" — one caveat at a time.
+    if (resolved.some((item) => item.unconfirmed.length > 0)) return;
     let nearest: { item: Resolved; distance: number; over: boolean } | null = null;
     for (const item of resolved) {
       const over = max !== null && item.priceCents > max;
@@ -199,5 +236,11 @@ export function matchCandidates(candidates: MatchCandidate[], query: MatchQuery,
   exact.sort((a, b) => a.rank - b.rank || a.order - b.order);
   close.sort((a, b) => a.distance - b.distance || a.order - b.order);
 
-  return [...exact.map((item) => item.result), ...close.map((item) => item.result)].slice(0, limit);
+  unconfirmed.sort((a, b) => a.order - b.order);
+
+  return [
+    ...exact.map((item) => item.result),
+    ...close.map((item) => item.result),
+    ...unconfirmed.map((item) => item.result),
+  ].slice(0, limit);
 }

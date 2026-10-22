@@ -11,7 +11,7 @@ export interface OrderAttentionStripProps {
   codAwaitingCollection: number;
   /** F-10: refunded returns whose item condition was never recorded — stock stays un-restored until someone does. Not part of the `attentionOnly` order filter (it's a return_requests count, not an orders one), so its own link just points at `returnsHref`. */
   returnsAwaitingRestock: number;
-  /** Where "Review returns" should link — admin's returns queue, or (seller) the orders list, since sellers record condition inline per-order rather than from a dedicated list. */
+  /** Where "Review returns" should link — the admin's or the seller's own returns queue, which is where the restock decision is recorded. */
   returnsHref: string;
 }
 
@@ -62,10 +62,10 @@ export function OrderAttentionStrip({
 
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-xl border border-warning/40 bg-warning/10 p-3">
-      <span aria-hidden="true">⚠</span>
+      <span aria-hidden="true" className="text-warning">⚠</span>
       <p className="flex-1 text-sm font-semibold text-foreground">{parts.join(" · ")}</p>
       {hasOrderAttention ? (
-        <Button type="button" variant="outline" size="rjSm" onClick={toggle}>
+        <Button type="button" variant="outline" size="rjSm" onClick={toggle} className="text-foreground">
           {active ? "Show all orders" : "Show only these"}
         </Button>
       ) : null}

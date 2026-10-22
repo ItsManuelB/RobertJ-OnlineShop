@@ -31,6 +31,19 @@ const KNOWN_ERRORS: Array<{
   { code: "23503", message: "That item no longer exists." },
 ];
 
+/**
+ * Error codes this app's own `SECURITY DEFINER` RPCs use for `RAISE
+ * EXCEPTION` business-rule messages (ownership, state preconditions, "sign in
+ * required," not-found) — e.g. `confirm_order_received`,
+ * `record_order_shipment`, `request_return`, `decide_return`,
+ * `mark_cod_payment_collected`. Every such message is hand-written,
+ * human-readable copy (never a raw constraint/column name), so passing it
+ * through verbatim is exactly the "friendly copy" this function exists to
+ * produce — unlike the codes above, these don't have one fixed message
+ * because the same code is reused for many distinct preconditions.
+ */
+const PASSTHROUGH_CODES = new Set(["42501", "22023", "P0002", "28000"]);
+
 /** Maps a Postgres error to friendly copy, or `fallback` when nothing matches. */
 export function mapPostgresError(
   error: PostgrestError,
@@ -40,6 +53,9 @@ export function mapPostgresError(
     if (error.code === rule.code && (!rule.test || rule.test(error))) {
       return rule.message;
     }
+  }
+  if (error.code && PASSTHROUGH_CODES.has(error.code) && error.message) {
+    return error.message;
   }
   return fallback;
 }

@@ -43,7 +43,9 @@ export const dashboardInventoryListParamsSchema = z.object({
     .max(PAGINATION.maxPageSize)
     .default(PAGINATION.defaultPageSize),
   search: z.string().trim().max(120).optional(),
-  stockStatus: z.enum(["in_stock", "low_stock", "out_of_stock"]).optional(),
+  /** Admin-only shop filter; seller inventory remains scoped by RLS. */
+  shopId: z.uuid().optional(),
+  stockStatus: z.enum(["in_stock", "low_stock", "out_of_stock", "needs_attention"]).optional(),
 });
 
 /** Payload for applying one delta/reason/note to several inventory rows at once. */
@@ -69,6 +71,20 @@ export const bulkAdjustStockSchema = z
     (value) => value.reason !== "other" || Boolean(value.note),
     { message: "Add a note explaining this adjustment.", path: ["note"] },
   );
+
+/** Payload for moving unassigned stock into a product's options. */
+export const allocateStockSchema = z.object({
+  productId: z.uuid(),
+  allocations: z
+    .array(
+      z.object({
+        variantId: z.uuid(),
+        quantity: z.coerce.number().int("Enter a whole number.").min(1, "Enter at least 1."),
+      }),
+    )
+    .min(1, "Enter a quantity for at least one option.")
+    .max(200),
+});
 
 export type AdjustStockInput = z.infer<typeof adjustStockSchema>;
 export type DashboardInventoryListParamsInput = z.input<typeof dashboardInventoryListParamsSchema>;

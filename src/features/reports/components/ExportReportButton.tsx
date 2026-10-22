@@ -52,6 +52,7 @@ export function ExportReportButton({ filters }: { filters: ReportFilters }) {
         size="rjSm"
         onClick={handleExport}
         isLoading={isExporting}
+        className="text-foreground"
       >
         <Download className="h-4 w-4" aria-hidden="true" />
         Export CSV

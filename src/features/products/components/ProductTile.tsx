@@ -191,7 +191,7 @@ export function ProductTile({ item, style }: ProductTileProps) {
                 </span>
               ) : null}
               {item.isSale ? (
-                <span className="rounded-full bg-rj-red px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+                <span className="rounded-full bg-rj-red px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-rj-white">
                   Sale
                 </span>
               ) : null}
@@ -228,7 +228,7 @@ export function ProductTile({ item, style }: ProductTileProps) {
               type="button"
               onClick={handleQuickAdd}
               disabled={adding}
-              className="w-full rounded-full bg-rj-white/95 py-2.5 text-[11px] font-bold text-rj-black backdrop-blur-sm transition-colors hover:bg-rj-red hover:text-white"
+              className="w-full rounded-full bg-rj-white/95 py-2.5 text-[11px] font-bold text-rj-black backdrop-blur-sm transition-colors hover:bg-rj-red hover:text-rj-white"
             >
               <span aria-live="polite">
                 {item.hasOptions

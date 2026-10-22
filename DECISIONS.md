@@ -615,6 +615,20 @@ Original decision: Option 2. The Stripe code stayed in the repo (real, working c
 
 ---
 
+## ADR-024: Variant stock is allocated, not duplicated; options share one shape; Guided Selection flags what it can't confirm
+
+**Context:** Almost no product had size/color options, and the two that did had rows that mixed color-only and size-only options (no buyer could pick both) while keeping leftover stock on the product's own inventory row, so stock appeared twice. Guided Selection (ADR-022) dropped every product without size/color data whenever a size or color was asked, hiding most of the catalog.
+
+**Decision:**
+1. A product's options must all use the same choices (checked on create, in the editor and server-side). A color x size generator creates all missing combinations at 0 stock.
+2. Stock only ever moves: `allocate_stock_to_variants` transfers units from the product-level row to option rows in one transaction, total preserved, refused if it exceeds the unassigned count. Nothing is invented or copied.
+3. For a product with options, the product-level row is "unassigned stock": excluded from low-stock reports and shown as not sold; `active <-> sold` follows the combined option stock (`sync_products_quantity_from_inventory`).
+4. Guided Selection never claims an unconfirmed attribute: a product with no size (or color) data is returned as `fit: "unconfirmed"` with a note, ranked after exact and close matches, and must satisfy every other answer. Supersedes ADR-022's "a product with no options matches only when no size/color is asked".
+
+**Consequences:** Existing mixed-axis options are not rewritten automatically - fixing them is a reviewed data change. Sizes are never inferred; sellers confirm them. Applying the migration is required for Move to options and the new status rule.
+
+---
+
 ## ADR-023: Buy Now checks out one product directly; Add to Cart is validated and confirmed
 
 **Context:** "Buy Now" added the product to the cart (merging into any existing line) and then opened checkout, which places whatever lines are selected in the cart — so it could include other items and the wrong quantity. Add to Cart was fire-and-forget: no confirmation, no error for a signed-in failure, a silent clamp for guests, and the server accepted adds beyond stock. A product with options also left both buttons disabled until everything was picked, with no way to see why.

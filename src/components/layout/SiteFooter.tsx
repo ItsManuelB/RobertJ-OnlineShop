@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 
 import { ROUTES } from "@/constants/routes";
 import { siteConfig } from "@/config/site";
+import { getPlatformSettings } from "@/lib/supabase/queries";
 
 /*
  * Instagram / Facebook / TikTok have no Lucide glyphs in this version, so they
@@ -60,7 +61,26 @@ const TRUST_BADGES = ["Verified Sellers", "Buyer Protected", "Secure Payments"];
  * rather than pointed at a placeholder — see ARCHITECTURE.md Technical Debt
  * Register for what's tracked to add back once those pages exist.
  */
-export function SiteFooter() {
+/** Admin-editable contact details; falls back to `siteConfig` so a settings outage never breaks the footer. */
+async function loadSupportContact() {
+  try {
+    const settings = await getPlatformSettings();
+    if (settings) {
+      return {
+        email: settings.supportEmail,
+        phone: settings.supportPhone,
+        address: settings.businessAddress,
+        hours: settings.businessHours,
+      };
+    }
+  } catch {
+    // fall through to the static default
+  }
+  return { email: siteConfig.supportEmail, phone: null, address: null, hours: null };
+}
+
+export async function SiteFooter() {
+  const support = await loadSupportContact();
   return (
     <footer className="bg-rj-black pb-8 pt-16 text-rj-white">
       <div className="mx-auto max-w-7xl px-5 md:px-8">
@@ -152,12 +172,28 @@ export function SiteFooter() {
             <ul className="space-y-3">
               <li>
                 <a
-                  href={`mailto:${siteConfig.supportEmail}`}
+                  href={`mailto:${support.email}`}
                   className="text-[13px] text-rj-gray-400 transition-colors hover:text-rj-white"
                 >
                   Contact Support
                 </a>
               </li>
+              {support.phone ? (
+                <li>
+                  <a
+                    href={`tel:${support.phone.replace(/[^+\d]/g, "")}`}
+                    className="text-[13px] text-rj-gray-400 transition-colors hover:text-rj-white"
+                  >
+                    {support.phone}
+                  </a>
+                </li>
+              ) : null}
+              {support.hours ? (
+                <li className="text-[13px] text-rj-gray-400">{support.hours}</li>
+              ) : null}
+              {support.address ? (
+                <li className="text-[13px] text-rj-gray-400">{support.address}</li>
+              ) : null}
               <li>
                 <Link
                   href={ROUTES.orders}

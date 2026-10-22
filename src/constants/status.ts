@@ -98,6 +98,8 @@ export const RETURN_STATUS = {
   sellerRejected: "seller_rejected",
   adminRejected: "admin_rejected",
   refunded: "refunded",
+  /** Admin approved a `replacement_exchange` resolution — no payment/order_status change; see `record_return_replacement_shipment`. */
+  replacementApproved: "replacement_approved",
 } as const satisfies Record<string, ReturnStatus>;
 
 export const RETURN_STATUS_LABELS: Record<ReturnStatus, string> = {
@@ -106,10 +108,12 @@ export const RETURN_STATUS_LABELS: Record<ReturnStatus, string> = {
   seller_rejected: "Rejected by seller",
   admin_rejected: "Rejected",
   refunded: "Refunded",
+  replacement_approved: "Replacement approved",
 };
 
 /** Return states that can no longer transition. */
 export const TERMINAL_RETURN_STATUSES: readonly ReturnStatus[] = [
   RETURN_STATUS.adminRejected,
   RETURN_STATUS.refunded,
+  RETURN_STATUS.replacementApproved,
 ];

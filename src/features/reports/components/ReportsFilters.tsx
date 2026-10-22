@@ -27,7 +27,7 @@ export interface ReportsFiltersProps {
 }
 
 const CONTROL =
-  "h-9 rounded-md border border-rj-gray-200 bg-rj-white px-3 text-sm text-rj-black focus-visible:border-rj-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rj-red/30";
+  "h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30";
 
 /**
  * Client filter bar: date presets, an explicit range, trend granularity, and
@@ -41,7 +41,8 @@ export function ReportsFilters({ filters, isAdmin, shops }: ReportsFiltersProps)
   const [isPending, startTransition] = useTransition();
 
   function commit(next: Partial<ReportFilters>) {
-    const params = new URLSearchParams(searchParams.toString());
+    const current = searchParams.toString();
+    const params = new URLSearchParams(current);
     const merged = { ...filters, ...next };
 
     params.set("from", merged.from);
@@ -53,8 +54,17 @@ export function ReportsFilters({ filters, isAdmin, shops }: ReportsFiltersProps)
       params.delete("shopId");
     }
 
+    const nextQuery = params.toString();
     startTransition(() => {
-      router.push(`${pathname}?${params.toString()}`);
+      // Re-picking the already-active preset/range resolves to the exact
+      // same URL — router.push() to an unchanged URL is a no-op in Next.js
+      // (no new request, no refetch) — so without this, the report would
+      // look stuck until some other click happened to change the URL.
+      if (nextQuery === current) {
+        router.refresh();
+        return;
+      }
+      router.push(`${pathname}?${nextQuery}`);
     });
   }
 
@@ -66,7 +76,7 @@ export function ReportsFilters({ filters, isAdmin, shops }: ReportsFiltersProps)
   return (
     <div
       className={cn(
-        "flex flex-col gap-4 rounded-lg border border-rj-gray-100 p-4",
+        "flex flex-col gap-4 rounded-lg border border-subtle-border p-4",
         isPending && "opacity-60",
       )}
       aria-busy={isPending}
@@ -80,10 +90,10 @@ export function ReportsFilters({ filters, isAdmin, shops }: ReportsFiltersProps)
               type="button"
               onClick={() => commit(resolvePreset(preset.id as DatePresetId))}
               className={cn(
-                "rounded-full border px-3 py-1 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rj-red/30",
+                "rounded-full border px-3 py-1 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30",
                 isActive
-                  ? "border-rj-black bg-rj-black text-rj-white"
-                  : "border-rj-gray-200 text-rj-gray-600 hover:border-rj-black",
+                  ? "border-filter-active bg-filter-active text-filter-active-foreground"
+                  : "border-border text-muted-foreground hover:border-primary",
               )}
               aria-pressed={isActive}
             >
@@ -94,7 +104,7 @@ export function ReportsFilters({ filters, isAdmin, shops }: ReportsFiltersProps)
       </div>
 
       <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1 text-xs font-medium text-rj-gray-500">
+        <label className="flex flex-col gap-1 text-xs font-medium text-rj-gray-500 dark:text-muted-foreground">
           From
           <input
             type="date"
@@ -104,7 +114,7 @@ export function ReportsFilters({ filters, isAdmin, shops }: ReportsFiltersProps)
             className={CONTROL}
           />
         </label>
-        <label className="flex flex-col gap-1 text-xs font-medium text-rj-gray-500">
+        <label className="flex flex-col gap-1 text-xs font-medium text-rj-gray-500 dark:text-muted-foreground">
           To
           <input
             type="date"
@@ -115,7 +125,7 @@ export function ReportsFilters({ filters, isAdmin, shops }: ReportsFiltersProps)
           />
         </label>
 
-        <label className="flex flex-col gap-1 text-xs font-medium text-rj-gray-500">
+        <label className="flex flex-col gap-1 text-xs font-medium text-rj-gray-500 dark:text-muted-foreground">
           Trend
           <select
             value={filters.granularity}
@@ -133,7 +143,7 @@ export function ReportsFilters({ filters, isAdmin, shops }: ReportsFiltersProps)
         </label>
 
         {isAdmin && shops && shops.length > 0 ? (
-          <label className="flex flex-col gap-1 text-xs font-medium text-rj-gray-500">
+          <label className="flex flex-col gap-1 text-xs font-medium text-rj-gray-500 dark:text-muted-foreground">
             Shop
             <select
               value={filters.shopId ?? ""}
@@ -151,7 +161,7 @@ export function ReportsFilters({ filters, isAdmin, shops }: ReportsFiltersProps)
         ) : null}
       </div>
 
-      <p className="text-[11px] text-rj-gray-400">
+      <p className="text-[11px] text-rj-gray-400 dark:text-muted-foreground">
         Dates use the {REPORT_TIMEZONE_LABEL} day boundary.
       </p>
     </div>

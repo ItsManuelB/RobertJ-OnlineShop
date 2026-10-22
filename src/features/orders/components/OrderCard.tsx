@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 import { RJ_CARD, THEMED_CARD } from "@/components/ui/card";
 import { ROUTES } from "@/constants/routes";
 import { formatCurrency } from "@/lib/utils/currency";
-import { formatDate } from "@/lib/utils/date";
+import { formatDateTime } from "@/lib/utils/date";
 import { cn } from "@/lib/utils/cn";
 import type { Order } from "@/features/orders/types/order.types";
 
@@ -67,7 +67,7 @@ export function OrderCard({ order, href, themed = false, actions }: OrderCardPro
 
       <div className="min-w-0 flex-1">
         <p className={cn("text-[13px] font-bold", ink)}>{order.orderNumber}</p>
-        <p className={cn("mt-0.5 text-xs", muted)}>{formatDate(order.placedAt)}</p>
+        <p className={cn("mt-0.5 text-xs", muted)}>{formatDateTime(order.placedAt)}</p>
       </div>
 
       <div className="flex flex-col items-end gap-1.5">

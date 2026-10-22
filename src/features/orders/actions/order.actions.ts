@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
-import { ORDER_STATUS } from "@/constants/status";
+import { ORDER_STATUS, type OrderStatus } from "@/constants/status";
 import { DASHBOARD_ROLES, USER_ROLES } from "@/constants/roles";
 import { ROUTES } from "@/constants/routes";
 import { fail, fromZodError, ok } from "@/lib/utils/result";
@@ -16,13 +16,28 @@ import {
 import {
   advanceOrderStatusSchema,
   bulkOrderIdsSchema,
+  bulkShipmentsSchema,
   cancelOrderSchema,
   confirmOrderReceivedSchema,
-  dashboardOrderListParamsSchema,
+  dashboardOrderExportFiltersSchema,
   recordShipmentSchema,
   scanOrderNumberSchema,
 } from "@/features/orders/schemas/order.schema";
-import type { Order, OrderListParams } from "@/features/orders/types/order.types";
+import type { Order, OrderItem, OrderListParams } from "@/features/orders/types/order.types";
+
+/** What the scan-to-pack popup shows for a To Pack order. */
+export interface ScannedOrderSummary {
+  orderNumber: string;
+  buyerName: string | null;
+  items: OrderItem[];
+}
+
+export interface ScannedOrderResolution {
+  orderId: string;
+  status: OrderStatus;
+  /** Present only for a To Pack (`confirmed`) order. */
+  summary?: ScannedOrderSummary;
+}
 
 /**
  * Fix #5B: before letting a cancellation through, resolve any stale (by the
@@ -277,6 +292,156 @@ export async function bulkConfirmOrdersAction(
 }
 
 /**
+ * Bulk To Pack → Ready for Pickup from the dashboard table's bulk-actions bar.
+ * Each order goes through the same `queries.advanceOrderStatus` transition and
+ * `markOrderPacked` audit stamp as the single-order path (`advanceOrderStatusAction`
+ * with `processing`) — minus that action's per-call rate limit, which would
+ * reject rows partway through a legitimate batch. The seller's batch-level
+ * "I've checked these items" acknowledgement happens in the UI; the server only
+ * ever moves orders that are still To Pack (the transition table rejects the
+ * rest), and reports each failure per order instead of aborting the batch.
+ */
+export async function bulkMarkReadyForPickupAction(
+  orderIds: string[],
+): Promise<ActionResult<{ updated: number; failed: Array<{ orderId: string; error: string }> }>> {
+  const parsed = bulkOrderIdsSchema.safeParse(orderIds);
+  if (!parsed.success) return fromZodError(parsed.error);
+
+  try {
+    const user = await queries.requireRole(DASHBOARD_ROLES);
+    await queries.requireRateLimit(`bulkReadyForPickup:${user.id}`, 10, 60);
+    const owner =
+      user.role === USER_ROLES.admin
+        ? null
+        : { sellerId: user.id, shopId: await queries.getOwnShopId(user.id) };
+
+    const failed: Array<{ orderId: string; error: string }> = [];
+    let updated = 0;
+    for (const orderId of parsed.data) {
+      try {
+        const order = await queries.advanceOrderStatus(orderId, ORDER_STATUS.processing, owner);
+        updated += 1;
+        // Advisory audit timestamp — the transition above is authoritative, so
+        // a failure here must not report the order as failed.
+        try {
+          await queries.markOrderPacked(order.id, order.sellerId);
+        } catch {
+          // packed_at is best-effort, same as the single-order path's intent.
+        }
+      } catch (error) {
+        failed.push({
+          orderId,
+          error: error instanceof Error ? error.message : "Could not mark this order ready for pickup.",
+        });
+      }
+    }
+
+    if (updated > 0) {
+      revalidatePath(ROUTES.adminOrders, "layout");
+      revalidatePath(ROUTES.sellerOrders, "layout");
+      revalidatePath(ROUTES.orders, "layout");
+    }
+    return ok({ updated, failed });
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "Could not update the selected orders.");
+  }
+}
+
+/**
+ * Bulk Shipped → Delivered from the dashboard table's bulk-actions bar. Each
+ * order goes through the same `queries.advanceOrderStatus` transition as the
+ * single-order path (`advanceOrderStatusAction` with `delivered`), which only
+ * allows it from `shipped`. Delivery is final, so the seller's review and
+ * acknowledgement happen in the UI before this is called. Failures are
+ * reported per order instead of aborting the batch. COD cash collection is a
+ * separate action (`markCodPaymentCollectedAction`) and is NOT touched here —
+ * the courier may remit the money later.
+ */
+export async function bulkMarkDeliveredAction(
+  orderIds: string[],
+): Promise<ActionResult<{ updated: number; failed: Array<{ orderId: string; error: string }> }>> {
+  const parsed = bulkOrderIdsSchema.safeParse(orderIds);
+  if (!parsed.success) return fromZodError(parsed.error);
+
+  try {
+    const user = await queries.requireRole(DASHBOARD_ROLES);
+    await queries.requireRateLimit(`bulkMarkDelivered:${user.id}`, 10, 60);
+    const owner =
+      user.role === USER_ROLES.admin
+        ? null
+        : { sellerId: user.id, shopId: await queries.getOwnShopId(user.id) };
+
+    const failed: Array<{ orderId: string; error: string }> = [];
+    let updated = 0;
+    for (const orderId of parsed.data) {
+      try {
+        await queries.advanceOrderStatus(orderId, ORDER_STATUS.delivered, owner);
+        updated += 1;
+      } catch (error) {
+        failed.push({
+          orderId,
+          error: error instanceof Error ? error.message : "Could not mark this order delivered.",
+        });
+      }
+    }
+
+    if (updated > 0) {
+      revalidatePath(ROUTES.adminOrders, "layout");
+      revalidatePath(ROUTES.sellerOrders, "layout");
+      revalidatePath(ROUTES.orders, "layout");
+    }
+    return ok({ updated, failed });
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "Could not update the selected orders.");
+  }
+}
+
+/**
+ * Bulk Ready for Pickup → Shipped. Each entry carries its own courier and
+ * tracking number (tracking is unique per parcel, so it can't be shared across
+ * orders), and each goes through the same `record_order_shipment` RPC as the
+ * single-order path — ownership, status and payment are re-checked inside it
+ * per order. No new rule: tracking is still required. Failures are reported
+ * per order instead of aborting the batch; the per-call rate limit of the
+ * single-order action is deliberately not reused (it would reject rows
+ * partway through a legitimate batch).
+ */
+export async function bulkMarkShippedAction(
+  shipments: Array<{ orderId: string; courier: string; trackingNumber: string }>,
+): Promise<ActionResult<{ updated: number; failed: Array<{ orderId: string; error: string }> }>> {
+  const parsed = bulkShipmentsSchema.safeParse(shipments);
+  if (!parsed.success) return fromZodError(parsed.error);
+
+  try {
+    const user = await queries.requireRole(DASHBOARD_ROLES);
+    await queries.requireRateLimit(`bulkMarkShipped:${user.id}`, 10, 60);
+
+    const failed: Array<{ orderId: string; error: string }> = [];
+    let updated = 0;
+    for (const entry of parsed.data) {
+      try {
+        await queries.recordOrderShipment(entry.orderId, entry.courier, entry.trackingNumber);
+        updated += 1;
+      } catch (error) {
+        failed.push({
+          orderId: entry.orderId,
+          error: error instanceof Error ? error.message : "Could not mark this order shipped.",
+        });
+      }
+    }
+
+    if (updated > 0) {
+      revalidatePath(ROUTES.adminOrders, "layout");
+      revalidatePath(ROUTES.sellerOrders, "layout");
+      revalidatePath(ROUTES.orders, "layout");
+    }
+    return ok({ updated, failed });
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "Could not update the selected orders.");
+  }
+}
+
+/**
  * Bulk-cancels every selected order from the dashboard table's bulk-actions
  * bar. Same per-order Xendit-reconciliation guard as the single-order path
  * (`blockCancellationIfXenditUnresolved`) — an order still resolves its own
@@ -326,9 +491,6 @@ export async function bulkCancelOrdersAction(
   }
 }
 
-/** Filters accepted by `exportOrdersAction` — the same dashboard list filters, minus pagination (the export has its own row cap). */
-const orderExportFiltersSchema = dashboardOrderListParamsSchema.omit({ page: true, pageSize: true });
-
 export interface OrderExportRow {
   orderNumber: string;
   buyerName: string | null;
@@ -347,13 +509,17 @@ export interface OrderExportRow {
 export async function exportOrdersAction(
   filters: Record<string, unknown>,
 ): Promise<ActionResult<OrderExportRow[]>> {
-  const parsed = orderExportFiltersSchema.safeParse(filters);
+  const parsed = dashboardOrderExportFiltersSchema.safeParse(filters);
   if (!parsed.success) return fromZodError(parsed.error);
 
   try {
     const user = await queries.requireRole(DASHBOARD_ROLES);
     await queries.requireRateLimit(`exportOrders:${user.id}`, 10, 60);
-    const orders = await queries.listOrdersForExport(parsed.data as OrderListParams);
+    const owner =
+      user.role === USER_ROLES.seller
+        ? { sellerId: user.id, shopId: await queries.getOwnShopId(user.id) }
+        : null;
+    const orders = await queries.listOrdersForExport(parsed.data as OrderListParams, owner);
     return ok(
       orders.map((order) => ({
         orderNumber: order.orderNumber,
@@ -383,7 +549,7 @@ export async function exportOrdersAction(
  */
 export async function resolveSellerOrderByNumberAction(
   orderNumber: string,
-): Promise<ActionResult<{ orderId: string }>> {
+): Promise<ActionResult<ScannedOrderResolution>> {
   const parsed = scanOrderNumberSchema.safeParse({ orderNumber });
   if (!parsed.success) return fromZodError(parsed.error);
 
@@ -391,14 +557,26 @@ export async function resolveSellerOrderByNumberAction(
     const user = await queries.requireRole([USER_ROLES.seller]);
     await queries.requireRateLimit(`scanOrder:${user.id}`, 30, 60);
 
-    const order = await queries.getDashboardOrderByNumber(
-      parsed.data.orderNumber,
-      { sellerId: user.id, shopId: await queries.getOwnShopId(user.id) },
-    );
+    const owner = { sellerId: user.id, shopId: await queries.getOwnShopId(user.id) };
+    const order = await queries.getDashboardOrderByNumber(parsed.data.orderNumber, owner);
     if (!order) {
       return fail("Order not found, or it isn't in your shop.");
     }
-    return ok({ orderId: order.id });
+
+    // A To Pack order gets a confirm popup on scan, so ship back what it shows
+    // (still read-only). Every other status just navigates.
+    let summary: ScannedOrderSummary | undefined;
+    if (order.status === ORDER_STATUS.confirmed) {
+      const full = await queries.getDashboardOrder(order.id, owner);
+      if (full) {
+        summary = {
+          orderNumber: full.orderNumber,
+          buyerName: full.buyerName ?? full.shippingAddress?.fullName ?? null,
+          items: full.items,
+        };
+      }
+    }
+    return ok({ orderId: order.id, status: order.status, summary });
   } catch {
     return fail("Could not look up that order. Please try again.");
   }
