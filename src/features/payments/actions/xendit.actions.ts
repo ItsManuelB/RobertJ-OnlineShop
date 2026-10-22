@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { ROUTES } from "@/constants/routes";
@@ -13,9 +14,11 @@ import {
   RECONCILIATION_RETRY_MESSAGE,
   findFreshOtherChannelAttempt,
   isStaleXenditAttempt,
+  reconcileReturnedXenditPayment,
   reconcileStaleXenditAttempt,
 } from "@/features/payments/lib/xendit-reconciliation";
 import {
+  confirmXenditPaymentSchema,
   createXenditCardSessionSchema,
   createXenditEwalletPaymentSchema,
   createXenditGroupCardSessionSchema,
@@ -437,5 +440,65 @@ export async function createXenditGroupCardSessionAction(
       await queries.logXenditCardSessionFailure(attempt.id, message);
     }
     return fail(message);
+  }
+}
+
+/** What the buyer-facing "confirming your payment" watcher needs back. */
+export type ConfirmedPaymentStatus = "pending" | "paid" | "failed";
+
+/**
+ * Real-time confirmation for a Xendit payment the buyer just made (or an
+ * older one still showing "pending"). Asks Xendit itself for the attempt's
+ * real status and applies it through the same `process_xendit_webhook` RPC
+ * the webhook uses (see `reconcileReturnedXenditPayment`), so the order flips
+ * to paid within seconds even when the webhook is late, misconfigured or
+ * unreachable. Nothing is marked paid on the client's say-so: ownership is
+ * enforced by RLS-scoped reads, the status comes from Xendit, and this only
+ * ever reports the row's resulting state. Polled by `PaymentStatusWatcher`.
+ */
+export async function confirmXenditPaymentAction(
+  input: unknown,
+): Promise<ActionResult<{ status: ConfirmedPaymentStatus }>> {
+  const parsed = confirmXenditPaymentSchema.safeParse(input);
+  if (!parsed.success) return fromZodError(parsed.error);
+
+  try {
+    const user = await queries.requireSessionUser();
+    await queries.requireRateLimit(`confirmXenditPayment:${user.id}`, 60, 60);
+
+    const { orderId, checkoutGroupId } = parsed.data;
+    // Both lookups are RLS-scoped to the buyer's own orders, so another
+    // buyer's id simply resolves to nothing.
+    const read = async () =>
+      checkoutGroupId
+        ? queries.getActivePaymentForGroup(checkoutGroupId)
+        : queries.getActivePaymentForOrder(orderId as string);
+
+    let payment = await read();
+    if (!payment || payment.paymentMethodType !== "xendit") return fail("Payment not found.");
+
+    if (payment.status === "pending" && payment.xenditPaymentRequestId) {
+      await reconcileReturnedXenditPayment(
+        { id: payment.orderId, checkoutGroupId: payment.checkoutGroupId },
+        payment.paymentChannel,
+      ).catch(() => null);
+      payment = (await read()) ?? payment;
+    }
+
+    const status: ConfirmedPaymentStatus =
+      payment.status === "paid" ||
+      payment.status === "refunded" ||
+      payment.status === "partially_refunded"
+        ? "paid"
+        : payment.status === "failed"
+          ? "failed"
+          : "pending";
+    if (status !== "pending") {
+      revalidatePath(ROUTES.orders);
+      revalidatePath(ROUTES.orderDetail(payment.orderId));
+    }
+    return ok({ status });
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "Could not confirm the payment.");
   }
 }

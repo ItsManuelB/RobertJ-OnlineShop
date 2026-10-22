@@ -18,6 +18,7 @@ import { ReceiptConfirmedNotice } from "@/features/orders/components/ReceiptConf
 import { SellerShopRow } from "@/features/orders/components/SellerShopRow";
 import { ShipmentTrackingCard } from "@/features/orders/components/ShipmentTrackingCard";
 import { paymentMethodLabel } from "@/features/orders/utils/payment-method-label";
+import { PaymentStatusWatcher } from "@/features/payments/components/PaymentStatusWatcher";
 import { ReportProblemPanel } from "@/features/returns/components/ReportProblemPanel";
 import { ReturnRequestStatusCard } from "@/features/returns/components/ReturnRequestStatusCard";
 import {
@@ -206,6 +207,15 @@ export default async function OrderDetailPage({
           <p className="text-sm font-semibold text-rj-black">
             {order.paymentStatus === "failed" ? "Payment failed" : "Payment needed"}
           </p>
+          {/* An attempt that already reached Xendit may well be paid — confirm it
+              in real time instead of leaving "Unpaid" until a webhook arrives. */}
+          {order.paymentStatus === "pending" && activePayment?.xenditPaymentRequestId ? (
+            <PaymentStatusWatcher
+              {...(activePayment.checkoutGroupId
+                ? { checkoutGroupId: activePayment.checkoutGroupId }
+                : { orderId: order.id })}
+            />
+          ) : null}
           <p className="text-xs text-rj-gray-600">
             Complete, retry, or change how you pay for this order in Checkout.
           </p>

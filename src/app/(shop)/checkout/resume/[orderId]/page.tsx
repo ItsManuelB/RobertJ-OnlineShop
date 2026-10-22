@@ -5,6 +5,7 @@ import { ROUTES } from "@/constants/routes";
 import type { UserRole } from "@/constants/roles";
 import { CheckoutResumePanel } from "@/features/checkout/components/CheckoutResumePanel";
 import type { XenditChannel } from "@/features/checkout/schemas/checkout.schema";
+import { PaymentStatusWatcher } from "@/features/payments/components/PaymentStatusWatcher";
 import { reconcileReturnedXenditPayment } from "@/features/payments/lib/xendit-reconciliation";
 import { canPurchase } from "@/lib/auth/permissions";
 import * as queries from "@/lib/supabase/queries";
@@ -57,7 +58,7 @@ export default async function CheckoutResumePage({ params, searchParams }: Check
   // than waiting only for the webhook. A paid result leaves this workspace.
   if (query.xendit_return === "1") {
     const outcome = await reconcileReturnedXenditPayment(
-      order,
+      { id: order.id, checkoutGroupId: activePayment?.checkoutGroupId ?? null },
       activePayment?.paymentChannel ?? null,
     ).catch(() => null);
     if (outcome === "already_paid") {
@@ -80,6 +81,14 @@ export default async function CheckoutResumePage({ params, searchParams }: Check
       <div className="border-b border-rj-gray-100 pb-3">
         <h1 className="text-xl font-semibold text-rj-black">Checkout</h1>
       </div>
+      {/* Back from Xendit but not confirmed yet: keep checking in real time. */}
+      {query.xendit_return === "1" && activePayment?.xenditPaymentRequestId ? (
+        <PaymentStatusWatcher
+          {...(activePayment.checkoutGroupId
+            ? { checkoutGroupId: activePayment.checkoutGroupId }
+            : { orderId: order.id })}
+        />
+      ) : null}
       <CheckoutResumePanel
         orderId={order.id}
         checkoutGroupId={order.checkoutGroupId}
