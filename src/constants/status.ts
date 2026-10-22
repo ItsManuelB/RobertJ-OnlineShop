@@ -102,6 +102,14 @@ export const RETURN_STATUS = {
   replacementApproved: "replacement_approved",
   /** COD refund approved by admin; nothing is marked refunded until `record_cod_refund_payout` records the real payout. */
   refundDue: "refund_due",
+  /** Admin approved a Return and Refund: the buyer must ship the item back by `returnDeadlineAt`. */
+  awaitingReturn: "awaiting_return",
+  /** Buyer entered courier + tracking for the parcel going back. */
+  returnShipped: "return_shipped",
+  /** Seller confirmed receipt and inspected the item; waiting for the admin to confirm the refund. */
+  returnReceived: "return_received",
+  /** The buyer did not ship in time; nothing was refunded. */
+  returnExpired: "return_expired",
 } as const satisfies Record<string, ReturnStatus>;
 
 export const RETURN_STATUS_LABELS: Record<ReturnStatus, string> = {
@@ -112,6 +120,10 @@ export const RETURN_STATUS_LABELS: Record<ReturnStatus, string> = {
   refunded: "Refunded",
   replacement_approved: "Replacement approved",
   refund_due: "Refund approved — payout pending",
+  awaiting_return: "Awaiting return",
+  return_shipped: "Return shipped",
+  return_received: "Return received",
+  return_expired: "Return expired",
 };
 
 /** Return states that can no longer transition. */
@@ -119,4 +131,5 @@ export const TERMINAL_RETURN_STATUSES: readonly ReturnStatus[] = [
   RETURN_STATUS.adminRejected,
   RETURN_STATUS.refunded,
   RETURN_STATUS.replacementApproved,
+  RETURN_STATUS.returnExpired,
 ];

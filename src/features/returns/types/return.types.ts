@@ -59,6 +59,14 @@ export interface ReturnRequest {
   codRefundMethod: "gcash" | "bank_transfer" | "cash" | null;
   codRefundReference: string | null;
   codRefundedAt: string | null;
+  /** Return and Refund: when the buyer must have shipped the item back by (set on approval; the request is closed automatically after). */
+  returnDeadlineAt: string | null;
+  returnCourier: string | null;
+  returnTrackingNumber: string | null;
+  returnShippedAt: string | null;
+  returnReceivedAt: string | null;
+  /** What the seller found when the returned item arrived. */
+  returnInspection: ReturnItemCondition | null;
   createdAt: string;
 }
 

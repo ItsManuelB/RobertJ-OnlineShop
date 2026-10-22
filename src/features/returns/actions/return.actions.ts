@@ -15,7 +15,9 @@ import {
   decideReturnSchema,
   recordCodRefundPayoutSchema,
   recordReturnItemConditionSchema,
+  recordReturnReceivedSchema,
   recordReturnReplacementShipmentSchema,
+  recordReturnShipmentSchema,
   requestReturnSchema,
   respondToReturnSchema,
 } from "@/features/returns/schemas/return.schema";
@@ -304,6 +306,71 @@ export async function recordReturnReplacementShipmentAction(
   } catch (error) {
     return fail(
       error instanceof Error ? error.message : "Could not record this replacement shipment.",
+    );
+  }
+}
+
+/**
+ * The BUYER enters the courier + tracking number of the parcel they are sending
+ * back for an approved Return and Refund. Ownership, the `awaiting_return`
+ * state and the 5-day deadline are enforced inside `record_return_shipment`;
+ * this action only needs a signed-in user (not a dashboard role).
+ */
+export async function recordReturnShipmentAction(
+  returnId: string,
+  courier: string,
+  trackingNumber: string,
+): Promise<ActionResult<null>> {
+  const parsed = recordReturnShipmentSchema.safeParse({ returnId, courier, trackingNumber });
+  if (!parsed.success) return fromZodError(parsed.error);
+
+  try {
+    await queries.requireSessionUser();
+    const { orderId } = await queries.recordReturnShipment(
+      parsed.data.returnId,
+      parsed.data.courier,
+      parsed.data.trackingNumber,
+    );
+    await revalidateOrderSurfaces(orderId);
+    revalidatePath(ROUTES.adminReturns);
+    revalidatePath(ROUTES.sellerReturns);
+    return ok(null);
+  } catch (error) {
+    return fail(
+      error instanceof Error ? error.message : "Could not record your return shipment.",
+    );
+  }
+}
+
+/**
+ * The order's seller (or shop member / admin) confirms the returned parcel
+ * arrived and records whether the item is sellable. A sellable item is
+ * restocked inside `record_return_received`; the request then waits for the
+ * admin to confirm the refund. `requireRole` is defense-in-depth — ownership is
+ * enforced inside the RPC.
+ */
+export async function recordReturnReceivedAction(
+  returnId: string,
+  condition: ReturnItemCondition,
+  note?: string,
+): Promise<ActionResult<null>> {
+  const parsed = recordReturnReceivedSchema.safeParse({ returnId, condition, note });
+  if (!parsed.success) return fromZodError(parsed.error);
+
+  try {
+    await queries.requireRole(DASHBOARD_ROLES);
+    const { orderId } = await queries.recordReturnReceived(
+      parsed.data.returnId,
+      parsed.data.condition,
+      parsed.data.note ?? null,
+    );
+    await revalidateOrderSurfaces(orderId);
+    revalidatePath(ROUTES.adminReturns);
+    revalidatePath(ROUTES.sellerReturns);
+    return ok(null);
+  } catch (error) {
+    return fail(
+      error instanceof Error ? error.message : "Could not record this received return.",
     );
   }
 }

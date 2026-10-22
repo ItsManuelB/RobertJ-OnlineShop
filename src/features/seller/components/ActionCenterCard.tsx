@@ -41,6 +41,7 @@ export async function ActionCenterCard({
   let needsConfirmation: number;
   let codAwaitingCollection: number;
   let pendingReturnRequests: number;
+  let returnsAwaitingReceipt: number;
   let lowStockCount: number;
 
   try {
@@ -51,6 +52,7 @@ export async function ActionCenterCard({
     needsConfirmation = attention.needsConfirmation;
     codAwaitingCollection = attention.codAwaitingCollection;
     pendingReturnRequests = attention.pendingReturnRequests;
+    returnsAwaitingReceipt = attention.returnsAwaitingReceipt;
     lowStockCount = lowStock.length;
   } catch {
     return <ErrorState message="We couldn't load your action items right now." />;
@@ -76,6 +78,13 @@ export async function ActionCenterCard({
     rows.push({
       tone: "warning",
       text: `${pendingReturnRequests} return request${pendingReturnRequests === 1 ? "" : "s"} awaiting your response`,
+      href: returnsHref,
+    });
+  }
+  if (returnsAwaitingReceipt > 0) {
+    rows.push({
+      tone: "info",
+      text: `${returnsAwaitingReceipt} returned item${returnsAwaitingReceipt === 1 ? "" : "s"} shipped back — confirm when ${returnsAwaitingReceipt === 1 ? "it arrives" : "they arrive"}`,
       href: returnsHref,
     });
   }

@@ -18,6 +18,7 @@ import { ShippingAddressCard } from "@/features/orders/components/ShippingAddres
 import { MarkCodCollectedButton } from "@/features/payments/components/MarkCodCollectedButton";
 import { RecordReturnConditionPanel } from "@/features/returns/components/RecordReturnConditionPanel";
 import { ReturnRequestStatusCard } from "@/features/returns/components/ReturnRequestStatusCard";
+import { ReturnShippingActions } from "@/features/returns/components/ReturnShippingActions";
 import { RespondToReturnPanel } from "@/features/returns/components/RespondToReturnPanel";
 import {
   getDashboardOrder,
@@ -116,6 +117,7 @@ export default async function SellerOrderDetailPage({ params, searchParams }: Se
           {returnRequest.status === RETURN_STATUS.pending ? (
             <RespondToReturnPanel returnId={returnRequest.id} />
           ) : null}
+          <ReturnShippingActions request={returnRequest} viewer="seller" />
           {returnRequest.status === RETURN_STATUS.refunded &&
           !returnRequest.restockedAt &&
           !returnRequest.markedUnsellableAt ? (

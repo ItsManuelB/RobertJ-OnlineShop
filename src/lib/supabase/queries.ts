@@ -2978,6 +2978,8 @@ export async function getOrderAttentionCounts(shopId?: string | null): Promise<{
    * (seller) or everything (admin), same as every other count here.
    */
   pendingReturnRequests: number;
+  /** Return and Refund: parcels the buyer has shipped back that the seller still has to confirm as received. */
+  returnsAwaitingReceipt: number;
 }> {
   const supabase = await createSupabaseServerClient();
   let confirmQuery = supabase
@@ -3001,31 +3003,39 @@ export async function getOrderAttentionCounts(shopId?: string | null): Promise<{
       .from(DATABASE_TABLES.RETURN_REQUESTS)
       .select("id", { count: "exact", head: true })
       .eq("status", RETURN_STATUS.pending);
+  let awaitingReceiptQuery = supabase
+      .from(DATABASE_TABLES.RETURN_REQUESTS)
+      .select("id", { count: "exact", head: true })
+      .eq("status", RETURN_STATUS.returnShipped);
 
   if (shopId) {
     confirmQuery = confirmQuery.eq("shop_id", shopId);
     codQuery = codQuery.eq("shop_id", shopId);
     restockQuery = restockQuery.eq("shop_id", shopId);
     pendingReturnQuery = pendingReturnQuery.eq("shop_id", shopId);
+    awaitingReceiptQuery = awaitingReceiptQuery.eq("shop_id", shopId);
   }
 
-  const [confirmResult, codResult, restockResult, pendingReturnResult] = await Promise.all([
+  const [confirmResult, codResult, restockResult, pendingReturnResult, awaitingReceiptResult] = await Promise.all([
     confirmQuery,
     codQuery,
     restockQuery,
     pendingReturnQuery,
+    awaitingReceiptQuery,
   ]);
 
   if (confirmResult.error) throw queryError("Failed to load order counts", confirmResult.error);
   if (codResult.error) throw queryError("Failed to load order counts", codResult.error);
   if (restockResult.error) throw queryError("Failed to load order counts", restockResult.error);
   if (pendingReturnResult.error) throw queryError("Failed to load order counts", pendingReturnResult.error);
+  if (awaitingReceiptResult.error) throw queryError("Failed to load order counts", awaitingReceiptResult.error);
 
   return {
     needsConfirmation: confirmResult.count ?? 0,
     codAwaitingCollection: codResult.count ?? 0,
     returnsAwaitingRestock: restockResult.count ?? 0,
     pendingReturnRequests: pendingReturnResult.count ?? 0,
+    returnsAwaitingReceipt: awaitingReceiptResult.count ?? 0,
   };
 }
 
@@ -4874,6 +4884,7 @@ const RETURN_REQUEST_COLUMNS = `
   refund_amount_cents, restocked_at, marked_unsellable_at, condition_note,
   replacement_courier, replacement_tracking_number, replacement_shipped_at, created_at, updated_at,
   cod_refund_method, cod_refund_reference, cod_refunded_at,
+  return_deadline_at, return_courier, return_tracking_number, return_shipped_at, return_received_at, return_inspection,
   order:orders!return_requests_order_id_fkey ( order_number, currency, payment_method, payment_status ),
   buyer:profiles!return_requests_buyer_id_fkey ( full_name, username ),
   order_item:order_items!return_requests_order_item_id_fkey ( product_title )
@@ -4923,6 +4934,12 @@ function toReturnRequest(row: ReturnRequestRowWithJoins): ReturnRequest {
     codRefundMethod: row.cod_refund_method as ReturnRequest["codRefundMethod"],
     codRefundReference: row.cod_refund_reference,
     codRefundedAt: row.cod_refunded_at,
+    returnDeadlineAt: row.return_deadline_at,
+    returnCourier: row.return_courier,
+    returnTrackingNumber: row.return_tracking_number,
+    returnShippedAt: row.return_shipped_at,
+    returnReceivedAt: row.return_received_at,
+    returnInspection: row.return_inspection as ReturnRequest["returnInspection"],
     createdAt: row.created_at,
   };
 }
@@ -5100,6 +5117,66 @@ export async function recordReturnReplacementShipment(
     throw new Error(mapPostgresError(error, "Could not record this replacement shipment."));
   }
   return { orderId: (data as { order_id: string }).order_id };
+}
+
+/**
+ * Buyer-only: enters the courier + tracking number of the parcel they are
+ * sending back (`record_return_shipment`) — moves an `awaiting_return` request
+ * to `return_shipped`. Ownership, state and deadline are enforced in the RPC.
+ */
+export async function recordReturnShipment(
+  returnId: string,
+  courier: string,
+  trackingNumber: string,
+): Promise<{ orderId: string }> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("record_return_shipment", {
+    p_return_id: returnId,
+    p_courier: courier,
+    p_tracking_number: trackingNumber,
+  });
+
+  if (error) {
+    throw new Error(mapPostgresError(error, "Could not record your return shipment."));
+  }
+  return { orderId: (data as { order_id: string }).order_id };
+}
+
+/**
+ * The order's seller (or shop member / admin) confirms the returned parcel
+ * arrived and records its condition (`record_return_received`). A sellable item
+ * is restocked inside the RPC; the request moves to `return_received`, which the
+ * admin's refund confirmation waits for.
+ */
+export async function recordReturnReceived(
+  returnId: string,
+  condition: ReturnItemCondition,
+  note: string | null,
+): Promise<{ orderId: string }> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("record_return_received", {
+    p_return_id: returnId,
+    p_condition: condition,
+    p_note: note ?? undefined,
+  });
+
+  if (error) {
+    throw new Error(mapPostgresError(error, "Could not record this received return."));
+  }
+  return { orderId: (data as { order_id: string }).order_id };
+}
+
+/**
+ * Closes `awaiting_return` requests whose ship-back deadline passed. Service-role
+ * only (the 15-minute sweep has no user session). Returns how many were closed.
+ */
+export async function expireOverdueReturnRequests(): Promise<number> {
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin.rpc("expire_overdue_return_requests");
+  if (error) {
+    throw queryError("Failed to expire overdue return requests", error);
+  }
+  return data ?? 0;
 }
 
 /**

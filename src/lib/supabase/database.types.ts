@@ -1246,6 +1246,13 @@ export type Database = {
           shop_id: string | null
           status: Database["public"]["Enums"]["return_status"]
           updated_at: string
+          return_courier: string | null
+          return_deadline_at: string | null
+          return_inspection: string | null
+          return_received_at: string | null
+          return_received_by: string | null
+          return_shipped_at: string | null
+          return_tracking_number: string | null
         }
         Insert: {
           admin_decided_at?: string | null
@@ -1279,6 +1286,13 @@ export type Database = {
           shop_id?: string | null
           status?: Database["public"]["Enums"]["return_status"]
           updated_at?: string
+          return_courier?: string | null
+          return_deadline_at?: string | null
+          return_inspection?: string | null
+          return_received_at?: string | null
+          return_received_by?: string | null
+          return_shipped_at?: string | null
+          return_tracking_number?: string | null
         }
         Update: {
           admin_decided_at?: string | null
@@ -1312,6 +1326,13 @@ export type Database = {
           shop_id?: string | null
           status?: Database["public"]["Enums"]["return_status"]
           updated_at?: string
+          return_courier?: string | null
+          return_deadline_at?: string | null
+          return_inspection?: string | null
+          return_received_at?: string | null
+          return_received_by?: string | null
+          return_shipped_at?: string | null
+          return_tracking_number?: string | null
         }
         Relationships: [
           {
@@ -2608,6 +2629,26 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      record_return_shipment: {
+        Args: {
+          p_courier: string
+          p_return_id: string
+          p_tracking_number: string
+        }
+        Returns: Database["public"]["Tables"]["return_requests"]["Row"]
+      }
+      record_return_received: {
+        Args: {
+          p_condition: string
+          p_note?: string
+          p_return_id: string
+        }
+        Returns: Database["public"]["Tables"]["return_requests"]["Row"]
+      }
+      expire_overdue_return_requests: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
       record_cod_refund_payout: {
         Args: {
           p_method: string
@@ -2909,6 +2950,10 @@ export type Database = {
         | "refunded"
         | "replacement_approved"
         | "refund_due"
+        | "awaiting_return"
+        | "return_shipped"
+        | "return_received"
+        | "return_expired"
       stock_adjustment_reason:
         | "initial_stock"
         | "restock"
@@ -3099,6 +3144,10 @@ export const Constants = {
         "refunded",
         "replacement_approved",
         "refund_due",
+        "awaiting_return",
+        "return_shipped",
+        "return_received",
+        "return_expired",
       ],
       stock_adjustment_reason: [
         "initial_stock",

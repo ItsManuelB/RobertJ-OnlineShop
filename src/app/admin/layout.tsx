@@ -26,11 +26,12 @@ import {
  * even see, let alone act on (the RPC refused anything still `pending`).
  */
 async function getAdminNotifications(): Promise<AdminNotification[]> {
-  const [attentionCounts, lowStock, pendingReturns, payoutReturns, overdueReturns] = await Promise.all([
+  const [attentionCounts, lowStock, pendingReturns, payoutReturns, receivedReturns, overdueReturns] = await Promise.all([
     getOrderAttentionCounts(),
     getLowStockReport(),
     listReturnRequests(RETURN_STATUS.sellerAccepted),
     listReturnRequests(RETURN_STATUS.refundDue),
+    listReturnRequests(RETURN_STATUS.returnReceived),
     getOverduePendingReturnCount(),
   ]);
 
@@ -68,6 +69,15 @@ async function getAdminNotifications(): Promise<AdminNotification[]> {
       id: "pending-cod-refund-payouts",
       title: "COD refunds to pay out",
       description: `${payoutReturns.length} approved COD refund${payoutReturns.length === 1 ? "" : "s"} waiting for the payout to be recorded`,
+      href: ROUTES.adminReturns,
+      tone: "warning",
+    });
+  }
+  if (receivedReturns.length > 0) {
+    notifications.push({
+      id: "returns-ready-for-refund",
+      title: "Returned items ready for refund",
+      description: `${receivedReturns.length} returned item${receivedReturns.length === 1 ? "" : "s"} received by the seller — confirm the refund`,
       href: ROUTES.adminReturns,
       tone: "warning",
     });

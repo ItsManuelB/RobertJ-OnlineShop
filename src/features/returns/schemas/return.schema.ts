@@ -81,9 +81,8 @@ export const recordReturnItemConditionSchema = z.object({
   note: z.string().trim().max(500, "Note is too long.").optional(),
 });
 
-/** Payload for the seller/admin's "ship the replacement" step — only legal once `decide_return` approved `replacement_exchange`. Mirrors `ShipmentCaptureForm`'s courier/tracking shape exactly. */
-export const recordReturnReplacementShipmentSchema = z.object({
-  returnId: uuidSchema,
+/** Courier + tracking, shared by every manual shipment capture — mirrors `ShipmentCaptureForm`'s shape exactly. */
+const courierTrackingFields = {
   courier: z
     .string()
     .trim()
@@ -94,6 +93,25 @@ export const recordReturnReplacementShipmentSchema = z.object({
     .trim()
     .min(1, "Please enter the tracking number.")
     .max(120, "Tracking number must be 120 characters or fewer."),
+};
+
+/** Payload for the seller/admin's "ship the replacement" step — only legal once `decide_return` approved `replacement_exchange`. */
+export const recordReturnReplacementShipmentSchema = z.object({
+  returnId: uuidSchema,
+  ...courierTrackingFields,
+});
+
+/** Payload for the buyer's "I shipped it back" step — only legal while the return is `awaiting_return`. */
+export const recordReturnShipmentSchema = z.object({
+  returnId: uuidSchema,
+  ...courierTrackingFields,
+});
+
+/** Payload for the seller's "I received the returned item" step — only legal once the buyer shipped it. */
+export const recordReturnReceivedSchema = z.object({
+  returnId: uuidSchema,
+  condition: z.enum(["sellable", "not_sellable"]),
+  note: z.string().trim().max(500, "Note is too long.").optional(),
 });
 
 /** Payload for an admin recording how a COD buyer was paid back — mirrors `record_cod_refund_payout`'s own checks. */
@@ -114,3 +132,5 @@ export type DecideReturnInput = z.infer<typeof decideReturnSchema>;
 export type RecordReturnItemConditionInput = z.infer<typeof recordReturnItemConditionSchema>;
 export type RecordCodRefundPayoutInput = z.infer<typeof recordCodRefundPayoutSchema>;
 export type RecordReturnReplacementShipmentInput = z.infer<typeof recordReturnReplacementShipmentSchema>;
+export type RecordReturnShipmentInput = z.infer<typeof recordReturnShipmentSchema>;
+export type RecordReturnReceivedInput = z.infer<typeof recordReturnReceivedSchema>;

@@ -127,8 +127,23 @@ export async function GET(request: NextRequest) {
 
   const expiry = await runExpirySweep();
   const refunds = await runRefundSweep();
+  const returns = await runReturnExpirySweep();
 
-  return NextResponse.json({ received: true, ...summary, expiry, refunds });
+  return NextResponse.json({ received: true, ...summary, expiry, refunds, returns });
+}
+
+/**
+ * Closes Return and Refund requests the buyer never shipped back in time
+ * (`awaiting_return` past `return_deadline_at` -> `return_expired`). Nothing was
+ * refunded at that point, so there is nothing to undo.
+ */
+async function runReturnExpirySweep(): Promise<{ expired: number; errors: number }> {
+  try {
+    return { expired: await queries.expireOverdueReturnRequests(), errors: 0 };
+  } catch (error) {
+    console.error("[return expiry sweep] failed", error);
+    return { expired: 0, errors: 1 };
+  }
 }
 
 /**

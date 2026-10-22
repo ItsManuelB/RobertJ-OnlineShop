@@ -30,6 +30,18 @@ export const SHIPPED_NON_DELIVERY_GRACE_DAYS = 3;
  */
 export const RETURN_SELLER_RESPONSE_SLA_DAYS = 3;
 
+/**
+ * Return and Refund: how long the buyer has, after the admin approves, to ship
+ * the item back. Authoritative enforcement is `decide_return`'s literal
+ * `interval '5 days'` (`20261023000200_decide_return_return_shipping.sql`);
+ * `record_return_shipment` rejects a late submission and the 15-minute sweep
+ * closes the request. This constant is the single source for UI copy.
+ */
+export const RETURN_SHIPBACK_DAYS = 5;
+
+/** Non-authoritative courier suggestions only — courier is stored as free text (no courier API). Same list as `ShipmentCaptureForm`. */
+export const COMMON_COURIERS = ["J&T Express", "LBC", "Ninja Van", "Flash Express", "JRS Express", "GrabExpress"];
+
 /** Hard cap on the buyer's free-text "Other" explanation — enforced both client-side (live counter + `maxLength`) and inside `request_return` itself. */
 export const RETURN_EXPLANATION_MAX_LENGTH = 500;
 

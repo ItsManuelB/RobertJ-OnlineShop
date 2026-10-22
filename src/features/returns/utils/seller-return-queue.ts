@@ -30,7 +30,11 @@ export function sellerReturnBucket(request: ReturnRequest): Exclude<SellerReturn
     case RETURN_STATUS.sellerAccepted:
     case RETURN_STATUS.sellerRejected:
     case RETURN_STATUS.refundDue:
+    case RETURN_STATUS.returnReceived:
+    case RETURN_STATUS.awaitingReturn:
       return "admin";
+    case RETURN_STATUS.returnShipped:
+      return "action";
     case RETURN_STATUS.refunded:
       return !request.restockedAt && !request.markedUnsellableAt ? "action" : "closed";
     case RETURN_STATUS.replacementApproved:

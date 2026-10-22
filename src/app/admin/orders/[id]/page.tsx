@@ -16,6 +16,7 @@ import { MarkCodCollectedButton } from "@/features/payments/components/MarkCodCo
 import { RecordCodRefundPayoutPanel } from "@/features/returns/components/RecordCodRefundPayoutPanel";
 import { RecordReturnConditionPanel } from "@/features/returns/components/RecordReturnConditionPanel";
 import { ReturnRequestStatusCard } from "@/features/returns/components/ReturnRequestStatusCard";
+import { ReturnShippingActions } from "@/features/returns/components/ReturnShippingActions";
 import { RespondToReturnPanel } from "@/features/returns/components/RespondToReturnPanel";
 import {
   getDashboardOrder,
@@ -84,6 +85,7 @@ export default async function AdminOrderDetailPage({ params }: AdminOrderDetailP
           {returnRequest.status === RETURN_STATUS.pending ? (
             <RespondToReturnPanel returnId={returnRequest.id} />
           ) : null}
+          <ReturnShippingActions request={returnRequest} viewer="admin" />
           {returnRequest.status === RETURN_STATUS.refundDue ? (
             <RecordCodRefundPayoutPanel
               returnId={returnRequest.id}

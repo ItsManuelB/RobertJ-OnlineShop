@@ -21,6 +21,18 @@ const RETURN_STATUS_TONE: Record<ReturnStatus, "neutral" | "info" | "success" | 
   refunded: "success",
   replacement_approved: "warning",
   refund_due: "warning",
+  awaiting_return: "warning",
+  return_shipped: "info",
+  return_received: "info",
+  return_expired: "neutral",
+};
+
+/** Plain "what happens next" line for the ship-back leg — shown to every viewer, so it names the role, not "you". */
+const RETURN_NEXT_STEP: Partial<Record<ReturnStatus, string>> = {
+  awaiting_return: "the buyer ships the item back. If they don't ship in time, this request closes automatically.",
+  return_shipped: "the seller confirms the parcel arrived and checks the item.",
+  return_received: "the admin confirms the refund.",
+  return_expired: "the item was not shipped back in time, so nothing was refunded.",
 };
 
 export interface ReturnRequestStatusCardProps {
@@ -50,7 +62,9 @@ export async function ReturnRequestStatusCard({
   themed = false,
 }: ReturnRequestStatusCardProps) {
   const pendingRefund =
-    request.status === "seller_accepted" || request.status === "seller_rejected"
+    request.status === "seller_accepted" ||
+    request.status === "seller_rejected" ||
+    request.status === "return_received"
       ? await getPendingXenditRefundForReturn(request.id).catch(() => null)
       : null;
 
@@ -150,6 +164,34 @@ export async function ReturnRequestStatusCard({
           Paid out via {COD_REFUND_METHOD_LABELS[request.codRefundMethod]}
           {request.codRefundReference ? ` — ref ${request.codRefundReference}` : ""} (
           {formatDateTime(request.codRefundedAt)})
+        </p>
+      ) : null}
+
+      {RETURN_NEXT_STEP[request.status] ? (
+        <p className={cn("mt-3 text-xs", muted)}>
+          <span className={cn("font-semibold", ink)}>What happens next:</span> {RETURN_NEXT_STEP[request.status]}
+        </p>
+      ) : null}
+
+      {request.returnDeadlineAt && request.status === RETURN_STATUS.awaitingReturn ? (
+        <p className={cn("mt-2 text-xs", muted)}>
+          <span className={cn("font-semibold", ink)}>Ship back by:</span> {formatDateTime(request.returnDeadlineAt)}
+        </p>
+      ) : null}
+
+      {request.returnShippedAt ? (
+        <p className={cn("mt-2 text-xs", muted)}>
+          <span className={cn("font-semibold", ink)}>Returned parcel:</span> shipped via {request.returnCourier} —
+          tracking {request.returnTrackingNumber} ({formatDateTime(request.returnShippedAt)})
+          {request.returnReceivedAt ? `, received ${formatDateTime(request.returnReceivedAt)}` : ""}
+        </p>
+      ) : null}
+
+      {request.returnInspection ? (
+        <p className={cn("mt-1 text-xs", muted)}>
+          <span className={cn("font-semibold", ink)}>Seller inspection:</span>{" "}
+          {request.returnInspection === "sellable" ? "item is sellable" : "item is not sellable"}
+          {request.conditionNote ? ` — ${request.conditionNote}` : ""}
         </p>
       ) : null}
 

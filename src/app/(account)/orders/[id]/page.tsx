@@ -21,6 +21,7 @@ import { paymentMethodLabel } from "@/features/orders/utils/payment-method-label
 import { PaymentStatusWatcher } from "@/features/payments/components/PaymentStatusWatcher";
 import { ReportProblemPanel } from "@/features/returns/components/ReportProblemPanel";
 import { ReturnRequestStatusCard } from "@/features/returns/components/ReturnRequestStatusCard";
+import { ReturnShippingActions } from "@/features/returns/components/ReturnShippingActions";
 import {
   getActivePaymentForOrder,
   getBuyerOrder,
@@ -230,7 +231,10 @@ export default async function OrderDetailPage({
 
       {canRequestReturn ? (
         returnRequest ? (
-          <ReturnRequestStatusCard request={returnRequest} evidenceUrl={returnEvidenceUrl} />
+          <div className="flex flex-col gap-3">
+            <ReturnRequestStatusCard request={returnRequest} evidenceUrl={returnEvidenceUrl} />
+            <ReturnShippingActions request={returnRequest} viewer="buyer" />
+          </div>
         ) : showDeliveryResolution ? (
           <DeliveryResolutionChoice
             orderId={order.id}
