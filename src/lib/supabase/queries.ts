@@ -104,6 +104,7 @@ import {
   type StockAdjustment,
 } from "@/features/inventory/types/inventory.types";
 import { DEFAULT_LOW_STOCK_THRESHOLD } from "@/features/inventory/constants/inventory.constants";
+import { interleaveByKey } from "@/features/products/lib/interleave-by-key";
 import type {
   CategoryRevenue,
   OrderStatusCount,
@@ -168,6 +169,9 @@ type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
  * everywhere else in this file (every `.from()` / `.eq()` call below); this
  * `.select()` string is the one documented exception.
  */
+/** Largest catalog the shop-mixing "Recommended" order handles in memory; beyond it, plain newest-first. */
+const MIX_LIMIT = 2000;
+
 const PRODUCT_COLUMNS = `
   id, slug, title, description, price_cents, currency, quantity, condition,
   status, featured, location, tags, category_id, seller_id, shop_id, published_at,
@@ -322,10 +326,14 @@ export async function listProducts(
   // the identical filters/sort — a Supabase builder can't be re-ranged once
   // awaited, and duplicating the filter chain would violate DRY. `head` skips
   // row transfer for a count-only probe.
-  const buildQuery = (head = false, group?: { ids: string[]; include: boolean }) => {
+  const buildQuery = (
+    head = false,
+    group?: { ids: string[]; include: boolean },
+    columns: string = PRODUCT_COLUMNS,
+  ) => {
     let query = supabase
       .from(DATABASE_TABLES.PRODUCTS)
-      .select(PRODUCT_COLUMNS, { count: "exact", head })
+      .select(columns, { count: "exact", head })
       .eq("status", params.status ?? PRODUCT_STATUS.active);
 
     if (shopSellerIds) {
@@ -395,10 +403,13 @@ export async function listProducts(
     return query;
   };
 
-  // "Recommended": products a buyer can choose options on (size/color) first,
-  // newest first within each group. PostgREST can't order by a column of
-  // another table, so the two groups are counted and paged separately and the
-  // requested window is stitched across them.
+  // "Recommended": products a buyer can choose options on (size/color) come
+  // first, and within each group the shops take turns (Shop One, Shop Two, ...)
+  // with newest first inside each shop. Ordering by another table's column or
+  // by "turns" isn't possible in PostgREST, so the matching products' ids and
+  // shops (a few bytes each) are fetched in newest-first order, mixed here, and
+  // only the requested page's full rows are then loaded. A catalog beyond
+  // MIX_LIMIT products falls back to the plain newest-first path below.
   if (params.sort === "recommended") {
     const { data: optionRows, error: optionError } = await supabase
       .from(DATABASE_TABLES.PRODUCT_VARIANTS)
@@ -408,42 +419,41 @@ export async function listProducts(
     if (optionError) throw queryError("Failed to load products", optionError);
     const optionIds = [...new Set((optionRows ?? []).map((row) => row.product_id))];
 
-    if (optionIds.length > 0) {
-      const withOptions = { ids: optionIds, include: true };
-      const withoutOptions = { ids: optionIds, include: false };
-      const [optionCount, restCount] = await Promise.all([
-        buildQuery(true, withOptions),
-        buildQuery(true, withoutOptions),
-      ]);
-      if (optionCount.error || restCount.error) {
-        throw queryError("Failed to load products", optionCount.error ?? restCount.error);
-      }
-      const nOptions = optionCount.count ?? 0;
-      const nRest = restCount.count ?? 0;
-      const total = nOptions + nRest;
+    const groups =
+      optionIds.length > 0
+        ? [
+            { ids: optionIds, include: true },
+            { ids: optionIds, include: false },
+          ]
+        : [undefined];
+    type KeyRow = { id: string; shop_id: string | null; seller_id: string | null };
+    const keyResults = (await Promise.all(
+      groups.map((group) => buildQuery(false, group, "id, shop_id, seller_id").range(0, MIX_LIMIT - 1)),
+    )) as unknown as Array<{ data: KeyRow[] | null; count: number | null; error: unknown }>;
+    const keyError = keyResults.find((result) => result.error)?.error;
+    if (keyError) throw queryError("Failed to load products", keyError);
+
+    if (keyResults.every((result) => (result.count ?? 0) <= MIX_LIMIT)) {
+      const orderedIds = keyResults.flatMap((result) =>
+        interleaveByKey(result.data ?? [], (row) => row.shop_id ?? row.seller_id ?? "").map((row) => row.id),
+      );
+      const total = orderedIds.length;
       const totalPages = Math.max(1, Math.ceil(total / params.pageSize));
       const page = Math.min(params.page, totalPages);
-      const start = (page - 1) * params.pageSize;
-      const end = Math.min(start + params.pageSize, total);
+      const pageIds = orderedIds.slice((page - 1) * params.pageSize, page * params.pageSize);
 
-      const optionTake = Math.max(0, Math.min(end, nOptions) - start);
-      const restFrom = Math.max(0, start - nOptions);
-      const restTake = end - start - optionTake;
-
-      const [optionPage, restPage] = await Promise.all([
-        optionTake > 0
-          ? buildQuery(false, withOptions).range(start, start + optionTake - 1)
-          : Promise.resolve(null),
-        restTake > 0
-          ? buildQuery(false, withoutOptions).range(restFrom, restFrom + restTake - 1)
-          : Promise.resolve(null),
-      ]);
-      const failed = optionPage?.error ?? restPage?.error;
-      if (failed) throw queryError("Failed to load products", failed);
-
-      const rows = [...(optionPage?.data ?? []), ...(restPage?.data ?? [])];
+      let rows: ProductRowWithImages[] = [];
+      if (pageIds.length > 0) {
+        const { data, error } = await supabase
+          .from(DATABASE_TABLES.PRODUCTS)
+          .select(PRODUCT_COLUMNS)
+          .in("id", pageIds);
+        if (error) throw queryError("Failed to load products", error);
+        const byId = new Map((data ?? []).map((row) => [row.id, row as ProductRowWithImages]));
+        rows = pageIds.flatMap((id) => byId.get(id) ?? []);
+      }
       return {
-        items: rows.map((row) => toProduct(row as ProductRowWithImages)),
+        items: rows.map(toProduct),
         total,
         page,
         pageSize: params.pageSize,
@@ -459,7 +469,7 @@ export async function listProducts(
   if (!firstPass.error) {
     const total = firstPass.count ?? 0;
     return {
-      items: (firstPass.data ?? []).map((row) => toProduct(row as ProductRowWithImages)),
+      items: (firstPass.data ?? []).map((row) => toProduct(row as unknown as ProductRowWithImages)),
       total,
       page: params.page,
       pageSize: params.pageSize,
@@ -497,7 +507,7 @@ export async function listProducts(
         const total = lastPage.count ?? probeTotal;
         const totalPages = Math.max(1, Math.ceil(total / params.pageSize));
         return {
-          items: (lastPage.data ?? []).map((row) => toProduct(row as ProductRowWithImages)),
+          items: (lastPage.data ?? []).map((row) => toProduct(row as unknown as ProductRowWithImages)),
           total,
           page: totalPages,
           pageSize: params.pageSize,
