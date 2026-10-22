@@ -322,7 +322,7 @@ export async function listProducts(
   // the identical filters/sort — a Supabase builder can't be re-ranged once
   // awaited, and duplicating the filter chain would violate DRY. `head` skips
   // row transfer for a count-only probe.
-  const buildQuery = (head = false) => {
+  const buildQuery = (head = false, group?: { ids: string[]; include: boolean }) => {
     let query = supabase
       .from(DATABASE_TABLES.PRODUCTS)
       .select(PRODUCT_COLUMNS, { count: "exact", head })
@@ -358,6 +358,11 @@ export async function listProducts(
     if (attributeFilteredProductIds) {
       query = query.in("id", attributeFilteredProductIds);
     }
+    if (group) {
+      query = group.include
+        ? query.in("id", group.ids)
+        : query.not("id", "in", `(${group.ids.join(",")})`);
+    }
     if (params.onSale) {
       // Same seller-set "sale" tag convention ProductCard/FeaturedProductsGrid
       // already read — no compare-at-price column exists to filter on instead.
@@ -389,6 +394,63 @@ export async function listProducts(
     }
     return query;
   };
+
+  // "Recommended": products a buyer can choose options on (size/color) first,
+  // newest first within each group. PostgREST can't order by a column of
+  // another table, so the two groups are counted and paged separately and the
+  // requested window is stitched across them.
+  if (params.sort === "recommended") {
+    const { data: optionRows, error: optionError } = await supabase
+      .from(DATABASE_TABLES.PRODUCT_VARIANTS)
+      .select("product_id")
+      .eq("status", PRODUCT_STATUS.active)
+      .limit(5000);
+    if (optionError) throw queryError("Failed to load products", optionError);
+    const optionIds = [...new Set((optionRows ?? []).map((row) => row.product_id))];
+
+    if (optionIds.length > 0) {
+      const withOptions = { ids: optionIds, include: true };
+      const withoutOptions = { ids: optionIds, include: false };
+      const [optionCount, restCount] = await Promise.all([
+        buildQuery(true, withOptions),
+        buildQuery(true, withoutOptions),
+      ]);
+      if (optionCount.error || restCount.error) {
+        throw queryError("Failed to load products", optionCount.error ?? restCount.error);
+      }
+      const nOptions = optionCount.count ?? 0;
+      const nRest = restCount.count ?? 0;
+      const total = nOptions + nRest;
+      const totalPages = Math.max(1, Math.ceil(total / params.pageSize));
+      const page = Math.min(params.page, totalPages);
+      const start = (page - 1) * params.pageSize;
+      const end = Math.min(start + params.pageSize, total);
+
+      const optionTake = Math.max(0, Math.min(end, nOptions) - start);
+      const restFrom = Math.max(0, start - nOptions);
+      const restTake = end - start - optionTake;
+
+      const [optionPage, restPage] = await Promise.all([
+        optionTake > 0
+          ? buildQuery(false, withOptions).range(start, start + optionTake - 1)
+          : Promise.resolve(null),
+        restTake > 0
+          ? buildQuery(false, withoutOptions).range(restFrom, restFrom + restTake - 1)
+          : Promise.resolve(null),
+      ]);
+      const failed = optionPage?.error ?? restPage?.error;
+      if (failed) throw queryError("Failed to load products", failed);
+
+      const rows = [...(optionPage?.data ?? []), ...(restPage?.data ?? [])];
+      return {
+        items: rows.map((row) => toProduct(row as ProductRowWithImages)),
+        total,
+        page,
+        pageSize: params.pageSize,
+        totalPages,
+      };
+    }
+  }
 
   // Common path: one round-trip for the requested page.
   const { from, to } = toRange(params);

@@ -20,6 +20,7 @@ export const productConditionSchema = z.enum([
 ]);
 
 export const productSortSchema = z.enum([
+  "recommended",
   "newest",
   "price-asc",
   "price-desc",
@@ -35,11 +36,11 @@ export const productListParamsSchema = z
       .int()
       .min(1)
       .max(PAGINATION.maxPageSize)
-      .default(PAGINATION.defaultPageSize),
+      .default(PAGINATION.catalogPageSize),
     search: z.string().trim().max(120).optional(),
     categoryId: z.uuid().optional(),
     shopId: z.uuid().optional(),
-    sort: productSortSchema.default("newest"),
+    sort: productSortSchema.default("recommended"),
     // Deliberately not z.coerce.boolean() — Boolean("false") is true, which
     // would make ?onSale=false behave identically to ?onSale=true.
     onSale: z
