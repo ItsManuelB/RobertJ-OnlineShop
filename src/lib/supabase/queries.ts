@@ -7977,7 +7977,7 @@ export async function getRestockPriorityReport(
   limit = 5,
   owner: DashboardOrderOwner | null = null,
 ): Promise<RestockPriorityItem[]> {
-  const lowStockItems = await getLowStockReport();
+  const lowStockItems = await getLowStockReport(owner?.shopId ?? null);
   if (lowStockItems.length === 0) return [];
 
   const supabase = await createSupabaseServerClient();
@@ -8013,7 +8013,7 @@ export async function getRestockPriorityReport(
       const k = key(item.product_id, item.variant_id);
       const entry = perVariant.get(k) ?? { units: 0, revenueCents: 0 };
       entry.units += item.quantity;
-      if (order.payment_status === PAYMENT_STATUS.paid) entry.revenueCents += item.subtotal_cents;
+      entry.revenueCents += item.subtotal_cents;
       perVariant.set(k, entry);
     }
   }
@@ -8036,64 +8036,33 @@ export async function getRestockPriorityReport(
     .slice(0, limit);
 }
 
-type CategoryRevenueOrderRow = {
-  order_items: Array<{
-    quantity: number;
-    subtotal_cents: number;
-    product: {
-      category_id: string | null;
-      category: { name: string } | null;
-    } | null;
-  }>;
-};
-
 /**
- * Revenue/units rollup per category for paid orders in `[from, to]`. Seller
- * Reports only. Relies on RLS alone, same pattern as `getRestockPriorityReport`.
+ * Sales per category for ever-paid orders placed in `[from, to]` (Asia/Manila
+ * days), before refunds — the same orders as Gross sales. `report_revenue_by_category`
+ * scopes a seller to their own shop; admins may narrow with `shopId`.
  */
-export async function getRevenueByCategory(from: string, to: string): Promise<CategoryRevenue[]> {
+export async function getRevenueByCategory(
+  from: string,
+  to: string,
+  shopId: string | null = null,
+): Promise<CategoryRevenue[]> {
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from(DATABASE_TABLES.ORDERS)
-    .select(
-      `
-        order_items!inner (
-          quantity, subtotal_cents,
-          product:products!order_items_product_id_fkey (
-            category_id,
-            category:categories!products_category_id_fkey ( name )
-          )
-        )
-      `,
-    )
-    .eq("payment_status", PAYMENT_STATUS.paid)
-    .gte("placed_at", `${from}T00:00:00Z`)
-    .lte("placed_at", `${to}T23:59:59Z`);
+  const { data, error } = await supabase.rpc("report_revenue_by_category", {
+    p_from: from,
+    p_to: to,
+    p_shop_id: shopId ?? undefined,
+  });
 
   if (error) {
     throw queryError("Failed to load revenue by category", error);
   }
 
-  const perCategory = new Map<string, { name: string; revenueCents: number; units: number }>();
-  for (const order of (data ?? []) as CategoryRevenueOrderRow[]) {
-    for (const item of order.order_items) {
-      const categoryId = item.product?.category_id ?? "uncategorized";
-      const categoryName = item.product?.category?.name ?? "Uncategorized";
-      const entry = perCategory.get(categoryId) ?? { name: categoryName, revenueCents: 0, units: 0 };
-      entry.revenueCents += item.subtotal_cents;
-      entry.units += item.quantity;
-      perCategory.set(categoryId, entry);
-    }
-  }
-
-  return Array.from(perCategory.entries())
-    .map(([categoryId, v]) => ({
-      categoryId: categoryId === "uncategorized" ? null : categoryId,
-      categoryName: v.name,
-      revenueCents: v.revenueCents,
-      unitsSold: v.units,
-    }))
-    .sort((a, b) => b.revenueCents - a.revenueCents);
+  return (data ?? []).map((row) => ({
+    categoryId: row.category_id,
+    categoryName: row.category_name,
+    revenueCents: Number(row.revenue_cents),
+    unitsSold: Number(row.units_sold),
+  }));
 }
 
 /** Safety cap on the unbounded per-buyer history scan below — generous for one seller's real buyer base. */

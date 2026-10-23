@@ -6,13 +6,21 @@ import { StatCard } from "@/components/ui/stat-card";
 import { ROUTES } from "@/constants/routes";
 import { getPreviousPeriod } from "@/features/reports/utils/report-range";
 import { formatCurrency } from "@/lib/utils/currency";
-import { getSalesSummary } from "@/lib/supabase/queries";
+import { getRefundPipeline, getSalesSummary } from "@/lib/supabase/queries";
+import { buttonVariants } from "@/components/ui/button";
+import Link from "next/link";
 
 import { MetricInfoButton } from "./MetricInfoButton";
 
 export interface SellerPerformanceSectionProps {
   from: string;
   to: string;
+  /**
+   * "reports" is the Reports page's overview: Gross and Net jump to the
+   * sections below instead of linking back to Reports, the strip adds paid
+   * orders and refunds in progress, and a prompt appears when refunds are pending.
+   */
+  variant?: "dashboard" | "reports";
 }
 
 function periodLabel(from: string, to: string): string {
@@ -33,15 +41,19 @@ function periodLabel(from: string, to: string): string {
  * seller's shop and sums each shop's own order totals (never the combined
  * checkout payment), so multi-shop orders are credited per shop.
  */
-export async function SellerPerformanceSection({ from, to }: SellerPerformanceSectionProps) {
+export async function SellerPerformanceSection({ from, to, variant = "dashboard" }: SellerPerformanceSectionProps) {
   const previous = getPreviousPeriod(from, to);
 
+  const isReports = variant === "reports";
   let current: Awaited<ReturnType<typeof getSalesSummary>>;
   let prior: Awaited<ReturnType<typeof getSalesSummary>>;
+  let pipeline: Awaited<ReturnType<typeof getRefundPipeline>> | null = null;
   try {
-    [current, prior] = await Promise.all([
+    [current, prior, pipeline] = await Promise.all([
       getSalesSummary(from, to, null),
       getSalesSummary(previous.from, previous.to, null),
+      // Refunds in progress are not date-bound: they are money on its way back right now.
+      isReports ? getRefundPipeline({ from, to }, null).catch(() => null) : Promise.resolve(null),
     ]);
   } catch {
     return <ErrorState message="We couldn't load your shop's performance right now. Your tasks, orders and stock are unaffected." />;
@@ -49,15 +61,23 @@ export async function SellerPerformanceSection({ from, to }: SellerPerformanceSe
 
   const label = periodLabel(from, to);
   const reportsHref = `${ROUTES.sellerReports}?from=${from}&to=${to}`;
+  const grossHref = isReports ? "#sources" : reportsHref;
+  const netHref = isReports ? "#trend" : reportsHref;
   const ordersHref = `${ROUTES.sellerOrders}?from=${from}&to=${to}`;
   const refundsHref = `${ROUTES.sellerReturns}?tab=closed`;
   const money = formatCurrency;
 
+  const inProgressCount = pipeline ? pipeline.pendingCount + pipeline.attentionCount : 0;
+  const inProgressCents = pipeline ? pipeline.pendingCents + pipeline.attentionCents : 0;
   const secondary: Array<{ label: string; value: string }> = [
+    ...(isReports ? [{ label: "Paid orders", value: String(current.paidOrders) }] : []),
     { label: "Average order value", value: money(current.avgOrderValueCents) },
     { label: "Units sold (paid orders)", value: String(current.unitsSold) },
     { label: "Awaiting payment", value: `${current.pendingPaymentOrders} order${current.pendingPaymentOrders === 1 ? "" : "s"}` },
     { label: "Cancelled", value: `${current.cancelledOrders} order${current.cancelledOrders === 1 ? "" : "s"}` },
+    ...(isReports && pipeline
+      ? [{ label: "Refunds in progress", value: `${money(inProgressCents)} · ${inProgressCount}` }]
+      : []),
   ];
 
   return (
@@ -65,7 +85,7 @@ export async function SellerPerformanceSection({ from, to }: SellerPerformanceSe
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <StatCard
           label="Gross sales"
-          href={reportsHref}
+          href={grossHref}
           value={
             <span className="inline-flex flex-wrap items-baseline gap-2">
               {money(current.grossRevenueCents)}
@@ -78,8 +98,8 @@ export async function SellerPerformanceSection({ from, to }: SellerPerformanceSe
               metric="gross"
               calculation={`${money(current.grossRevenueCents)} from ${current.paidOrders} paid order${current.paidOrders === 1 ? "" : "s"}`}
               periodLabel={label}
-              drillHref={reportsHref}
-              drillLabel="Open in Reports"
+              drillHref={grossHref}
+              drillLabel={isReports ? "See payment source" : "Open in Reports"}
             />
           }
         />
@@ -107,7 +127,7 @@ export async function SellerPerformanceSection({ from, to }: SellerPerformanceSe
         <StatCard
           emphasis
           label="Net sales"
-          href={reportsHref}
+          href={netHref}
           value={
             <span className="inline-flex flex-wrap items-baseline gap-2">
               {money(current.revenueCents)}
@@ -120,8 +140,8 @@ export async function SellerPerformanceSection({ from, to }: SellerPerformanceSe
               metric="net"
               calculation={`${money(current.grossRevenueCents)} − ${money(current.refundsCents)} = ${money(current.revenueCents)}`}
               periodLabel={label}
-              drillHref={reportsHref}
-              drillLabel="Open in Reports"
+              drillHref={netHref}
+              drillLabel={isReports ? "See the trend" : "Open in Reports"}
             />
           }
         />
@@ -147,7 +167,7 @@ export async function SellerPerformanceSection({ from, to }: SellerPerformanceSe
         />
       </div>
 
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl bg-muted px-4 py-3 sm:grid-cols-4">
+      <dl className={`grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl bg-muted px-4 py-3 ${isReports ? "sm:grid-cols-3" : "sm:grid-cols-4"}`}>
         {secondary.map((item) => (
           <div key={item.label} className="flex min-w-0 flex-col">
             <dt className="text-[11px] text-muted-foreground">{item.label}</dt>
@@ -155,6 +175,23 @@ export async function SellerPerformanceSection({ from, to }: SellerPerformanceSe
           </div>
         ))}
       </dl>
+
+      {isReports && pipeline && inProgressCount > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3">
+          <p className="text-sm text-foreground">
+            <strong className="font-semibold">
+              {inProgressCount} refund{inProgressCount === 1 ? "" : "s"} in progress ({money(inProgressCents)}).
+            </strong>{" "}
+            {pipeline.attentionCount > 0
+              ? `${pipeline.attentionCount} need${pipeline.attentionCount === 1 ? "s" : ""} attention (${money(pipeline.attentionCents)}). `
+              : ""}
+            In-progress refunds stay in Net sales until they are confirmed.
+          </p>
+          <Link href={`${ROUTES.sellerReturns}?tab=action`} className={buttonVariants({ variant: "outline", size: "rjSm" })}>
+            Open returns
+          </Link>
+        </div>
+      ) : null}
     </div>
   );
 }

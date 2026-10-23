@@ -2852,6 +2852,15 @@ export type Database = {
           source_key: string
         }[]
       }
+      report_revenue_by_category: {
+        Args: { p_from: string; p_shop_id?: string; p_to: string }
+        Returns: {
+          category_id: string
+          category_name: string
+          revenue_cents: number
+          units_sold: number
+        }[]
+      }
       report_sales_summary: {
         Args: { p_from: string; p_shop_id?: string; p_to: string }
         Returns: {
