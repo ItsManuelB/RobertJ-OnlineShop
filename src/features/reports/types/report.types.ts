@@ -23,7 +23,13 @@ export interface SalesSummary {
   totalOrders: number;
   paidOrders: number;
   cancelledOrders: number;
+  /** NET revenue: gross paid-order totals minus confirmed refunds on those orders. */
   revenueCents: number;
+  /** Totals of orders that were ever paid (paid, partially refunded or refunded). */
+  grossRevenueCents: number;
+  /** Confirmed refunds on those orders; the original orders and payments are never altered. */
+  refundsCents: number;
+  refundedOrders: number;
   unitsSold: number;
   avgOrderValueCents: number;
   codPaidOrders: number;

@@ -1,15 +1,15 @@
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { Card, CardContent } from "@/components/ui/card";
-import { getRepeatCustomerRate } from "@/lib/supabase/queries";
+import { getCurrentSellerOwner, getRepeatCustomerRate } from "@/lib/supabase/queries";
 
 import type { ReportFilters } from "../types/report.types";
 
-/** Returning- vs. new-buyer split for the range. Seller Dashboard only. */
+/** Returning- vs. new-buyer split for the range, scoped to the signed-in seller's shop. Seller Reports only. */
 export async function RepeatCustomersPanel({ filters }: { filters: Pick<ReportFilters, "from" | "to"> }) {
   let stats: Awaited<ReturnType<typeof getRepeatCustomerRate>>;
   try {
-    stats = await getRepeatCustomerRate(filters.from, filters.to);
+    stats = await getRepeatCustomerRate(filters.from, filters.to, await getCurrentSellerOwner());
   } catch {
     return <ErrorState message="We couldn't load repeat customer stats right now." />;
   }

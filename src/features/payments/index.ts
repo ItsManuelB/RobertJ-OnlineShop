@@ -4,6 +4,7 @@ export {
   createXenditCardSessionAction,
   createXenditGroupEwalletPaymentAction,
   createXenditGroupCardSessionAction,
+  confirmXenditPaymentAction,
 } from "./actions/xendit.actions";
 export {
   markCodPaymentCollectedSchema,
@@ -22,6 +23,7 @@ export {
 export type { Payment, PaymentAttempt, PaymentMethodType } from "./types/payment.types";
 export { XenditPaymentOptions } from "./components/XenditPaymentOptions";
 export { XenditCardPaymentButton } from "./components/XenditCardPaymentButton";
+export { PaymentStatusWatcher } from "./components/PaymentStatusWatcher";
 export { PaymentFailedRetry } from "./components/PaymentFailedRetry";
 export { MarkCodCollectedButton } from "./components/MarkCodCollectedButton";
 export { PaymentsList } from "./components/PaymentsList";

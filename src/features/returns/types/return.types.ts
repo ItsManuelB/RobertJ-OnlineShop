@@ -51,10 +51,24 @@ export interface ReturnRequest {
   markedUnsellableAt: string | null;
   /** Optional free-text note attached when the item's condition was recorded, either way. */
   conditionNote: string | null;
-  /** Set once the seller/admin ships the replacement item (`record_return_replacement_shipment`) — only meaningful when `status` is `replacement_approved`. */
+  /** Set once the seller/admin ships the replacement item (`record_return_replacement_shipment`) — set when the status moves to `replacement_shipped`. */
   replacementCourier: string | null;
   replacementTrackingNumber: string | null;
   replacementShippedAt: string | null;
+  /** Set when the buyer confirms the replacement, or the sweep auto-completes it 7 days after shipping. */
+  replacementCompletedAt: string | null;
+  /** COD refunds only, set when an admin records the actual payout (`record_cod_refund_payout`). */
+  codRefundMethod: "gcash" | "bank_transfer" | "cash" | null;
+  codRefundReference: string | null;
+  codRefundedAt: string | null;
+  /** Return and Refund: when the buyer must have shipped the item back by (set on approval; the request is closed automatically after). */
+  returnDeadlineAt: string | null;
+  returnCourier: string | null;
+  returnTrackingNumber: string | null;
+  returnShippedAt: string | null;
+  returnReceivedAt: string | null;
+  /** What the seller found when the returned item arrived. */
+  returnInspection: ReturnItemCondition | null;
   createdAt: string;
 }
 
@@ -62,6 +76,8 @@ export interface ReturnRequest {
 export type SellerReturnDecision = "accept" | "reject";
 /** The only two outcomes `decide_return` accepts. */
 export type AdminReturnDecision = "approve" | "reject";
+/** How an admin paid a COD buyer outside the app — mirrors the `return_requests_cod_refund_method_check` constraint. */
+export type CodRefundMethod = "gcash" | "bank_transfer" | "cash";
 /** The only two outcomes `record_return_item_condition` accepts. */
 export type ReturnItemCondition = "sellable" | "not_sellable";
 

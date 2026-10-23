@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { PaymentStatusWatcher } from "@/features/payments/components/PaymentStatusWatcher";
 import {
   createXenditCardSessionAction,
   createXenditGroupCardSessionAction,
@@ -25,7 +26,7 @@ type XenditCardPaymentButtonProps = (
    * phase) so the buyer isn't stuck.
    */
   autoStart?: boolean;
-  /** Fires once, when the Components widget reports the card form was submitted (`session-complete`). Lets the checkout flow decide what happens next (e.g. move on to Orders) without this component owning any navigation itself. */
+  /** Fires once the card payment is confirmed paid (or confirmation is still pending after ~2 minutes), after the form was submitted (`session-complete`). Lets the checkout flow decide what happens next (e.g. move on to Orders) without this component owning any navigation itself. Omitted: the page just refreshes when paid. */
   onComplete?: () => void;
 };
 
@@ -58,24 +59,43 @@ export function XenditCardPaymentButton(props: XenditCardPaymentButtonProps) {
   // the three events we explicitly listen for; this guards every callback.
   const sessionGenerationRef = useRef(0);
 
+  // Tracks whether this component is on screen. Not tied to the generation
+  // counter on purpose: React Strict Mode (dev) mounts, runs the cleanup and
+  // mounts again, and the auto-start below fires only once per component — so a
+  // cleanup that bumped the generation would orphan that one session and leave
+  // the form on "Loading card form…" forever.
+  const mountedRef = useRef(false);
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       componentsRef.current = null;
-      sessionGenerationRef.current += 1;
     };
   }, []);
 
   const startCardPayment = useCallback(async () => {
     const generation = ++sessionGenerationRef.current;
-    const isCurrent = () => generation === sessionGenerationRef.current;
+    const isCurrent = () => mountedRef.current && generation === sessionGenerationRef.current;
 
     setError(null);
     setPhase("loading");
 
-    const result =
-      props.orderId !== undefined
-        ? await createXenditCardSessionAction(props.orderId)
-        : await createXenditGroupCardSessionAction(props.checkoutGroupId);
+    let result:
+      | { success: true; data: { componentsSdkKey: string } }
+      | { success: false; error: string };
+    try {
+      result =
+        props.orderId !== undefined
+          ? await createXenditCardSessionAction(props.orderId)
+          : await createXenditGroupCardSessionAction(props.checkoutGroupId);
+    } catch {
+      // A rejected action (network drop, server error) must not leave the
+      // form spinning with no way out.
+      if (!isCurrent()) return;
+      setError("Could not start the card payment. Please try again.");
+      setPhase("error");
+      return;
+    }
     if (!isCurrent()) return;
     if (!result.success) {
       setError(result.error);
@@ -106,8 +126,10 @@ export function XenditCardPaymentButton(props: XenditCardPaymentButtonProps) {
 
       components.addEventListener("session-complete", () => {
         if (!isCurrent()) return;
+        // Informational only: the card form was submitted. What happens next
+        // (moving on) waits for the watcher below to confirm the payment with
+        // Xendit, rather than leaving the page the instant the form closes.
         setPhase("complete");
-        onComplete?.();
       });
       components.addEventListener("session-expired-or-canceled", () => {
         if (!isCurrent()) return;
@@ -118,7 +140,6 @@ export function XenditCardPaymentButton(props: XenditCardPaymentButtonProps) {
       setError("Could not load the card payment form. Please try again.");
       setPhase("error");
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- props.orderId/props.checkoutGroupId are the discriminated pair; stable per mount, and onComplete is read fresh via closure without needing to restart the whole callback identity.
   }, [props.orderId, props.checkoutGroupId]);
 
   // Checkout-only: starts the session immediately instead of waiting for a
@@ -139,9 +160,16 @@ export function XenditCardPaymentButton(props: XenditCardPaymentButtonProps) {
 
   if (phase === "complete") {
     return (
-      <p className="text-sm font-medium text-rj-black">
-        Payment submitted — confirming with Xendit. This page will update once confirmed.
-      </p>
+      <div className="flex flex-col gap-2">
+        <p className="text-sm font-medium text-rj-black">Payment submitted.</p>
+        <PaymentStatusWatcher
+          {...(props.orderId !== undefined
+            ? { orderId: props.orderId }
+            : { checkoutGroupId: props.checkoutGroupId })}
+          onPaid={onComplete}
+          onGiveUp={onComplete}
+        />
+      </div>
     );
   }
 

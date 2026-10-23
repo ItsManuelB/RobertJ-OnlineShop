@@ -43,7 +43,15 @@ export function SellerTopbar({ user, pathname, notifications, onMenuClick }: Sel
   const role = user.role as UserRole;
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 flex-shrink-0 items-center gap-4 border-b border-border bg-card px-4 lg:px-6">
+    <header
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          setShowNotifications(false);
+          setShowProfile(false);
+        }
+      }}
+      className="sticky top-0 z-30 flex h-16 flex-shrink-0 items-center gap-4 border-b border-border bg-card px-4 lg:px-6"
+    >
       <button
         type="button"
         onClick={onMenuClick}
@@ -59,19 +67,29 @@ export function SellerTopbar({ user, pathname, notifications, onMenuClick }: Sel
       </div>
       <h1 className="flex-1 text-base font-semibold text-foreground lg:hidden">{title}</h1>
 
-      <div className="ml-4 hidden max-w-md flex-1 md:flex">
+      <form
+        action={ROUTES.sellerOrders}
+        role="search"
+        className="ml-4 hidden max-w-md flex-1 md:flex"
+      >
         <div className="relative w-full">
+          <label htmlFor="seller-order-search" className="sr-only">
+            Search orders by order number
+          </label>
           <Search
             className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
             aria-hidden="true"
           />
           <input
-            type="text"
-            placeholder="Search anything..."
+            id="seller-order-search"
+            type="search"
+            name="search"
+            maxLength={40}
+            placeholder="Search orders by number…"
             className="w-full rounded-lg border border-border bg-muted py-2 pl-9 pr-4 text-sm text-foreground placeholder-muted-foreground transition-all focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
           />
         </div>
-      </div>
+      </form>
 
       <div className="ml-auto flex items-center gap-1.5">
         <ThemeToggle className="hidden sm:inline-flex" />
@@ -83,6 +101,7 @@ export function SellerTopbar({ user, pathname, notifications, onMenuClick }: Sel
               setShowNotifications((v) => !v);
               setShowProfile(false);
             }}
+            aria-expanded={showNotifications}
             className="relative rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <Bell className="h-5 w-5" aria-hidden="true" />
@@ -137,6 +156,7 @@ export function SellerTopbar({ user, pathname, notifications, onMenuClick }: Sel
               setShowProfile((v) => !v);
               setShowNotifications(false);
             }}
+            aria-expanded={showProfile}
             className="flex items-center gap-2.5 rounded-lg py-1.5 pl-1 pr-2 transition-colors hover:bg-muted"
           >
             <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full border border-primary/30 bg-primary/10 text-xs font-semibold text-primary">

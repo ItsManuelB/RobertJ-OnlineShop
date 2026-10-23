@@ -54,7 +54,7 @@ const BUY_NOW_UNLOCK_MS = 10_000;
  */
 export function usePurchaseActions(product: Product, sellerName?: string | null) {
   const router = useRouter();
-  const { addItemChecked } = useCart();
+  const { addItemChecked, removeItem, setQuantity } = useCart();
   const { showToast } = useToast();
   const pending = useSyncExternalStore(subscribe, () => inFlight, () => null);
   const unlockTimer = useRef<number | null>(null);
@@ -125,6 +125,15 @@ export function usePurchaseActions(product: Product, sellerName?: string | null)
         showToast({
           message: result.quantityInCart >= stock ? `${message} That's all we have.` : message,
           action: { label: "View cart", href: ROUTES.cart },
+          // A mis-tap is one tap to reverse: back to what the cart held before this add.
+          undo: {
+            label: "Undo",
+            onClick: () => {
+              const line = { productId: product.id, variantId: variant?.id };
+              if (previous > 0) setQuantity(line, previous);
+              else removeItem(line);
+            },
+          },
         });
         // Hold the lock briefly (shown as "Added to cart") instead of releasing at once.
         setInFlight("added");

@@ -8,6 +8,7 @@ import { ROUTES } from "@/constants/routes";
 import { cn } from "@/lib/utils/cn";
 import { getBuyerDisplayName, isShippingLabelEligible } from "@/features/orders/types/order.types";
 import { BuyerReceiptConfirmation } from "@/features/orders/components/BuyerReceiptConfirmation";
+import { OrderCancellationSection } from "@/features/orders/components/OrderCancellationSection";
 import { OrderHeader } from "@/features/orders/components/OrderHeader";
 import { OrderItemsList } from "@/features/orders/components/OrderItemsList";
 import { OrderStatusControl } from "@/features/orders/components/OrderStatusControl";
@@ -18,6 +19,7 @@ import { ShippingAddressCard } from "@/features/orders/components/ShippingAddres
 import { MarkCodCollectedButton } from "@/features/payments/components/MarkCodCollectedButton";
 import { RecordReturnConditionPanel } from "@/features/returns/components/RecordReturnConditionPanel";
 import { ReturnRequestStatusCard } from "@/features/returns/components/ReturnRequestStatusCard";
+import { ReturnShippingActions } from "@/features/returns/components/ReturnShippingActions";
 import { RespondToReturnPanel } from "@/features/returns/components/RespondToReturnPanel";
 import {
   getDashboardOrder,
@@ -110,12 +112,19 @@ export default async function SellerOrderDetailPage({ params, searchParams }: Se
         }
       />
 
+      <OrderCancellationSection
+        orderId={order.id}
+        viewer="dashboard"
+        paidOnline={order.paymentMethod === "xendit"}
+      />
+
       {returnRequest ? (
         <div className="flex flex-col gap-3">
           <ReturnRequestStatusCard request={returnRequest} evidenceUrl={returnEvidenceUrl} themed />
           {returnRequest.status === RETURN_STATUS.pending ? (
             <RespondToReturnPanel returnId={returnRequest.id} />
           ) : null}
+          <ReturnShippingActions request={returnRequest} viewer="seller" />
           {returnRequest.status === RETURN_STATUS.refunded &&
           !returnRequest.restockedAt &&
           !returnRequest.markedUnsellableAt ? (

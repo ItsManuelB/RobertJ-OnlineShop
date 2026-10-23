@@ -67,6 +67,13 @@ export const CANCELLABLE_ORDER_STATUSES: readonly OrderStatus[] = [
   "confirmed",
 ];
 
+/**
+ * States in which the buyer can no longer cancel on their own but may ask the
+ * seller to (preparation has started). Approval cancels the order and refunds a
+ * paid one automatically; shipped orders follow the return policy instead.
+ */
+export const CANCELLATION_REQUEST_ORDER_STATUSES: readonly OrderStatus[] = ["processing"];
+
 /** Non-terminal states — the order still requires seller/buyer action. Used by the admin Users list to warn before promoting a buyer with in-flight orders. */
 export const ACTIVE_ORDER_STATUSES: readonly OrderStatus[] = [
   "pending",

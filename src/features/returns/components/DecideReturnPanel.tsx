@@ -11,6 +11,7 @@ import {
   RETURN_REQUEST_TYPE,
   RETURN_REQUEST_TYPE_DESCRIPTIONS,
   RETURN_REQUEST_TYPE_LABELS,
+  RETURN_SHIPBACK_DAYS,
 } from "@/features/returns/constants/return.constants";
 import type { AdminReturnDecision, ReturnRequestType } from "@/features/returns/types/return.types";
 
@@ -20,6 +21,13 @@ export interface DecideReturnPanelProps {
   sellerRejected: boolean;
   /** The buyer's requested outcome — pre-selects the matching resolution when approving; admin can still choose differently. */
   requestedType: ReturnRequestType;
+  /**
+   * Where the request is. `initial` (default): seller has responded — pick a
+   * resolution. `in_transit`: Return and Refund approved, item not back yet —
+   * the admin can only step in to reject. `received`: the seller confirmed the
+   * item arrived — approving now means "confirm the refund".
+   */
+  stage?: "initial" | "in_transit" | "received";
 }
 
 const RESOLUTION_OPTIONS = (Object.values(RETURN_REQUEST_TYPE) as ReturnRequestType[]).map((value) => ({
@@ -39,7 +47,12 @@ const RESOLUTION_OPTIONS = (Object.values(RETURN_REQUEST_TYPE) as ReturnRequestT
  * runs (refund math vs. the no-payment `replacement_approved` path), never
  * the authorization.
  */
-export function DecideReturnPanel({ returnId, sellerRejected, requestedType }: DecideReturnPanelProps) {
+export function DecideReturnPanel({
+  returnId,
+  sellerRejected,
+  requestedType,
+  stage = "initial",
+}: DecideReturnPanelProps) {
   const [pendingDecision, setPendingDecision] = useState<AdminReturnDecision | null>(null);
   const [resolutionType, setResolutionType] = useState<ReturnRequestType>(requestedType);
   const [error, setError] = useState<string | null>(null);
@@ -53,7 +66,7 @@ export function DecideReturnPanel({ returnId, sellerRejected, requestedType }: D
         returnId,
         pendingDecision,
         undefined,
-        pendingDecision === "approve" ? resolutionType : undefined,
+        pendingDecision === "approve" ? (stage === "received" ? RETURN_REQUEST_TYPE.returnAndRefund : resolutionType) : undefined,
       );
       if (!result.success) {
         setError(result.error);
@@ -70,24 +83,34 @@ export function DecideReturnPanel({ returnId, sellerRejected, requestedType }: D
 
       {pendingDecision === "approve" ? (
         <div className="flex flex-col gap-3">
-          <fieldset className="flex flex-col gap-2">
-            <legend className="text-xs font-semibold text-foreground">Approve as…</legend>
-            <ChoiceGroup
-              label="Approve as"
-              variant="tile"
-              options={RESOLUTION_OPTIONS}
-              value={resolutionType}
-              onChange={setResolutionType}
-              className="sm:grid sm:grid-cols-3 sm:gap-2"
-            />
-          </fieldset>
+          {stage === "initial" ? (
+            <fieldset className="flex flex-col gap-2">
+              <legend className="text-xs font-semibold text-foreground">Approve as…</legend>
+              <ChoiceGroup
+                label="Approve as"
+                variant="tile"
+                options={RESOLUTION_OPTIONS}
+                value={resolutionType}
+                onChange={setResolutionType}
+                className="sm:grid sm:grid-cols-3 sm:gap-2"
+              />
+            </fieldset>
+          ) : null}
           <ConfirmPanel
-            label={`Confirm: approve this return request as ${RETURN_REQUEST_TYPE_LABELS[resolutionType]}`}
-            title="Approve this return request?"
+            label={
+              stage === "received"
+                ? "Confirm: refund this returned item"
+                : `Confirm: approve this return request as ${RETURN_REQUEST_TYPE_LABELS[resolutionType]}`
+            }
+            title={stage === "received" ? "Refund this return?" : "Approve this return request?"}
             description={
-              resolutionType === "replacement_exchange"
-                ? "No payment is touched — you'll record the replacement shipment separately once it's ready."
-                : "Cash-on-delivery orders are marked refunded immediately. Online (GCash/Maya/Card) payments submit a refund to the payment provider, which can take a few minutes to confirm. Either way, this can't be repeated once submitted."
+              stage === "received"
+                ? "The item is back with the seller. Cash-on-delivery refunds move to a payout you record next; online (GCash/Maya/Card) payments submit a refund to the payment provider, which can take a few minutes to confirm."
+                : resolutionType === "replacement_exchange"
+                  ? "No payment is touched — you'll record the replacement shipment separately once it's ready."
+                  : resolutionType === "return_and_refund"
+                    ? `The buyer is asked to ship the item back within ${RETURN_SHIPBACK_DAYS} days. Nothing is refunded until the seller confirms it arrived and you confirm the refund.`
+                    : "Cash-on-delivery refunds move to a payout you record next. Online (GCash/Maya/Card) payments submit a refund to the payment provider, which can take a few minutes to confirm. Either way, this can't be repeated once submitted."
             }
             tone="danger"
             confirmVariant="primary"
@@ -101,7 +124,11 @@ export function DecideReturnPanel({ returnId, sellerRejected, requestedType }: D
         <ConfirmPanel
           label="Confirm: reject this return request"
           title="Reject this return request?"
-          description="The buyer will not be refunded. This is final."
+          description={
+            stage === "initial"
+              ? "The buyer will not be refunded. This is final."
+              : "The buyer will not be refunded and this request closes. This is final."
+          }
           tone="danger"
           confirmVariant="danger"
           confirmLabel="Yes, reject"
@@ -111,24 +138,26 @@ export function DecideReturnPanel({ returnId, sellerRejected, requestedType }: D
         />
       ) : (
         <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant="primary"
-            size="rjSm"
-            onClick={() => {
-              setResolutionType(requestedType);
-              setPendingDecision("approve");
-            }}
-          >
-            {sellerRejected ? "Overrule & approve" : "Approve"}
-          </Button>
+          {stage !== "in_transit" ? (
+            <Button
+              type="button"
+              variant="primary"
+              size="rjSm"
+              onClick={() => {
+                setResolutionType(requestedType);
+                setPendingDecision("approve");
+              }}
+            >
+              {stage === "received" ? "Confirm refund" : sellerRejected ? "Overrule & approve" : "Approve"}
+            </Button>
+          ) : null}
           <Button
             type="button"
             variant="danger"
             size="rjSm"
             onClick={() => setPendingDecision("reject")}
           >
-            Reject
+            {stage === "in_transit" ? "Cancel this return" : "Reject"}
           </Button>
         </div>
       )}

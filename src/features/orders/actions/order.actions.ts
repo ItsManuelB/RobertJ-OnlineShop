@@ -21,8 +21,13 @@ import {
   confirmOrderReceivedSchema,
   dashboardOrderExportFiltersSchema,
   recordShipmentSchema,
+  respondToCancellationSchema,
+  retryOrderRefundSchema,
   scanOrderNumberSchema,
 } from "@/features/orders/schemas/order.schema";
+import { submitCancellationRefundsSafely } from "@/features/payments/lib/cancellation-refund";
+import { cancellationConfirmationMessage } from "@/features/orders/utils/cancellation-refund";
+import { formatCurrency } from "@/lib/utils/currency";
 import type { Order, OrderItem, OrderListParams } from "@/features/orders/types/order.types";
 
 /** What the scan-to-pack popup shows for a To Pack order. */
@@ -89,7 +94,7 @@ async function blockCancellationIfXenditUnresolved(
 export async function cancelOrderAction(
   orderId: string,
   reason: string,
-): Promise<ActionResult<null>> {
+): Promise<ActionResult<{ message: string }>> {
   const parsed = cancelOrderSchema.safeParse({ orderId, reason });
   if (!parsed.success) {
     return fromZodError(parsed.error);
@@ -102,17 +107,108 @@ export async function cancelOrderAction(
     const blocked = await blockCancellationIfXenditUnresolved(parsed.data.orderId);
     if (blocked) return blocked;
 
-    await queries.cancelBuyerOrder(parsed.data.orderId, user.id, parsed.data.reason);
+    // One transaction: cancel + restock + (if paid) open the automatic refund.
+    const result = await queries.cancelBuyerOrder(parsed.data.orderId, parsed.data.reason);
+    // Hand the refund to Xendit now; if that call fails the attempt stays
+    // visible as "needs attention" and the sweep retries it.
+    if (result.refund.needsSubmission) {
+      await submitCancellationRefundsSafely(parsed.data.orderId);
+    }
     // Cancellation is visible to the seller/admin too (order disappears from
     // their active queues, stock restores) — revalidate all three surfaces,
     // not just the buyer's own.
     await revalidateOrderSurfaces(parsed.data.orderId);
     revalidatePath(ROUTES.account, "layout");
-    return ok(null);
+    return ok({ message: cancellationConfirmationMessage(result.refund, formatCurrency) });
   } catch (error) {
     return fail(
       error instanceof Error ? error.message : "Could not cancel the order.",
     );
+  }
+}
+
+/**
+ * Buyer asks the seller to cancel an order that is already being prepared.
+ * The `request_order_cancellation` RPC enforces ownership and the status rule
+ * and is idempotent while a request is pending.
+ */
+export async function requestOrderCancellationAction(
+  orderId: string,
+  reason: string,
+): Promise<ActionResult<{ message: string }>> {
+  const parsed = cancelOrderSchema.safeParse({ orderId, reason });
+  if (!parsed.success) return fromZodError(parsed.error);
+
+  try {
+    const user = await queries.requireSessionUser();
+    await queries.requireRateLimit(`requestCancellation:${user.id}`, 10, 60);
+    await queries.requestOrderCancellation(parsed.data.orderId, parsed.data.reason);
+    await revalidateOrderSurfaces(parsed.data.orderId);
+    return ok({
+      message: "Cancellation requested. The shop will review it — you won't be charged extra, and a paid order is refunded automatically if it is approved.",
+    });
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "Could not send your cancellation request.");
+  }
+}
+
+/**
+ * Seller / shop member / admin approves or declines a buyer's cancellation
+ * request. Approval cancels the order in the database (stock restored, refund
+ * opened by trigger); this then hands that refund to Xendit.
+ */
+export async function respondToCancellationRequestAction(
+  requestId: string,
+  decision: "approve" | "reject",
+  note?: string,
+): Promise<ActionResult<{ message: string }>> {
+  const parsed = respondToCancellationSchema.safeParse({ requestId, decision, note });
+  if (!parsed.success) return fromZodError(parsed.error);
+
+  try {
+    const user = await queries.requireRole(DASHBOARD_ROLES);
+    await queries.requireRateLimit(`respondCancellation:${user.id}`, 30, 60);
+    const result = await queries.respondToCancellationRequest(
+      parsed.data.requestId,
+      parsed.data.decision,
+      parsed.data.note ?? null,
+    );
+    if (result.refund.needsSubmission) await submitCancellationRefundsSafely(result.orderId);
+    await revalidateOrderSurfaces(result.orderId);
+
+    const message =
+      result.outcome === "approved"
+        ? "Cancellation approved. The order is cancelled and any payment is being refunded."
+        : result.outcome === "rejected"
+          ? "Cancellation declined. The buyer can see your reason."
+          : "This request is out of date: the order is no longer being prepared.";
+    return ok({ message });
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "Could not respond to this request.");
+  }
+}
+
+/**
+ * Seller / shop member / admin recovery for a refund that failed: opens one new
+ * attempt (refused by the database while one is pending or already succeeded, so
+ * it can never double-refund) and sends it to Xendit.
+ */
+export async function retryOrderRefundAction(
+  returnRequestId: string,
+  orderId: string,
+): Promise<ActionResult<null>> {
+  const parsed = retryOrderRefundSchema.safeParse({ returnRequestId });
+  if (!parsed.success) return fromZodError(parsed.error);
+
+  try {
+    const user = await queries.requireRole(DASHBOARD_ROLES);
+    await queries.requireRateLimit(`retryOrderRefund:${user.id}`, 10, 60);
+    const state = await queries.retryOrderRefund(parsed.data.returnRequestId);
+    if (state.needsSubmission) await submitCancellationRefundsSafely(orderId);
+    await revalidateOrderSurfaces(orderId);
+    return ok(null);
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "Could not retry this refund.");
   }
 }
 
@@ -226,6 +322,12 @@ export async function advanceOrderStatusAction(
         : { sellerId: user.id, shopId: await queries.getOwnShopId(user.id) },
       parsed.data.reason,
     );
+
+    // A seller/admin cancellation of a paid order opened its refund in the
+    // database (trigger); hand it to Xendit. No-op when nothing is pending.
+    if (parsed.data.newStatus === "cancelled") {
+      await submitCancellationRefundsSafely(order.id);
+    }
 
     // Ready for Pickup: record the packing audit timestamp (advisory; the
     // transition above is the authoritative state change).
@@ -472,6 +574,7 @@ export async function bulkCancelOrdersAction(
         }
         await queries.advanceOrderStatus(orderId, ORDER_STATUS.cancelled, owner);
         updated += 1;
+        await submitCancellationRefundsSafely(orderId);
       } catch (error) {
         failed.push({
           orderId,

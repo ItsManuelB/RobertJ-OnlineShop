@@ -615,6 +615,18 @@ Original decision: Option 2. The Stripe code stayed in the repo (real, working c
 
 ---
 
+## ADR-025: A cancelled paid order is refunded by the existing refund pipeline, opened by a trigger
+
+**Context:** Cancelling a paid order restocked it but left the money in place: the buyer had to file a return and wait for an admin, and a payment that succeeded after cancellation was only logged. The buyer-facing rule is "cancel before preparation -> automatic full refund; cancel during preparation -> the shop reviews".
+
+**Options:** (1) a new refund table and flow for cancellations; (2) reuse `return_requests` + `xendit_refunds` and the Xendit refund webhook; (3) have each cancel path call a refund function.
+
+**Decision:** Option 2, with the refund opened by the trigger `orders_open_refund_on_cancel` (not by each caller), so buyer, seller, admin, bulk and approved-request cancellations all behave the same. The refund is a system-approved `return_requests` row (`reason_code = order_cancelled`, `restocked_at` set so stock can't be restored twice) plus a pending `xendit_refunds` attempt; the attempt id is the Xendit Idempotency-Key. COD / non-Xendit payments become `refund_due` for the existing staff payout. Cancelling from `shipped` is excluded (failed delivery stays under the return policy). The order stays `cancelled`; refund progress lives in `payment_status` and the refund attempts, and "completed" is only set from Xendit's confirmation. Cancelling a `processing` order is a request (`cancellation_requests`) the shop approves or declines; approval runs the same cancel. Late payments are refunded by `refund_late_payment_on_cancelled_order` (webhook + reconciliation).
+
+**Consequences:** No new payment code path or table for refunds; a double click, duplicate webhook or racing seller step is absorbed by the database (unique pending request, row locks, pending/succeeded checks). A failed call to Xendit is retried by the 15-minute sweep up to 4 times, then needs a person (Retry refund). Rollback steps are in the header of `20261024000100_order_cancellation_refunds.sql`. See `docs/cancellation-refunds.md`.
+
+---
+
 ## ADR-024: Variant stock is allocated, not duplicated; options share one shape; Guided Selection flags what it can't confirm
 
 **Context:** Almost no product had size/color options, and the two that did had rows that mixed color-only and size-only options (no buyer could pick both) while keeping leftover stock on the product's own inventory row, so stock appeared twice. Guided Selection (ADR-022) dropped every product without size/color data whenever a size or color was asked, hiding most of the catalog.

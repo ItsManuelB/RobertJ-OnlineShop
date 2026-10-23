@@ -5,9 +5,7 @@ import { useId, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { recordReturnReplacementShipmentAction } from "@/features/returns/actions/return.actions";
-
-/** Non-authoritative suggestions only — courier is stored as free text (no courier API), same list as `ShipmentCaptureForm`. */
-const COMMON_COURIERS = ["J&T Express", "LBC", "Ninja Van", "Flash Express", "JRS Express", "GrabExpress"];
+import { COMMON_COURIERS } from "@/features/returns/constants/return.constants";
 
 const inputClasses =
   "h-10 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30";

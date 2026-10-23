@@ -49,7 +49,7 @@ export async function ShopDashboardKpiRow({ from, to, shopId }: ShopDashboardKpi
       <StatCard
         label="Revenue"
         value={formatCurrency(summary.revenueCents)}
-        hint="Paid orders · selected date range"
+        hint="Net of refunds · selected date range"
         href={reportHref}
         icon={TrendingUp}
         iconBg="bg-primary/10"

@@ -5,6 +5,7 @@ import { THEMED_CARD } from "@/components/ui/card";
 import { cn } from "@/lib/utils/cn";
 import { getBuyerDisplayName } from "@/features/orders/types/order.types";
 import { BuyerReceiptConfirmation } from "@/features/orders/components/BuyerReceiptConfirmation";
+import { OrderCancellationSection } from "@/features/orders/components/OrderCancellationSection";
 import { OrderHeader } from "@/features/orders/components/OrderHeader";
 import { OrderItemsList } from "@/features/orders/components/OrderItemsList";
 import { OrderStatusControl } from "@/features/orders/components/OrderStatusControl";
@@ -13,8 +14,10 @@ import { OrderTimeline } from "@/features/orders/components/OrderTimeline";
 import { PaymentStatusBadge } from "@/features/orders/components/PaymentStatusBadge";
 import { ShippingAddressCard } from "@/features/orders/components/ShippingAddressCard";
 import { MarkCodCollectedButton } from "@/features/payments/components/MarkCodCollectedButton";
+import { RecordCodRefundPayoutPanel } from "@/features/returns/components/RecordCodRefundPayoutPanel";
 import { RecordReturnConditionPanel } from "@/features/returns/components/RecordReturnConditionPanel";
 import { ReturnRequestStatusCard } from "@/features/returns/components/ReturnRequestStatusCard";
+import { ReturnShippingActions } from "@/features/returns/components/ReturnShippingActions";
 import { RespondToReturnPanel } from "@/features/returns/components/RespondToReturnPanel";
 import {
   getDashboardOrder,
@@ -77,11 +80,25 @@ export default async function AdminOrderDetailPage({ params }: AdminOrderDetailP
         paymentRequired={paymentRequired}
       />
 
+      <OrderCancellationSection
+        orderId={order.id}
+        viewer="dashboard"
+        paidOnline={order.paymentMethod === "xendit"}
+      />
+
       {returnRequest ? (
         <div className="flex flex-col gap-3">
           <ReturnRequestStatusCard request={returnRequest} evidenceUrl={returnEvidenceUrl} themed />
           {returnRequest.status === RETURN_STATUS.pending ? (
             <RespondToReturnPanel returnId={returnRequest.id} />
+          ) : null}
+          <ReturnShippingActions request={returnRequest} viewer="admin" />
+          {returnRequest.status === RETURN_STATUS.refundDue ? (
+            <RecordCodRefundPayoutPanel
+              returnId={returnRequest.id}
+              amountCents={returnRequest.refundAmountCents}
+              currency={returnRequest.currency}
+            />
           ) : null}
           {returnRequest.status === RETURN_STATUS.refunded &&
           !returnRequest.restockedAt &&

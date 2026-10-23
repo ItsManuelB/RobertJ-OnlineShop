@@ -3,7 +3,10 @@ import Image from "next/image";
 import { Badge } from "@/components/ui/badge";
 import { RJ_CARD, THEMED_CARD } from "@/components/ui/card";
 import { RETURN_STATUS, RETURN_STATUS_LABELS, type ReturnStatus } from "@/constants/status";
-import { RETURN_REQUEST_TYPE_LABELS } from "@/features/returns/constants/return.constants";
+import {
+  COD_REFUND_METHOD_LABELS,
+  RETURN_REQUEST_TYPE_LABELS,
+} from "@/features/returns/constants/return.constants";
 import type { ReturnRequest } from "@/features/returns/types/return.types";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDateTime } from "@/lib/utils/date";
@@ -17,6 +20,23 @@ const RETURN_STATUS_TONE: Record<ReturnStatus, "neutral" | "info" | "success" | 
   admin_rejected: "danger",
   refunded: "success",
   replacement_approved: "warning",
+  refund_due: "warning",
+  awaiting_return: "warning",
+  return_shipped: "info",
+  return_received: "info",
+  return_expired: "neutral",
+  replacement_shipped: "info",
+  replacement_completed: "success",
+};
+
+/** Plain "what happens next" line for the ship-back leg — shown to every viewer, so it names the role, not "you". */
+const RETURN_NEXT_STEP: Partial<Record<ReturnStatus, string>> = {
+  awaiting_return: "the buyer ships the item back. If they don't ship in time, this request closes automatically.",
+  return_shipped: "the seller confirms the parcel arrived and checks the item.",
+  return_received: "the admin confirms the refund.",
+  return_expired: "the item was not shipped back in time, so nothing was refunded.",
+  replacement_approved: "the seller ships the replacement (its stock is taken off the shelf when it ships).",
+  replacement_shipped: "the buyer confirms the replacement arrived. If they don't, it completes automatically after 7 days.",
 };
 
 export interface ReturnRequestStatusCardProps {
@@ -46,7 +66,9 @@ export async function ReturnRequestStatusCard({
   themed = false,
 }: ReturnRequestStatusCardProps) {
   const pendingRefund =
-    request.status === "seller_accepted" || request.status === "seller_rejected"
+    request.status === "seller_accepted" ||
+    request.status === "seller_rejected" ||
+    request.status === "return_received"
       ? await getPendingXenditRefundForReturn(request.id).catch(() => null)
       : null;
 
@@ -126,9 +148,54 @@ export async function ReturnRequestStatusCard({
         </div>
       ) : null}
 
+      {request.status === RETURN_STATUS.refundDue && request.refundAmountCents !== null ? (
+        <p className={cn("mt-3 text-sm font-semibold", ink)}>
+          Refund of {formatCurrency(request.refundAmountCents, request.currency)} approved
+          <span className={cn("ml-1 text-xs font-normal", muted)}>
+            — the payout to the buyer is still being sent.
+          </span>
+        </p>
+      ) : null}
+
       {request.status === RETURN_STATUS.refunded && request.refundAmountCents !== null ? (
         <p className={cn("mt-3 text-sm font-semibold", themed ? "text-success" : "text-rj-green")}>
           Refunded {formatCurrency(request.refundAmountCents, request.currency)}
+        </p>
+      ) : null}
+
+      {request.codRefundMethod && request.codRefundedAt ? (
+        <p className={cn("mt-1 text-xs", muted)}>
+          Paid out via {COD_REFUND_METHOD_LABELS[request.codRefundMethod]}
+          {request.codRefundReference ? ` — ref ${request.codRefundReference}` : ""} (
+          {formatDateTime(request.codRefundedAt)})
+        </p>
+      ) : null}
+
+      {RETURN_NEXT_STEP[request.status] ? (
+        <p className={cn("mt-3 text-xs", muted)}>
+          <span className={cn("font-semibold", ink)}>What happens next:</span> {RETURN_NEXT_STEP[request.status]}
+        </p>
+      ) : null}
+
+      {request.returnDeadlineAt && request.status === RETURN_STATUS.awaitingReturn ? (
+        <p className={cn("mt-2 text-xs", muted)}>
+          <span className={cn("font-semibold", ink)}>Ship back by:</span> {formatDateTime(request.returnDeadlineAt)}
+        </p>
+      ) : null}
+
+      {request.returnShippedAt ? (
+        <p className={cn("mt-2 text-xs", muted)}>
+          <span className={cn("font-semibold", ink)}>Returned parcel:</span> shipped via {request.returnCourier} —
+          tracking {request.returnTrackingNumber} ({formatDateTime(request.returnShippedAt)})
+          {request.returnReceivedAt ? `, received ${formatDateTime(request.returnReceivedAt)}` : ""}
+        </p>
+      ) : null}
+
+      {request.returnInspection ? (
+        <p className={cn("mt-1 text-xs", muted)}>
+          <span className={cn("font-semibold", ink)}>Seller inspection:</span>{" "}
+          {request.returnInspection === "sellable" ? "item is sellable" : "item is not sellable"}
+          {request.conditionNote ? ` — ${request.conditionNote}` : ""}
         </p>
       ) : null}
 
@@ -142,12 +209,15 @@ export async function ReturnRequestStatusCard({
         </p>
       ) : null}
 
-      {request.status === RETURN_STATUS.replacementApproved ? (
+      {request.status === RETURN_STATUS.replacementApproved ||
+      request.status === RETURN_STATUS.replacementShipped ||
+      request.status === RETURN_STATUS.replacementCompleted ? (
         <p className={cn("mt-3 text-xs", muted)}>
           <span className={cn("font-semibold", ink)}>Replacement:</span>{" "}
           {request.replacementShippedAt
             ? `shipped via ${request.replacementCourier} — tracking ${request.replacementTrackingNumber} (${formatDateTime(request.replacementShippedAt)})`
             : "approved — awaiting shipment"}
+          {request.replacementCompletedAt ? ` — completed ${formatDateTime(request.replacementCompletedAt)}` : ""}
         </p>
       ) : null}
     </section>

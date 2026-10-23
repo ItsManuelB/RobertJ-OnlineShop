@@ -4,6 +4,8 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { getServerEnv } from "@/config/env";
 import * as queries from "@/lib/supabase/queries";
+import { recoverCancellationRefunds } from "@/features/payments/lib/cancellation-refund";
+import { reconcileXenditRefund } from "@/features/payments/lib/xendit-refund-reconciliation";
 import {
   isStaleXenditAttempt,
   reconcileStaleXenditAttempt,
@@ -24,10 +26,11 @@ import {
  * only reads `payment_method_type = 'xendit'` rows.
  *
  * TD-9: after the payment-status sweep above, a second pass auto-expires
- * orders that are still unpaid 24h after placement — see `runExpirySweep`.
- * Deliberately the SAME cron/route (not a second scheduled job): daily
- * granularity is more than enough for a 24h threshold, and it means one
- * schedule to reason about instead of two.
+ * orders that are still unpaid 60 minutes after placement — see `runExpirySweep`.
+ * Deliberately the SAME cron/route (not a second scheduled job): it runs
+ * every 15 minutes (see netlify/functions/xendit-reconciliation.mts), which
+ * is fine granularity for a 60-minute threshold, and it means one schedule
+ * to reason about instead of two.
  */
 
 /** Oldest-first raw rows to consider per run — bounds the query, not the work actually done (see queries.ts docs). */
@@ -36,11 +39,16 @@ const FETCH_LIMIT = 200;
 const BATCH_LIMIT = 20;
 
 /** How long an unpaid online-payment order may sit before it's auto-cancelled. Business-set threshold, not inferred. */
-const EXPIRE_THRESHOLD_HOURS = 24;
+const EXPIRE_THRESHOLD_MINUTES = 60;
 /** Oldest-first raw order rows to consider per run. */
 const EXPIRE_FETCH_LIMIT = 200;
 /** Hard cap on how many orders are actually expired (i.e. potentially call Xendit + write a cancellation) per run. */
 const EXPIRE_BATCH_LIMIT = 20;
+
+/** Leave a refund this long to its webhook before the sweep asks Xendit. */
+const REFUND_MIN_AGE_MINUTES = 5;
+/** Max pending refunds checked per run (each is one Xendit call). */
+const REFUND_BATCH_LIMIT = 20;
 
 interface SweepSummary {
   candidatesFetched: number;
@@ -119,13 +127,78 @@ export async function GET(request: NextRequest) {
   }
 
   const expiry = await runExpirySweep();
+  const refunds = await runRefundSweep();
+  const returns = await runReturnExpirySweep();
 
-  return NextResponse.json({ received: true, ...summary, expiry });
+  return NextResponse.json({ received: true, ...summary, expiry, refunds, returns });
+}
+
+/**
+ * Closes Return and Refund requests the buyer never shipped back in time
+ * (`awaiting_return` past `return_deadline_at` -> `return_expired`). Nothing was
+ * refunded at that point, so there is nothing to undo.
+ */
+async function runReturnExpirySweep(): Promise<{ expired: number; replacementsCompleted: number; errors: number }> {
+  const summary = { expired: 0, replacementsCompleted: 0, errors: 0 };
+  try {
+    summary.expired = await queries.expireOverdueReturnRequests();
+  } catch (error) {
+    console.error("[return expiry sweep] failed", error);
+    summary.errors++;
+  }
+  // Replacements the buyer never confirmed complete by themselves 7 days after shipping.
+  try {
+    summary.replacementsCompleted = await queries.completeOverdueReplacements();
+  } catch (error) {
+    console.error("[replacement completion sweep] failed", error);
+    summary.errors++;
+  }
+  return summary;
+}
+
+/**
+ * Catch-up for refunds Xendit accepted but whose `refund.*` webhook never
+ * settled: asks Xendit for the real status and applies it through the same
+ * RPC the webhook uses (see `reconcileXenditRefund`). Also sends cancellation
+ * refunds that never reached Xendit and re-tries ones that failed on our side.
+ */
+async function runRefundSweep(): Promise<{
+  checked: number;
+  settled: number;
+  errors: number;
+  retried: number;
+  submitted: number;
+}> {
+  const summary = { checked: 0, settled: 0, errors: 0, retried: 0, submitted: 0 };
+  // First make sure every cancellation refund has actually been sent to Xendit
+  // (an interrupted request or a failed call must never leave one stranded).
+  try {
+    const recovered = await recoverCancellationRefunds();
+    summary.retried = recovered.retried;
+    summary.submitted = recovered.submitted;
+  } catch (error) {
+    console.error("[xendit refund sweep] cancellation refund recovery failed", error);
+    summary.errors++;
+  }
+  let pending: Awaited<ReturnType<typeof queries.getPendingXenditRefundsForSweep>>;
+  try {
+    pending = await queries.getPendingXenditRefundsForSweep(REFUND_MIN_AGE_MINUTES, REFUND_BATCH_LIMIT);
+  } catch (error) {
+    console.error("[xendit refund sweep] failed to load pending refunds", error);
+    summary.errors++;
+    return summary;
+  }
+
+  for (const refund of pending) {
+    summary.checked++;
+    if ((await reconcileXenditRefund(refund.xenditRefundId)) === "settled") summary.settled++;
+  }
+  return summary;
 }
 
 /**
  * TD-9: cancels orders that are `payment_method = 'xendit'`, still
- * `order_status = 'pending'`, and still unpaid `EXPIRE_THRESHOLD_HOURS`
+ * `order_status = 'pending'`, and still unpaid `EXPIRE_THRESHOLD_MINUTES`
  * after `placed_at`. Before cancelling, always re-checks Xendit's real
  * status first (reusing the exact same reconciliation building blocks the
  * pre-cancellation guard uses) so an order Xendit still considers payable is
@@ -147,7 +220,7 @@ async function runExpirySweep(): Promise<ExpirySweepSummary> {
   let candidates: Awaited<ReturnType<typeof queries.getAbandonedXenditOrdersForExpiry>>;
   try {
     candidates = await queries.getAbandonedXenditOrdersForExpiry(
-      EXPIRE_THRESHOLD_HOURS,
+      EXPIRE_THRESHOLD_MINUTES,
       EXPIRE_FETCH_LIMIT,
     );
   } catch (error) {

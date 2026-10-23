@@ -5,9 +5,11 @@ import { ErrorState } from "@/components/feedback/ErrorState";
 import { ROUTES } from "@/constants/routes";
 import { RETURN_STATUS } from "@/constants/status";
 import { DecideReturnPanel } from "@/features/returns/components/DecideReturnPanel";
+import { RecordCodRefundPayoutPanel } from "@/features/returns/components/RecordCodRefundPayoutPanel";
 import { RecordReturnConditionPanel } from "@/features/returns/components/RecordReturnConditionPanel";
 import { RecordReturnReplacementShipmentPanel } from "@/features/returns/components/RecordReturnReplacementShipmentPanel";
 import { RespondToReturnPanel } from "@/features/returns/components/RespondToReturnPanel";
+import { ReturnShippingActions } from "@/features/returns/components/ReturnShippingActions";
 import { ReturnRequestStatusCard } from "@/features/returns/components/ReturnRequestStatusCard";
 import { ReturnQueueTabs } from "@/features/returns/components/ReturnQueueTabs";
 import {
@@ -127,6 +129,14 @@ export async function ReturnQueue({ viewer = "admin", tab, page }: ReturnQueuePr
                 returnId={request.id}
                 sellerRejected={request.status === RETURN_STATUS.sellerRejected}
                 requestedType={request.requestType}
+              />
+            ) : null}
+            <ReturnShippingActions request={request} viewer={viewer} />
+            {viewer === "admin" && request.status === RETURN_STATUS.refundDue ? (
+              <RecordCodRefundPayoutPanel
+                returnId={request.id}
+                amountCents={request.refundAmountCents}
+                currency={request.currency}
               />
             ) : null}
             {request.status === RETURN_STATUS.refunded &&

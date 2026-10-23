@@ -7,18 +7,24 @@ import { ROUTES } from "@/constants/routes";
 import { fail, fromZodError, ok } from "@/lib/utils/result";
 import * as queries from "@/lib/supabase/queries";
 import { createRefund } from "@/lib/xendit/client";
+import { reconcileXenditRefund } from "@/features/payments/lib/xendit-refund-reconciliation";
 import type { Json } from "@/lib/supabase/database.types";
 import type { ActionResult } from "@/types/action.types";
 import { revalidateOrderSurfaces } from "@/features/orders";
 import {
+  confirmReplacementReceivedSchema,
   decideReturnSchema,
+  recordCodRefundPayoutSchema,
   recordReturnItemConditionSchema,
+  recordReturnReceivedSchema,
   recordReturnReplacementShipmentSchema,
+  recordReturnShipmentSchema,
   requestReturnSchema,
   respondToReturnSchema,
 } from "@/features/returns/schemas/return.schema";
 import type {
   AdminReturnDecision,
+  CodRefundMethod,
   ReturnItemCondition,
   ReturnRequestType,
   SellerReturnDecision,
@@ -171,6 +177,8 @@ export async function decideReturnAction(
             response.id,
             response as unknown as Json,
           );
+          // Don't wait on the webhook alone: ask Xendit for the refund's real status now (best-effort; the webhook and the 15-minute sweep still settle it if this can't).
+          await reconcileXenditRefund(response.id);
         } catch (error) {
           await queries.failXenditRefundSubmission(
             pendingRefund.id,
@@ -192,6 +200,42 @@ export async function decideReturnAction(
   } catch (error) {
     return fail(
       error instanceof Error ? error.message : "Could not decide this return request.",
+    );
+  }
+}
+
+/**
+ * Admin-only: records how a COD buyer was actually paid back (GCash, bank
+ * transfer or cash, plus a reference) and finalises the refund. Cash can't be
+ * returned through the app, so `decide_return` leaves a COD approval at
+ * `refund_due`; this is the step that marks it refunded (payment, order and
+ * reports follow). Authorization and every precondition are enforced inside
+ * `record_cod_refund_payout`; `requireRole` here is defense-in-depth.
+ */
+export async function recordCodRefundPayoutAction(
+  returnId: string,
+  method: CodRefundMethod,
+  reference: string,
+  note?: string,
+): Promise<ActionResult<null>> {
+  const parsed = recordCodRefundPayoutSchema.safeParse({ returnId, method, reference, note });
+  if (!parsed.success) return fromZodError(parsed.error);
+
+  try {
+    await queries.requireRole(DASHBOARD_ROLES);
+    const { orderId } = await queries.recordCodRefundPayout(
+      parsed.data.returnId,
+      parsed.data.method,
+      parsed.data.reference,
+      parsed.data.note ?? null,
+    );
+    revalidatePath(ROUTES.adminReturns);
+    revalidatePath(ROUTES.sellerReturns);
+    await revalidateOrderSurfaces(orderId);
+    return ok(null);
+  } catch (error) {
+    return fail(
+      error instanceof Error ? error.message : "Could not record this refund payout.",
     );
   }
 }
@@ -263,6 +307,96 @@ export async function recordReturnReplacementShipmentAction(
   } catch (error) {
     return fail(
       error instanceof Error ? error.message : "Could not record this replacement shipment.",
+    );
+  }
+}
+
+/**
+ * The BUYER enters the courier + tracking number of the parcel they are sending
+ * back for an approved Return and Refund. Ownership, the `awaiting_return`
+ * state and the 5-day deadline are enforced inside `record_return_shipment`;
+ * this action only needs a signed-in user (not a dashboard role).
+ */
+export async function recordReturnShipmentAction(
+  returnId: string,
+  courier: string,
+  trackingNumber: string,
+): Promise<ActionResult<null>> {
+  const parsed = recordReturnShipmentSchema.safeParse({ returnId, courier, trackingNumber });
+  if (!parsed.success) return fromZodError(parsed.error);
+
+  try {
+    await queries.requireSessionUser();
+    const { orderId } = await queries.recordReturnShipment(
+      parsed.data.returnId,
+      parsed.data.courier,
+      parsed.data.trackingNumber,
+    );
+    await revalidateOrderSurfaces(orderId);
+    revalidatePath(ROUTES.adminReturns);
+    revalidatePath(ROUTES.sellerReturns);
+    return ok(null);
+  } catch (error) {
+    return fail(
+      error instanceof Error ? error.message : "Could not record your return shipment.",
+    );
+  }
+}
+
+/**
+ * The order's seller (or shop member / admin) confirms the returned parcel
+ * arrived and records whether the item is sellable. A sellable item is
+ * restocked inside `record_return_received`; the request then waits for the
+ * admin to confirm the refund. `requireRole` is defense-in-depth — ownership is
+ * enforced inside the RPC.
+ */
+export async function recordReturnReceivedAction(
+  returnId: string,
+  condition: ReturnItemCondition,
+  note?: string,
+): Promise<ActionResult<null>> {
+  const parsed = recordReturnReceivedSchema.safeParse({ returnId, condition, note });
+  if (!parsed.success) return fromZodError(parsed.error);
+
+  try {
+    await queries.requireRole(DASHBOARD_ROLES);
+    const { orderId } = await queries.recordReturnReceived(
+      parsed.data.returnId,
+      parsed.data.condition,
+      parsed.data.note ?? null,
+    );
+    await revalidateOrderSurfaces(orderId);
+    revalidatePath(ROUTES.adminReturns);
+    revalidatePath(ROUTES.sellerReturns);
+    return ok(null);
+  } catch (error) {
+    return fail(
+      error instanceof Error ? error.message : "Could not record this received return.",
+    );
+  }
+}
+
+/**
+ * The BUYER confirms the replacement arrived, completing the request. Ownership
+ * and the `replacement_shipped` state are enforced inside
+ * `confirm_replacement_received`; this only needs a signed-in user.
+ */
+export async function confirmReplacementReceivedAction(
+  returnId: string,
+): Promise<ActionResult<null>> {
+  const parsed = confirmReplacementReceivedSchema.safeParse({ returnId });
+  if (!parsed.success) return fail("Invalid request.");
+
+  try {
+    await queries.requireSessionUser();
+    const { orderId } = await queries.confirmReplacementReceived(parsed.data.returnId);
+    await revalidateOrderSurfaces(orderId);
+    revalidatePath(ROUTES.adminReturns);
+    revalidatePath(ROUTES.sellerReturns);
+    return ok(null);
+  } catch (error) {
+    return fail(
+      error instanceof Error ? error.message : "Could not confirm your replacement.",
     );
   }
 }

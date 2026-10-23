@@ -57,6 +57,105 @@ export function findFreshOtherChannelAttempt(
 }
 
 /**
+ * When the buyer lands back from Xendit's hosted page (`?xendit_return=1`),
+ * ask Xendit what actually happened instead of waiting only for the webhook —
+ * a webhook that is delayed, or can't reach this server at all (localhost),
+ * would otherwise leave a paid order showing "Payment Pending". Reuses
+ * `reconcileStaleXenditAttempt`, i.e. the same `process_xendit_webhook` RPC
+ * the real webhook uses, so Xendit stays the only source of truth and nothing
+ * is marked paid on the buyer's say-so. Returns null when there is no
+ * finalized attempt to check; "blocked" means Xendit still says pending (or
+ * could not be reached) and the page should stay as it is.
+ */
+export async function reconcileReturnedXenditPayment(
+  order: { id: string; checkoutGroupId: string | null },
+  channel: string | null,
+): Promise<ReconciliationOutcome | null> {
+  if (channel !== "GCASH" && channel !== "PAYMAYA" && channel !== "CARD") return null;
+
+  const attempt = order.checkoutGroupId
+    ? await queries.getFinalizedPendingXenditGroupPayment(order.checkoutGroupId, channel)
+    : await queries.getFinalizedPendingXenditPayment(order.id, channel);
+  if (!attempt) return null;
+
+  return reconcileStaleXenditAttempt(
+    order.checkoutGroupId ?? attempt.id,
+    channel,
+    attempt,
+  );
+}
+
+/** Buyer-facing message when a Card form opened moments ago (or one Xendit can't confirm as unpaid) still blocks a new one. */
+export const CARD_IN_PROGRESS_MESSAGE =
+  "A card payment was just started for this order. Finish the form you already opened, or try again in a couple of minutes.";
+
+/** A Card form opened less than this long ago may still be in use (same or another tab), so it is never released. */
+export const CARD_ABANDON_GRACE_MS = 2 * 60 * 1000;
+
+/**
+ * Switching payment method: like `findFreshOtherChannelAttempt`, but an
+ * abandoned Card form (nothing paid, confirmed with Xendit) is released first
+ * so it doesn't lock the buyer out of GCash/Maya for up to 30 minutes. An
+ * e-wallet attempt is never released this way — the buyer may be mid-payment
+ * in the e-wallet app — so it keeps blocking until it goes stale.
+ */
+export async function findBlockingOtherChannelAttempt(
+  others: PaymentAttempt[],
+  referenceIdFor: (attempt: PaymentAttempt) => string,
+): Promise<PaymentAttempt | null> {
+  for (const attempt of others) {
+    if (isStaleXenditAttempt(attempt)) continue;
+    if (attempt.paymentChannel === "CARD") {
+      const released = await releaseAbandonedCardAttempt(referenceIdFor(attempt), attempt);
+      if (released === "cleared_for_retry") continue;
+    }
+    return attempt;
+  }
+  return null;
+}
+
+/**
+ * Retry of a Card payment while the previous session isn't stale yet. The
+ * session is created when the form opens, so a buyer who leaves without paying
+ * would otherwise be locked out until it expires. Past a short grace period we
+ * ask Xendit first: a completed/expired/cancelled session is applied as usual
+ * (never overwrites a real payment), and only a session Xendit still reports
+ * ACTIVE (nothing paid) is marked abandoned so a fresh form can start.
+ * "blocked" covers both "within the grace period" and "Xendit unreachable".
+ */
+export async function releaseAbandonedCardAttempt(
+  referenceId: string,
+  existing: PaymentAttempt,
+): Promise<ReconciliationOutcome> {
+  if (!existing.xenditPaymentRequestId) return "cleared_for_retry";
+  if (Date.now() - new Date(existing.createdAt).getTime() < CARD_ABANDON_GRACE_MS) return "blocked";
+
+  let session: Awaited<ReturnType<typeof getCardSessionStatus>>;
+  try {
+    session = await getCardSessionStatus(existing.xenditPaymentRequestId);
+  } catch {
+    return "blocked";
+  }
+  if (session.status !== "ACTIVE") return reconcileStaleXenditAttempt(referenceId, "CARD", existing);
+
+  try {
+    const released = await queries.reconcileXenditWebhookStatus({
+      referenceId,
+      xenditPaymentRequestId: existing.xenditPaymentRequestId,
+      xenditPaymentId: session.payment_id ?? "",
+      status: "CANCELED",
+      channelCode: "CARD",
+      amountCents:
+        typeof session.amount === "number" ? xenditAmountToCents(session.amount) : existing.amountCents,
+      currency: session.currency ?? existing.currency,
+    });
+    return released?.status === "failed" ? "cleared_for_retry" : "blocked";
+  } catch {
+    return "blocked";
+  }
+}
+
+/**
  * Before a stale-by-our-clock attempt is treated as abandoned -- whether
  * that means starting a fresh charge (fix #5A) or allowing the order to be
  * cancelled (fix #5B) -- ask Xendit directly what actually happened. Xendit's

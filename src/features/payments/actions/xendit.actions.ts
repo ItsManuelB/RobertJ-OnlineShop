@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { ROUTES } from "@/constants/routes";
@@ -9,13 +10,17 @@ import * as queries from "@/lib/supabase/queries";
 import { createEwalletPaymentRequest, createCardPaymentSession } from "@/lib/xendit/client";
 import type { ActionResult } from "@/types/action.types";
 import {
+  CARD_IN_PROGRESS_MESSAGE,
   CHANNEL_SWITCH_BLOCKED_MESSAGE,
   RECONCILIATION_RETRY_MESSAGE,
-  findFreshOtherChannelAttempt,
+  findBlockingOtherChannelAttempt,
   isStaleXenditAttempt,
+  reconcileReturnedXenditPayment,
   reconcileStaleXenditAttempt,
+  releaseAbandonedCardAttempt,
 } from "@/features/payments/lib/xendit-reconciliation";
 import {
+  confirmXenditPaymentSchema,
   createXenditCardSessionSchema,
   createXenditEwalletPaymentSchema,
   createXenditGroupCardSessionSchema,
@@ -70,7 +75,7 @@ export async function createXenditEwalletPaymentAction(
     parsed.data.orderId,
     parsed.data.channelCode,
   );
-  if (findFreshOtherChannelAttempt(otherAttempts)) return fail(CHANNEL_SWITCH_BLOCKED_MESSAGE);
+  if (await findBlockingOtherChannelAttempt(otherAttempts, (a) => a.id)) return fail(CHANNEL_SWITCH_BLOCKED_MESSAGE);
 
   let redirectUrl: string;
   try {
@@ -166,12 +171,14 @@ export async function createXenditCardSessionAction(
       // sandbox: calling POST /sessions twice with the same
       // customer.reference_id returns 409 DUPLICATE_ERROR ("The
       // reference_id entered has been used before"), even with an
-      // identical Idempotency-Key. Nothing to reconcile yet (not stale),
-      // so stop here with a clear message instead of letting that 409
-      // surface as a confusing "Couldn't start payment" error.
-      return fail(
-        "A card payment is already in progress for this order. Complete the payment form you already opened, or wait a few minutes and try again.",
-      );
+      // identical Idempotency-Key. So a new session needs a new attempt:
+      // release the old one only if Xendit confirms nothing was paid and
+      // the form isn't recent; otherwise stop with a clear message.
+      const released = await releaseAbandonedCardAttempt(existingAttempt.id, existingAttempt);
+      if (released === "already_paid") {
+        return fail("This order has already been paid. Refresh the page to see the updated status.");
+      }
+      if (released !== "cleared_for_retry") return fail(CARD_IN_PROGRESS_MESSAGE);
     }
   }
 
@@ -179,7 +186,7 @@ export async function createXenditCardSessionAction(
   // e-wallet action above — block starting Card while GCash/Maya might
   // still resolve on its own.
   const otherAttempts = await queries.getOtherFinalizedPendingXenditPayments(parsed.data.orderId, "CARD");
-  if (findFreshOtherChannelAttempt(otherAttempts)) return fail(CHANNEL_SWITCH_BLOCKED_MESSAGE);
+  if (await findBlockingOtherChannelAttempt(otherAttempts, (a) => a.id)) return fail(CHANNEL_SWITCH_BLOCKED_MESSAGE);
 
   let attempt: Awaited<ReturnType<typeof queries.beginXenditPaymentAttempt>> | undefined;
   try {
@@ -276,7 +283,7 @@ export async function createXenditGroupEwalletPaymentAction(
     parsed.data.checkoutGroupId,
     parsed.data.channelCode,
   );
-  if (findFreshOtherChannelAttempt(otherAttempts)) return fail(CHANNEL_SWITCH_BLOCKED_MESSAGE);
+  if (await findBlockingOtherChannelAttempt(otherAttempts, () => parsed.data.checkoutGroupId)) return fail(CHANNEL_SWITCH_BLOCKED_MESSAGE);
 
   let redirectUrl: string;
   try {
@@ -381,10 +388,15 @@ export async function createXenditGroupCardSessionAction(
       // this every time the first click had already succeeded. Kept as a
       // defense-in-depth guard even with that UI fix in place (e.g. two
       // separate order-detail tabs for different members of the same
-      // group).
-      return fail(
-        "A card payment is already in progress for this order. Complete the payment form you already opened, or wait a few minutes and try again.",
+      // group). Released only when Xendit confirms nothing was paid.
+      const released = await releaseAbandonedCardAttempt(
+        parsed.data.checkoutGroupId,
+        existingAttempt,
       );
+      if (released === "already_paid") {
+        return fail("This order has already been paid. Refresh the page to see the updated status.");
+      }
+      if (released !== "cleared_for_retry") return fail(CARD_IN_PROGRESS_MESSAGE);
     }
   }
 
@@ -394,7 +406,7 @@ export async function createXenditGroupCardSessionAction(
     parsed.data.checkoutGroupId,
     "CARD",
   );
-  if (findFreshOtherChannelAttempt(otherAttempts)) return fail(CHANNEL_SWITCH_BLOCKED_MESSAGE);
+  if (await findBlockingOtherChannelAttempt(otherAttempts, () => parsed.data.checkoutGroupId)) return fail(CHANNEL_SWITCH_BLOCKED_MESSAGE);
 
   let attempt: Awaited<ReturnType<typeof queries.beginXenditGroupPaymentAttempt>> | undefined;
   try {
@@ -437,5 +449,65 @@ export async function createXenditGroupCardSessionAction(
       await queries.logXenditCardSessionFailure(attempt.id, message);
     }
     return fail(message);
+  }
+}
+
+/** What the buyer-facing "confirming your payment" watcher needs back. */
+export type ConfirmedPaymentStatus = "pending" | "paid" | "failed";
+
+/**
+ * Real-time confirmation for a Xendit payment the buyer just made (or an
+ * older one still showing "pending"). Asks Xendit itself for the attempt's
+ * real status and applies it through the same `process_xendit_webhook` RPC
+ * the webhook uses (see `reconcileReturnedXenditPayment`), so the order flips
+ * to paid within seconds even when the webhook is late, misconfigured or
+ * unreachable. Nothing is marked paid on the client's say-so: ownership is
+ * enforced by RLS-scoped reads, the status comes from Xendit, and this only
+ * ever reports the row's resulting state. Polled by `PaymentStatusWatcher`.
+ */
+export async function confirmXenditPaymentAction(
+  input: unknown,
+): Promise<ActionResult<{ status: ConfirmedPaymentStatus }>> {
+  const parsed = confirmXenditPaymentSchema.safeParse(input);
+  if (!parsed.success) return fromZodError(parsed.error);
+
+  try {
+    const user = await queries.requireSessionUser();
+    await queries.requireRateLimit(`confirmXenditPayment:${user.id}`, 60, 60);
+
+    const { orderId, checkoutGroupId } = parsed.data;
+    // Both lookups are RLS-scoped to the buyer's own orders, so another
+    // buyer's id simply resolves to nothing.
+    const read = async () =>
+      checkoutGroupId
+        ? queries.getActivePaymentForGroup(checkoutGroupId)
+        : queries.getActivePaymentForOrder(orderId as string);
+
+    let payment = await read();
+    if (!payment || payment.paymentMethodType !== "xendit") return fail("Payment not found.");
+
+    if (payment.status === "pending" && payment.xenditPaymentRequestId) {
+      await reconcileReturnedXenditPayment(
+        { id: payment.orderId, checkoutGroupId: payment.checkoutGroupId },
+        payment.paymentChannel,
+      ).catch(() => null);
+      payment = (await read()) ?? payment;
+    }
+
+    const status: ConfirmedPaymentStatus =
+      payment.status === "paid" ||
+      payment.status === "refunded" ||
+      payment.status === "partially_refunded"
+        ? "paid"
+        : payment.status === "failed"
+          ? "failed"
+          : "pending";
+    if (status !== "pending") {
+      revalidatePath(ROUTES.orders);
+      revalidatePath(ROUTES.orderDetail(payment.orderId));
+    }
+    return ok({ status });
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "Could not confirm the payment.");
   }
 }

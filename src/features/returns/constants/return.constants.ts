@@ -30,6 +30,26 @@ export const SHIPPED_NON_DELIVERY_GRACE_DAYS = 3;
  */
 export const RETURN_SELLER_RESPONSE_SLA_DAYS = 3;
 
+/**
+ * Return and Refund: how long the buyer has, after the admin approves, to ship
+ * the item back. Authoritative enforcement is `decide_return`'s literal
+ * `interval '5 days'` (`20261023000200_decide_return_return_shipping.sql`);
+ * `record_return_shipment` rejects a late submission and the 15-minute sweep
+ * closes the request. This constant is the single source for UI copy.
+ */
+export const RETURN_SHIPBACK_DAYS = 5;
+
+/**
+ * Replacement/Exchange: a shipped replacement the buyer never confirms completes
+ * by itself this many days after shipping. Authoritative enforcement is
+ * `complete_overdue_replacements`'s literal `interval '7 days'`
+ * (`20261023010100_replacement_shipping_and_completion.sql`); single source for UI copy.
+ */
+export const REPLACEMENT_AUTO_COMPLETE_DAYS = 7;
+
+/** Non-authoritative courier suggestions only — courier is stored as free text (no courier API). Same list as `ShipmentCaptureForm`. */
+export const COMMON_COURIERS = ["J&T Express", "LBC", "Ninja Van", "Flash Express", "JRS Express", "GrabExpress"];
+
 /** Hard cap on the buyer's free-text "Other" explanation — enforced both client-side (live counter + `maxLength`) and inside `request_return` itself. */
 export const RETURN_EXPLANATION_MAX_LENGTH = 500;
 
@@ -82,6 +102,8 @@ export const RETURN_REASON_CODE_LABELS: Record<ReturnReasonCode, string> = {
   missing_item: "Missing Item/Parts",
   item_not_received: "Item Not Received",
   other: "Other",
+  // System-opened refund for a cancelled order; never offered in the buyer's return form.
+  order_cancelled: "Order cancelled",
 };
 
 /**
@@ -91,3 +113,10 @@ export const RETURN_REASON_CODE_LABELS: Record<ReturnReasonCode, string> = {
  * reason still requires the item to have actually arrived.
  */
 export const SHIPPED_ELIGIBLE_REASON_CODE: ReturnReasonCode = "item_not_received";
+
+/** Buyer/admin-facing names for how a COD refund was paid out. Mirrors `CodRefundMethod`. */
+export const COD_REFUND_METHOD_LABELS = {
+  gcash: "GCash",
+  bank_transfer: "Bank transfer",
+  cash: "Cash",
+} as const;

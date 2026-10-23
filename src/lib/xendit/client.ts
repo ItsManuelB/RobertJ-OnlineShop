@@ -148,6 +148,14 @@ export interface CreateCardPaymentSessionInput {
 export async function createCardPaymentSession(
   input: CreateCardPaymentSessionInput,
 ): Promise<XenditPaymentSessionResponse> {
+  // Confirmed live: /sessions rejects any non-HTTPS return URL or component
+  // origin (INVALID_URL / "need to use HTTPS"), unlike GCash/Maya payment
+  // requests. Say so plainly rather than surfacing Xendit's generic message.
+  if (!input.successReturnUrl.startsWith("https://")) {
+    throw new Error(
+      "Card payments need an HTTPS site address. Set NEXT_PUBLIC_SITE_URL to an https:// URL (locally, run `npm run dev:https`).",
+    );
+  }
   return xenditFetch<XenditPaymentSessionResponse>("/sessions", {
     method: "POST",
     idempotencyKey: input.referenceId,
@@ -206,6 +214,18 @@ export async function getCardSessionStatus(
     `/sessions/${encodeURIComponent(sessionId)}`,
     { method: "GET" },
   );
+}
+
+/**
+ * GET /refunds/{id} — Xendit's current state for a refund we submitted. Used
+ * to catch up when the `refund.succeeded`/`refund.failed` webhook is late or
+ * never arrives; authoritative (it comes from Xendit, unlike the synchronous
+ * POST response), and applied through the same RPC the webhook uses.
+ */
+export async function getRefundStatus(refundId: string): Promise<XenditRefundResponse> {
+  return xenditFetch<XenditRefundResponse>(`/refunds/${encodeURIComponent(refundId)}`, {
+    method: "GET",
+  });
 }
 
 export interface CreateRefundInput {

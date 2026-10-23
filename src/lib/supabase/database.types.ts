@@ -14,6 +14,51 @@ export type Database = {
   }
   public: {
     Tables: {
+      cancellation_requests: {
+        Row: {
+          buyer_id: string
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          decision_note: string | null
+          id: string
+          order_id: string
+          reason: string
+          seller_id: string | null
+          shop_id: string | null
+          status: Database["public"]["Enums"]["cancellation_request_status"]
+          updated_at: string
+        }
+        Insert: {
+          buyer_id: string
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decision_note?: string | null
+          id?: string
+          order_id: string
+          reason: string
+          seller_id?: string | null
+          shop_id?: string | null
+          status?: Database["public"]["Enums"]["cancellation_request_status"]
+          updated_at?: string
+        }
+        Update: {
+          buyer_id?: string
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decision_note?: string | null
+          id?: string
+          order_id?: string
+          reason?: string
+          seller_id?: string | null
+          shop_id?: string | null
+          status?: Database["public"]["Enums"]["cancellation_request_status"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
       addresses: {
         Row: {
           barangay: string | null
@@ -1220,6 +1265,10 @@ export type Database = {
           admin_decision_note: string | null
           buyer_id: string
           condition_note: string | null
+          cod_refund_method: string | null
+          cod_refund_reference: string | null
+          cod_refunded_at: string | null
+          cod_refunded_by: string | null
           condition_recorded_by: string | null
           created_at: string
           evidence_path: string | null
@@ -1242,6 +1291,14 @@ export type Database = {
           shop_id: string | null
           status: Database["public"]["Enums"]["return_status"]
           updated_at: string
+          return_courier: string | null
+          return_deadline_at: string | null
+          return_inspection: string | null
+          return_received_at: string | null
+          return_received_by: string | null
+          return_shipped_at: string | null
+          return_tracking_number: string | null
+          replacement_completed_at: string | null
         }
         Insert: {
           admin_decided_at?: string | null
@@ -1249,6 +1306,10 @@ export type Database = {
           admin_decision_note?: string | null
           buyer_id: string
           condition_note?: string | null
+          cod_refund_method?: string | null
+          cod_refund_reference?: string | null
+          cod_refunded_at?: string | null
+          cod_refunded_by?: string | null
           condition_recorded_by?: string | null
           created_at?: string
           evidence_path?: string | null
@@ -1271,6 +1332,14 @@ export type Database = {
           shop_id?: string | null
           status?: Database["public"]["Enums"]["return_status"]
           updated_at?: string
+          return_courier?: string | null
+          return_deadline_at?: string | null
+          return_inspection?: string | null
+          return_received_at?: string | null
+          return_received_by?: string | null
+          return_shipped_at?: string | null
+          return_tracking_number?: string | null
+          replacement_completed_at?: string | null
         }
         Update: {
           admin_decided_at?: string | null
@@ -1278,6 +1347,10 @@ export type Database = {
           admin_decision_note?: string | null
           buyer_id?: string
           condition_note?: string | null
+          cod_refund_method?: string | null
+          cod_refund_reference?: string | null
+          cod_refunded_at?: string | null
+          cod_refunded_by?: string | null
           condition_recorded_by?: string | null
           created_at?: string
           evidence_path?: string | null
@@ -1300,6 +1373,14 @@ export type Database = {
           shop_id?: string | null
           status?: Database["public"]["Enums"]["return_status"]
           updated_at?: string
+          return_courier?: string | null
+          return_deadline_at?: string | null
+          return_inspection?: string | null
+          return_received_at?: string | null
+          return_received_by?: string | null
+          return_shipped_at?: string | null
+          return_tracking_number?: string | null
+          replacement_completed_at?: string | null
         }
         Relationships: [
           {
@@ -2596,6 +2677,97 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      confirm_replacement_received: {
+        Args: { p_return_id: string }
+        Returns: Database["public"]["Tables"]["return_requests"]["Row"]
+      }
+      complete_overdue_replacements: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
+      record_return_shipment: {
+        Args: {
+          p_courier: string
+          p_return_id: string
+          p_tracking_number: string
+        }
+        Returns: Database["public"]["Tables"]["return_requests"]["Row"]
+      }
+      record_return_received: {
+        Args: {
+          p_condition: string
+          p_note?: string
+          p_return_id: string
+        }
+        Returns: Database["public"]["Tables"]["return_requests"]["Row"]
+      }
+      expire_overdue_return_requests: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
+      cancel_order_with_refund: {
+        Args: { p_order_id: string; p_reason: string }
+        Returns: Json
+      }
+      request_order_cancellation: {
+        Args: { p_order_id: string; p_reason: string }
+        Returns: Database["public"]["Tables"]["cancellation_requests"]["Row"]
+      }
+      respond_to_cancellation_request: {
+        Args: { p_decision: string; p_note?: string; p_request_id: string }
+        Returns: Json
+      }
+      retry_order_refund: {
+        Args: { p_return_request_id: string }
+        Returns: Json
+      }
+      system_retry_cancellation_refund: {
+        Args: { p_max_attempts?: number; p_return_request_id: string }
+        Returns: Json
+      }
+      system_record_xendit_refund_submission: {
+        Args: {
+          p_raw_response: Json
+          p_refund_id: string
+          p_xendit_refund_id: string
+        }
+        Returns: Database["public"]["Tables"]["xendit_refunds"]["Row"]
+      }
+      system_fail_xendit_refund_submission: {
+        Args: { p_error_note: string; p_refund_id: string }
+        Returns: Database["public"]["Tables"]["xendit_refunds"]["Row"]
+      }
+      refund_late_payment_on_cancelled_order: {
+        Args: {
+          p_amount_cents: number
+          p_channel_code: string
+          p_currency: string
+          p_raw_payload: Json
+          p_reference_id: string
+          p_status: string
+          p_xendit_payment_id: string
+          p_xendit_payment_request_id: string
+        }
+        Returns: Json
+      }
+      report_refund_pipeline: {
+        Args: { p_from: string; p_shop_id?: string; p_to: string }
+        Returns: {
+          attention_refund_cents: number
+          attention_refunds: number
+          pending_refund_cents: number
+          pending_refunds: number
+        }[]
+      }
+      record_cod_refund_payout: {
+        Args: {
+          p_method: string
+          p_note?: string
+          p_reference: string
+          p_return_id: string
+        }
+        Returns: Database["public"]["Tables"]["return_requests"]["Row"]
+      }
       record_return_replacement_shipment: {
         Args: {
           p_courier: string
@@ -2686,9 +2858,12 @@ export type Database = {
           avg_order_value_cents: number
           cancelled_orders: number
           cod_paid_orders: number
+          gross_revenue_cents: number
           paid_orders: number
           pending_payment_orders: number
           qr_paid_orders: number
+          refunded_orders: number
+          refunds_cents: number
           revenue_cents: number
           total_orders: number
           units_sold: number
@@ -2838,6 +3013,11 @@ export type Database = {
       unaccent_fallback: { Args: { value: string }; Returns: string }
     }
     Enums: {
+      cancellation_request_status:
+        | "pending"
+        | "approved"
+        | "rejected"
+        | "expired"
       gender_type: "male" | "female" | "other"
       order_payment_method: "cod" | "xendit"
       order_status:
@@ -2873,6 +3053,7 @@ export type Database = {
         | "missing_item"
         | "item_not_received"
         | "other"
+        | "order_cancelled"
       return_request_type:
         | "money_refund"
         | "return_and_refund"
@@ -2884,6 +3065,13 @@ export type Database = {
         | "admin_rejected"
         | "refunded"
         | "replacement_approved"
+        | "refund_due"
+        | "awaiting_return"
+        | "return_shipped"
+        | "return_received"
+        | "return_expired"
+        | "replacement_shipped"
+        | "replacement_completed"
       stock_adjustment_reason:
         | "initial_stock"
         | "restock"
@@ -2893,6 +3081,7 @@ export type Database = {
         | "shrinkage"
         | "other"
         | "return_restock"
+        | "replacement_shipment"
       user_role: "buyer" | "seller" | "admin"
       xendit_refund_status: "pending" | "succeeded" | "failed"
     }
@@ -3022,6 +3211,12 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      cancellation_request_status: [
+        "pending",
+        "approved",
+        "rejected",
+        "expired",
+      ],
       gender_type: ["male", "female", "other"],
       order_payment_method: ["cod", "xendit"],
       order_status: [
@@ -3060,6 +3255,7 @@ export const Constants = {
         "missing_item",
         "item_not_received",
         "other",
+        "order_cancelled",
       ],
       return_request_type: [
         "money_refund",
@@ -3073,6 +3269,13 @@ export const Constants = {
         "admin_rejected",
         "refunded",
         "replacement_approved",
+        "refund_due",
+        "awaiting_return",
+        "return_shipped",
+        "return_received",
+        "return_expired",
+        "replacement_shipped",
+        "replacement_completed",
       ],
       stock_adjustment_reason: [
         "initial_stock",
@@ -3083,6 +3286,7 @@ export const Constants = {
         "shrinkage",
         "other",
         "return_restock",
+        "replacement_shipment",
       ],
       user_role: ["buyer", "seller", "admin"],
       xendit_refund_status: ["pending", "succeeded", "failed"],

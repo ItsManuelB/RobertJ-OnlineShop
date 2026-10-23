@@ -10,8 +10,8 @@ const buttonVariants = cva(
       variant: {
         primary: "bg-primary text-primary-foreground hover:bg-primary/90",
         secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        outline: "border border-border bg-transparent hover:bg-muted",
-        ghost: "bg-transparent hover:bg-muted",
+        outline: "border border-border bg-transparent text-foreground hover:bg-muted",
+        ghost: "bg-transparent text-foreground hover:bg-muted",
         danger: "bg-danger text-danger-foreground hover:bg-danger/90",
         // RobertJ landing-system CTAs (pill, rj palette). `cn()`/twMerge
         // resolves the overlap with the base classes (radius, weight, motion).

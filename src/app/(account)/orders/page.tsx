@@ -6,6 +6,7 @@ import { OrderListSection } from "@/features/orders/components/OrderListSection"
 import { OrderLifecycleTabs } from "@/features/orders/components/OrderLifecycleTabs";
 import { OrderSearchInput } from "@/features/orders/components/OrderSearchInput";
 import { OrderSkeletons } from "@/features/orders/components/OrderSkeletons";
+import { UnpaidOrdersNotice } from "@/features/orders/components/UnpaidOrdersNotice";
 import { getBuyerOrderLifecycleCounts, requireSessionUser } from "@/lib/supabase/queries";
 
 export const metadata: Metadata = { title: "Orders" };
@@ -26,6 +27,8 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
         title="Orders"
         description="Track your orders by ID, filter by status, and follow delivery."
       />
+
+      <UnpaidOrdersNotice count={counts.to_pay} onToPayTab={params.tab === "to_pay"} />
 
       <div className="flex flex-col gap-4">
         <Suspense fallback={null}>
