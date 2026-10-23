@@ -64,3 +64,44 @@ after 60 minutes; checkout and the webhook are unaffected.
 4. Optional: call the sweep once by hand:
    `curl -H "Authorization: Bearer <CRON_SECRET>" https://<site>/api/cron/xendit-reconciliation`
    (expect 200 with a JSON summary).
+
+## 7. Custom domain (`robertjshop.store`, registered at Spaceship)
+
+DNS stays at Spaceship (default `launch1/2.spaceship.net` nameservers) and
+points at Netlify with two records. Switching to Netlify DNS nameservers also
+works but waits on registry TTLs (up to 24h+), so records are faster.
+
+1. Netlify -> Domain management -> Add a domain -> `robertjshop.store`. The
+   apex is the primary domain and `www` redirects to it.
+2. Spaceship -> Domain Manager -> `robertjshop.store` -> Nameservers & DNS ->
+   Advanced DNS -> DNS Records. Remove any existing `@` / `www` records, then add:
+
+   | Type | Host | Value | TTL |
+   |---|---|---|---|
+   | `A` | `@` | `75.2.60.5` | 30 min |
+   | `CNAME` | `www` | `<your-site>.netlify.app` | 30 min |
+
+   Spaceship has no ALIAS type in its quick-add list, so the apex uses the `A`
+   record (Netlify's load-balancer IP). No `AAAA` or `CAA` records are set;
+   a `CAA` record that excludes Let's Encrypt would block the certificate.
+3. Netlify -> Domain management -> HTTPS -> Verify DNS configuration. The
+   Let's Encrypt certificate is issued automatically and renews itself. After
+   verification it can take 30+ minutes to appear; **Retry DNS verification**
+   re-requests it. Until then the site serves Netlify's `*.netlify.app`
+   certificate and browsers show a trust error.
+4. Set `NEXT_PUBLIC_SITE_URL=https://robertjshop.store` and redeploy (it is
+   baked in at build time).
+5. Update every service that knows the site address:
+   - **Supabase** -> Authentication -> URL Configuration: Site URL, and add
+     `https://robertjshop.store/**` to Redirect URLs.
+   - **Xendit** -> Webhooks: `https://robertjshop.store/api/webhooks/xendit`.
+   - **Cloudflare Turnstile**: add `robertjshop.store` to the key's allowed
+     domains, or the sign-in / sign-up captcha fails on the new domain.
+6. Re-run the [smoke test](#6-smoke-test-after-deploy) on the new domain,
+   including a password-reset email link and a GCash return.
+
+Domain renewal: auto-renew is **off** in Spaceship and the domain expires on
+2027-10-09. Turn it on or renew before then.
+
+Troubleshooting: `nslookup robertjshop.store 8.8.8.8` should return
+`75.2.60.5`; `www` should resolve through `<your-site>.netlify.app`.
