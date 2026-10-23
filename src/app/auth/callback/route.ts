@@ -7,18 +7,22 @@ import {
   hasRecoverySession,
   signOut,
 } from "@/lib/supabase/queries";
-import { isInternalPath } from "@/lib/utils/url";
+import { absoluteUrl, isInternalPath } from "@/lib/utils/url";
 
 /**
  * PKCE exchange endpoint for Supabase auth email links (sign-up confirmation and
  * password recovery) and OAuth. Trades the `?code` for a session, sets the
  * session cookies, then forwards to `next` (or the home page).
  *
+ * Redirects are built from `NEXT_PUBLIC_SITE_URL`, not the request origin: on
+ * Netlify the request origin is the per-deploy address, which would bounce the
+ * user off the host that just set their session cookies.
+ *
  * This route exists now so the Login / Registration / Forgot Password /
  * Email Verification screens built in the auth phase have a working callback.
  */
 export async function GET(request: NextRequest) {
-  const { searchParams, origin } = new URL(request.url);
+  const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
   const next = searchParams.get("next") ?? ROUTES.home;
 
@@ -34,7 +38,7 @@ export async function GET(request: NextRequest) {
     // for the link case) "Sign-in was cancelled." copy.
     const providerErrorCode = searchParams.get("error_code");
     const code = providerErrorCode === "otp_expired" ? "otp_expired" : providerError;
-    return NextResponse.redirect(`${origin}${ROUTES.signIn}?error=${encodeURIComponent(code)}`);
+    return NextResponse.redirect(absoluteUrl(`${ROUTES.signIn}?error=${encodeURIComponent(code)}`));
   }
 
   if (code) {
@@ -51,7 +55,7 @@ export async function GET(request: NextRequest) {
         if (user && !user.isActive) {
           await signOut();
           return NextResponse.redirect(
-            `${origin}${ROUTES.signIn}?error=deactivated`,
+            absoluteUrl(`${ROUTES.signIn}?error=deactivated`),
           );
         }
       }
@@ -59,11 +63,11 @@ export async function GET(request: NextRequest) {
       // Only allow same-origin, absolute-path redirects to avoid open redirects
       // (rejects protocol-relative targets like `//evil.com` too).
       const target = isInternalPath(next) ? next : ROUTES.home;
-      return NextResponse.redirect(`${origin}${target}`);
+      return NextResponse.redirect(absoluteUrl(target));
     }
   }
 
   return NextResponse.redirect(
-    `${origin}${ROUTES.signIn}?error=auth_callback_failed`,
+    absoluteUrl(`${ROUTES.signIn}?error=auth_callback_failed`),
   );
 }
