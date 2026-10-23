@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { X } from "lucide-react";
+import { ImageUp, X } from "lucide-react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils/cn";
@@ -18,6 +18,9 @@ type Phase =
   | "denied"
   | "no-camera"
   | "unsupported";
+
+/** Bottom buttons share the row equally (two halves, wrapping on very narrow screens) with centred, same-height content. */
+const ACTION_BUTTON = "inline-flex min-h-11 min-w-[9rem] flex-1 basis-0 items-center justify-center gap-2 px-4 text-center";
 
 export type BarcodeDecodeResult = { success: true } | { success: false; error: string };
 
@@ -45,6 +48,14 @@ export interface BarcodeScannerModalProps {
   onNoCameraFallback?: () => void;
   /** Button text shown only while `onNoCameraFallback` is about to be invoked — defaults to `fallbackLabel` if omitted. */
   noCameraFallbackLabel?: string;
+  /**
+   * Adds an "Upload barcode" button beside the fallback button (like the
+   * "Upload QR" on a wallet app's scan screen). Called with the camera
+   * already stopped; the caller opens its own photo-upload flow. Omitted:
+   * no button, so other callers are unchanged. Also offered when the camera
+   * is blocked or missing, where uploading a photo still works.
+   */
+  onUpload?: () => void;
   /** Copy overrides for the caller's specific scan purpose. */
   title?: string;
   instructions?: string;
@@ -66,6 +77,7 @@ export function BarcodeScannerModal({
   onDecode,
   onNoCameraFallback,
   noCameraFallbackLabel,
+  onUpload,
   title = "Scan order barcode",
   instructions = "Point the camera at the Code 128 barcode on the shipping label.",
   resolvingLabel = "Looking up the order…",
@@ -274,19 +286,32 @@ export function BarcodeScannerModal({
           ) : null}
         </div>
 
-        <div className="mt-5 flex flex-wrap gap-2">
+        <div className="mt-5 flex flex-wrap items-stretch gap-2">
           {phase === "error" || phase === "denied" ? (
-            <Button type="button" variant="primary" size="rjSm" onClick={handleRetry}>
+            <Button type="button" variant="primary" size="rjSm" onClick={handleRetry} className={ACTION_BUTTON}>
               Scan again
             </Button>
           ) : null}
           <button
             type="button"
             onClick={handleFallbackClick}
-            className={cn(buttonVariants({ variant: "outline", size: "rjSm" }))}
+            className={cn(buttonVariants({ variant: "outline", size: "rjSm" }), ACTION_BUTTON)}
           >
             {effectiveFallbackLabel}
           </button>
+          {onUpload ? (
+            <button
+              type="button"
+              onClick={() => {
+                stopCamera();
+                onUpload();
+              }}
+              className={cn(buttonVariants({ variant: "outline", size: "rjSm" }), ACTION_BUTTON)}
+            >
+              <ImageUp className="h-4 w-4 shrink-0" aria-hidden="true" />
+              Upload barcode
+            </button>
+          ) : null}
         </div>
       </div>
     </div>

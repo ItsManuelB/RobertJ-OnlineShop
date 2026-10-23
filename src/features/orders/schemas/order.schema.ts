@@ -159,6 +159,14 @@ export const scanOrderNumberSchema = z.object({
     .regex(/^ORD-\d{8}-\d{6}$/, "That doesn't look like a RobertJ order barcode."),
 });
 
+/** Most barcodes one photo upload may resolve at once. */
+export const MAX_SCAN_BATCH = 20;
+
+/** A batch of decoded barcodes (photo upload): each must look like a RobertJ order number. */
+export const scanOrderNumbersSchema = z.object({
+  orderNumbers: z.array(scanOrderNumberSchema.shape.orderNumber).min(1).max(MAX_SCAN_BATCH),
+});
+
 export type BuyerOrderListParamsInput = z.input<typeof buyerOrderListParamsSchema>;
 export type DashboardOrderListParamsInput = z.input<typeof dashboardOrderListParamsSchema>;
 export type CancelOrderInput = z.infer<typeof cancelOrderSchema>;
