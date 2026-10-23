@@ -73,6 +73,7 @@ export const ROUTES = {
   sellerPayments: "/seller/payments",
   sellerReturns: "/seller/returns",
   sellerReports: "/seller/reports",
+  sellerReportsPrint: "/seller/reports/print",
   notifications: "/notifications",
   assistant: "/assistant",
   signIn: "/sign-in",

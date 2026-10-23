@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import type { Metadata } from "next";
 
+import { buttonVariants } from "@/components/ui/button";
 import { ROUTES } from "@/constants/routes";
 import {
   ExportReportButton,
@@ -112,6 +113,7 @@ export default async function SellerReportsPage({ searchParams }: SellerReportsP
     }
     return `${ROUTES.sellerReports}?${query.toString()}`;
   };
+  const printQuery = new URLSearchParams({ from, to, ...(interval !== "auto" ? { interval } : {}) }).toString();
   const intervalHrefs: Record<TrendIntervalChoice, string> = {
     auto: hrefWith({ interval: null }),
     day: hrefWith({ interval: "day" }),
@@ -135,6 +137,14 @@ export default async function SellerReportsPage({ searchParams }: SellerReportsP
         <div className="flex items-center gap-2">
           <SellerDateFilterButton from={from} to={to} />
           <ExportReportButton filters={filters} sections={EXPORT_SECTIONS} />
+          <Link
+            href={`${ROUTES.sellerReportsPrint}?${printQuery}`}
+            target="_blank"
+            rel="noopener"
+            className={buttonVariants({ variant: "outline", size: "rjSm" })}
+          >
+            Export PDF
+          </Link>
         </div>
       </div>
 
