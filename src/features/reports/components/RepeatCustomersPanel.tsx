@@ -36,6 +36,9 @@ export async function RepeatCustomersPanel({ filters }: { filters: Pick<ReportFi
               <span>{stats.returningOrders} returning</span>
               <span>{stats.newOrders} new</span>
             </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Counts every order placed in these dates. A buyer is &quot;returning&quot; if they have ordered from your shop more than once, ever.
+            </p>
           </>
         )}
       </CardContent>

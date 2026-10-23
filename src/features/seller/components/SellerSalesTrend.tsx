@@ -1,9 +1,12 @@
+import Link from "next/link";
+
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ReportGranularity, SalesTrendPoint } from "@/features/reports/types/report.types";
 import { fillTrendGaps } from "@/features/reports/utils/report-range";
 import { getSalesTimeseries } from "@/lib/supabase/queries";
+import { cn } from "@/lib/utils/cn";
 
 import { SellerSalesTrendChart, type SellerTrendBucket } from "./SellerSalesTrendChart";
 
@@ -24,13 +27,33 @@ function shortDate(bucket: string, granularity: ReportGranularity): string {
   );
 }
 
+export type TrendIntervalChoice = "auto" | ReportGranularity;
+
+const INTERVAL_CHOICES: Array<{ id: TrendIntervalChoice; label: string }> = [
+  { id: "auto", label: "Auto" },
+  { id: "day", label: "Daily" },
+  { id: "week", label: "Weekly" },
+  { id: "month", label: "Monthly" },
+];
+
 /**
  * The Seller Dashboard's trend chart: net sales (gross minus confirmed
  * refunds, from `report_sales_timeseries`) or orders placed, switchable.
- * Reports keeps its own two-chart `SalesTrendPanel`.
+ * The Reports page passes `interval` and `intervalHrefs` to add an
+ * Auto/Daily/Weekly/Monthly switch (links, so the choice lives in the URL).
  */
-export async function SellerSalesTrend({ from, to }: { from: string; to: string }) {
-  const granularity = pickGranularity(from, to);
+export async function SellerSalesTrend({
+  from,
+  to,
+  interval = "auto",
+  intervalHrefs,
+}: {
+  from: string;
+  to: string;
+  interval?: TrendIntervalChoice;
+  intervalHrefs?: Record<TrendIntervalChoice, string>;
+}) {
+  const granularity = interval === "auto" ? pickGranularity(from, to) : interval;
 
   let series: SalesTrendPoint[];
   try {
@@ -48,7 +71,25 @@ export async function SellerSalesTrend({ from, to }: { from: string; to: string 
 
   return (
     <Card>
-      <CardContent className="p-5">
+      <CardContent className="flex flex-col gap-3 p-5">
+        {intervalHrefs ? (
+          <nav aria-label="Trend interval" className="flex flex-wrap items-center gap-1 self-end rounded-lg bg-muted p-1">
+            {INTERVAL_CHOICES.map((choice) => (
+              <Link
+                key={choice.id}
+                href={intervalHrefs[choice.id]}
+                scroll={false}
+                aria-current={interval === choice.id ? "true" : undefined}
+                className={cn(
+                  "inline-flex min-h-8 items-center rounded-md px-3 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
+                  interval === choice.id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {choice.label}
+              </Link>
+            ))}
+          </nav>
+        ) : null}
         <SellerSalesTrendChart
           buckets={buckets}
           granularityLabel={GRANULARITY_LABEL[granularity]}

@@ -15,6 +15,7 @@ export const AUDIT_LOG_ACTIONS = [
   "approve_refund",
   "reject_refund",
   "update_platform_settings",
+  "update_inventory_threshold",
 ] as const;
 
 export type AuditLogAction = (typeof AUDIT_LOG_ACTIONS)[number];
@@ -27,6 +28,7 @@ export const AUDIT_LOG_ACTION_LABELS: Record<AuditLogAction, string> = {
   approve_refund: "Approved refund",
   reject_refund: "Rejected return request",
   update_platform_settings: "Updated platform settings",
+  update_inventory_threshold: "Updated inventory threshold",
 };
 
 export const AUDIT_LOG_ACTION_TONE: Record<
@@ -40,6 +42,7 @@ export const AUDIT_LOG_ACTION_TONE: Record<
   approve_refund: "success",
   reject_refund: "danger",
   update_platform_settings: "info",
+  update_inventory_threshold: "info",
 };
 
 /** Type guard for the `action` search param — an unrecognized value is treated as "All". */

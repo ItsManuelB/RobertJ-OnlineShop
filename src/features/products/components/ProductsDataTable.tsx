@@ -27,7 +27,6 @@ import {
   bulkUpdateProductStatusAction,
   restoreProductAction,
 } from "@/features/products/actions/product.actions";
-import { LOW_STOCK_THRESHOLD } from "@/features/products/constants/product.constants";
 import { ProductGridCard } from "@/features/products/components/ProductGridCard";
 import { ProductStatusBadge } from "@/features/products/components/ProductStatusBadge";
 import type { Category } from "@/features/categories/types/category.types";
@@ -46,6 +45,8 @@ export interface ProductsDataTableProps {
   variants: ProductVariant[];
   /** variantId -> live stock, for the Stock column of products that have options. */
   variantStock: Record<string, number>;
+  /** Effective inventory thresholds plus the default for rows without a match. */
+  inventoryThresholds: { byItem: Record<string, number>; defaultThreshold: number };
   /** Presentation only — defaults to the pre-existing table/card layout. */
   view?: "grid" | "list";
   /** True when the caller filtered to `status=archived` (the Recycle Bin view) — swaps each row's Archive action for Restore and hides the bulk-archive button. */
@@ -57,14 +58,23 @@ function initials(title: string) {
   return `${words[0]?.[0] ?? ""}${words[1]?.[0] ?? ""}`.toUpperCase();
 }
 
-function stockCell(product: Product, variants: ProductVariant[], variantStock: Record<string, number>) {
+function stockCell(
+  product: Product,
+  variants: ProductVariant[],
+  variantStock: Record<string, number>,
+  inventoryThresholds: { byItem: Record<string, number>; defaultThreshold: number },
+) {
   if (variants.length > 0) {
     // With options, the product's own quantity is not used: the total is across its options.
     const stocks = variants.map((variant) => variantStock[variant.id] ?? 0);
     const total = stocks.reduce((sum, quantity) => sum + quantity, 0);
     const soldOut = stocks.filter((quantity) => quantity <= 0).length;
-    const tone = total <= 0 ? "danger" : total <= LOW_STOCK_THRESHOLD || soldOut > 0 ? "warning" : "success";
-    const label = total <= 0 ? "Out of stock" : total <= LOW_STOCK_THRESHOLD ? "Low stock" : soldOut > 0 ? "Some sold out" : "In stock";
+    const lowStock = variants.some((variant) => {
+      const quantity = variantStock[variant.id] ?? 0;
+      return quantity > 0 && quantity <= (inventoryThresholds.byItem[variant.id] ?? inventoryThresholds.defaultThreshold);
+    });
+    const tone = total <= 0 ? "danger" : lowStock || soldOut > 0 ? "warning" : "success";
+    const label = total <= 0 ? "Out of stock" : lowStock ? "Some options low stock" : soldOut > 0 ? "Some sold out" : "In stock";
     return (
       <div className="flex flex-col gap-1">
         <Badge tone={tone}>{label}</Badge>
@@ -75,8 +85,9 @@ function stockCell(product: Product, variants: ProductVariant[], variantStock: R
       </div>
     );
   }
-  const tone = product.quantity <= 0 ? "danger" : product.quantity <= LOW_STOCK_THRESHOLD ? "warning" : "success";
-  const label = product.quantity <= 0 ? "Out of stock" : product.quantity <= LOW_STOCK_THRESHOLD ? "Low stock" : "In stock";
+  const threshold = inventoryThresholds.byItem[product.id] ?? inventoryThresholds.defaultThreshold;
+  const tone = product.quantity <= 0 ? "danger" : product.quantity <= threshold ? "warning" : "success";
+  const label = product.quantity <= 0 ? "Out of stock" : product.quantity <= threshold ? "Low stock" : "In stock";
   return (
     <div className="flex flex-col gap-1">
       <Badge tone={tone}>{label}</Badge>
@@ -98,6 +109,7 @@ export function ProductsDataTable({
   isAdmin,
   variants,
   variantStock,
+  inventoryThresholds,
   view = "list",
   isArchivedView = false,
 }: ProductsDataTableProps) {
@@ -347,7 +359,7 @@ export function ProductsDataTable({
               <ProductGridCard
                 key={product.id}
                 product={product}
-                stock={stockCell(product, productVariants, variantStock)}
+                stock={stockCell(product, productVariants, variantStock, inventoryThresholds)}
                 selected={selected.has(product.id)}
                 isAdmin={isAdmin}
                 inventoryHref={inventoryHref}
@@ -447,7 +459,7 @@ export function ProductsDataTable({
                     <td className="p-3 align-top text-sm font-medium text-foreground">
                       {formatCurrency(product.priceCents, product.currency)}
                     </td>
-                    <td className="p-3 align-top">{stockCell(product, productVariants, variantStock)}</td>
+                    <td className="p-3 align-top">{stockCell(product, productVariants, variantStock, inventoryThresholds)}</td>
                     <td className="p-3 align-top"><ProductStatusBadge status={product.status} /></td>
                     <td className="p-3 align-top text-right">
                       <RowMenu
@@ -623,7 +635,7 @@ export function ProductsDataTable({
                     </p>
                     <div className="mt-2 flex flex-wrap gap-2">
                       <ProductStatusBadge status={product.status} />
-                      {stockCell(product, productVariants, variantStock)}
+                      {stockCell(product, productVariants, variantStock, inventoryThresholds)}
                       {product.shopId === null ? <Badge tone="warning">Unassigned</Badge> : null}
                     </div>
                   </div>

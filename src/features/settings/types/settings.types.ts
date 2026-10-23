@@ -4,5 +4,6 @@ export interface PlatformSettings {
   supportPhone: string | null;
   businessAddress: string | null;
   businessHours: string | null;
+  defaultLowStockThreshold: number;
   updatedAt: string;
 }

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { Card, CardContent } from "@/components/ui/card";
+import { cn } from "@/lib/utils/cn";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ROUTES } from "@/constants/routes";
 import type { TopProduct } from "@/features/reports/types/report.types";
@@ -11,29 +12,75 @@ import { formatCurrency } from "@/lib/utils/currency";
 
 import { SELLER_TOP_PRODUCTS_LIMIT } from "../constants/fulfilment";
 
+/** How many ranked rows are fetched when re-sorting by sales (units-ranked top N is not the top N by sales). */
+const SALES_SORT_POOL = 50;
+
+export type TopProductsSort = "units" | "sales";
+
 /**
  * Best-selling products of the signed-in seller's shop in the selected dates.
- * Ranked by units; sales are paid orders before refunds (same basis as
- * `report_top_products`). Each row links to the product editor.
+ * Ranked by units by default; sales are paid orders before refunds (same basis
+ * as `report_top_products`). The Reports page passes `sortHrefs` to add a
+ * By units / By sales switch. Each row links to the product editor.
  */
-export async function SellerTopProducts({ from, to }: { from: string; to: string }) {
+export async function SellerTopProducts({
+  from,
+  to,
+  sort = "units",
+  sortHrefs,
+}: {
+  from: string;
+  to: string;
+  sort?: TopProductsSort;
+  sortHrefs?: Record<TopProductsSort, string>;
+}) {
   let products: TopProduct[];
   try {
     const owner = await getCurrentSellerOwner();
-    products = owner.shopId ? await getTopProducts(from, to, SELLER_TOP_PRODUCTS_LIMIT, owner.shopId) : [];
+    if (!owner.shopId) {
+      products = [];
+    } else if (sort === "sales") {
+      const pool = await getTopProducts(from, to, SALES_SORT_POOL, owner.shopId);
+      products = [...pool]
+        .sort((a, b) => b.revenueCents - a.revenueCents || b.unitsSold - a.unitsSold)
+        .slice(0, SELLER_TOP_PRODUCTS_LIMIT);
+    } else {
+      products = await getTopProducts(from, to, SELLER_TOP_PRODUCTS_LIMIT, owner.shopId);
+    }
   } catch {
     return <ErrorState message="We couldn't load top products right now." />;
   }
 
-  const maxUnits = products.reduce((max, p) => Math.max(max, p.unitsSold), 0);
+  const barValue = (p: TopProduct) => (sort === "sales" ? p.revenueCents : p.unitsSold);
+  const maxBar = products.reduce((max, p) => Math.max(max, barValue(p)), 0);
 
   return (
     <Card>
       <CardContent className="flex flex-col gap-3 p-5">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h3 className="text-sm font-semibold text-foreground">Top products</h3>
-          <p className="text-xs text-muted-foreground">Ranked by units · paid orders, sales before refunds</p>
+          <p className="text-xs text-muted-foreground">
+            Ranked by {sort === "sales" ? "sales" : "units"} · paid orders, sales before refunds
+          </p>
         </div>
+        {sortHrefs ? (
+          <nav aria-label="Rank products by" className="flex items-center gap-1 self-start rounded-lg bg-muted p-1">
+            {(["units", "sales"] as const).map((choice) => (
+              <Link
+                key={choice}
+                href={sortHrefs[choice]}
+                scroll={false}
+                aria-current={sort === choice ? "true" : undefined}
+                className={cn(
+                  "inline-flex min-h-8 items-center rounded-md px-3 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
+                  sort === choice ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {choice === "units" ? "By units" : "By sales"}
+              </Link>
+            ))}
+          </nav>
+        ) : null}
         {products.length === 0 ? (
           <EmptyState
             title="No paid sales in this period yet"
@@ -58,7 +105,7 @@ export async function SellerTopProducts({ from, to }: { from: string; to: string
                     <span aria-hidden="true" className="block h-1.5 overflow-hidden rounded-full bg-muted">
                       <span
                         className="block h-full rounded-full bg-primary"
-                        style={{ width: `${maxUnits ? Math.round((product.unitsSold / maxUnits) * 100) : 0}%` }}
+                        style={{ width: `${maxBar ? Math.round((barValue(product) / maxBar) * 100) : 0}%` }}
                       />
                     </span>
                   </div>

@@ -6,7 +6,14 @@ import { formatCurrency } from "@/lib/utils/currency";
 const ALWAYS_SHOWN: PaymentSourceKey[] = ["cod", "gcash", "paymaya", "xendit_card"];
 
 /** Source split for settled order revenue, sharing MANNA Finance's explicit labels, totals and unknown-source handling. */
-export async function PaymentSourceBreakdown({ filters }: { filters: ReportFilters }) {
+export async function PaymentSourceBreakdown({
+  filters,
+  grossCents,
+}: {
+  filters: ReportFilters;
+  /** When given, a check line shows whether the source total equals Gross sales for the same dates. */
+  grossCents?: number;
+}) {
   let sources: PaymentSourceSummaryRow[];
   try {
     sources = await getPaymentSourceSummary(filters.from, filters.to, filters.shopId);
@@ -105,6 +112,13 @@ export async function PaymentSourceBreakdown({ filters }: { filters: ReportFilte
           </tbody>
         </table>
       </div>
+      {grossCents !== undefined ? (
+        <p className={totalCents === grossCents ? "text-xs text-success" : "text-xs font-semibold text-danger"}>
+          {totalCents === grossCents
+            ? `✓ Matches Gross sales (${formatCurrency(grossCents)}) for the same dates.`
+            : `Does not match Gross sales (${formatCurrency(grossCents)}) for the same dates.`}
+        </p>
+      ) : null}
       <p className="text-xs text-muted-foreground">Based on orders placed in the selected period and their latest successful payment. Pending orders and provider fees are excluded.</p>
     </div>
   );

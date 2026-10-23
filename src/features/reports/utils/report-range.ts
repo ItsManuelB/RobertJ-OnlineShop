@@ -9,11 +9,14 @@ import {
   type DatePresetId,
 } from "../constants/report.constants";
 import type {
+  CategoryRevenue,
+  OrderStatusCount,
   PaymentSourceSummaryRow,
   ReportFilters,
   ReportGranularity,
   SalesSummary,
   SalesTrendPoint,
+  TopProduct,
 } from "../types/report.types";
 
 const TIME_ZONE = "Asia/Manila";
@@ -203,8 +206,19 @@ export function fillTrendGaps(
 }
 
 function csvCell(value: string | number): string {
-  const s = String(value);
+  // Free text (product and category names) must not be read as a spreadsheet formula.
+  const s = typeof value === "string" && /^[=+\-@\t\r]/.test(value) ? `'${value}` : String(value);
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/** Optional sections appended to the CSV (the Seller Reports export; admin keeps the base file). */
+export interface ReportCsvExtras {
+  statuses?: OrderStatusCount[];
+  categories?: CategoryRevenue[];
+  /** Gross minus category item totals: shipping and fees, so categories add up to Gross sales. */
+  categoryRemainderCents?: number;
+  topProducts?: TopProduct[];
+  refundsInProgress?: { count: number; cents: number };
 }
 
 /** Build a CSV export of the KPI summary plus the (gap-filled) trend series. */
@@ -213,6 +227,7 @@ export function buildReportCsv(
   summary: SalesSummary,
   trend: SalesTrendPoint[],
   paymentSources: PaymentSourceSummaryRow[],
+  extras: ReportCsvExtras = {},
 ): string {
   const lines: string[] = [];
   lines.push(csvCell("RoberJ Sales Report"));
@@ -224,8 +239,11 @@ export function buildReportCsv(
     ["Total orders", summary.totalOrders],
     ["Paid orders", summary.paidOrders],
     ["Cancelled orders", summary.cancelledOrders],
-    ["Revenue (PHP)", fromCents(summary.revenueCents)],
-    ["Units sold", summary.unitsSold],
+    ["Gross sales (PHP)", fromCents(summary.grossRevenueCents)],
+    ["Confirmed refunds (PHP)", fromCents(summary.refundsCents)],
+    ["Net sales (PHP)", fromCents(summary.revenueCents)],
+    ["Refunded orders", summary.refundedOrders],
+    ["Units sold (paid orders)", summary.unitsSold],
     ["Average order value (PHP)", fromCents(summary.avgOrderValueCents)],
     ["COD paid orders", summary.codPaidOrders],
     ["QR paid orders (legacy)", summary.qrPaidOrders],
@@ -253,8 +271,43 @@ export function buildReportCsv(
   ].join(","));
   lines.push("");
 
+  if (extras.refundsInProgress) {
+    lines.push(csvCell("Refunds in progress (not yet deducted from net sales)"));
+    lines.push(["Refunds", "Amount (PHP)"].map(csvCell).join(","));
+    lines.push([csvCell(extras.refundsInProgress.count), csvCell(fromCents(extras.refundsInProgress.cents))].join(","));
+    lines.push("");
+  }
+
+  if (extras.statuses) {
+    lines.push(csvCell("Orders by status"));
+    lines.push(["Status", "Orders"].map(csvCell).join(","));
+    for (const row of extras.statuses) lines.push([csvCell(row.status), csvCell(row.orderCount)].join(","));
+    lines.push("");
+  }
+
+  if (extras.categories) {
+    lines.push(csvCell("Sales by category (paid orders, before refunds)"));
+    lines.push(["Category", "Units", "Item sales (PHP)"].map(csvCell).join(","));
+    for (const row of extras.categories) {
+      lines.push([csvCell(row.categoryName), csvCell(row.unitsSold), csvCell(fromCents(row.revenueCents))].join(","));
+    }
+    if ((extras.categoryRemainderCents ?? 0) > 0) {
+      lines.push([csvCell("Shipping & fees"), csvCell(""), csvCell(fromCents(extras.categoryRemainderCents ?? 0))].join(","));
+    }
+    lines.push("");
+  }
+
+  if (extras.topProducts) {
+    lines.push(csvCell("Top products (paid orders, before refunds)"));
+    lines.push(["Product", "Units", "Sales (PHP)"].map(csvCell).join(","));
+    for (const row of extras.topProducts) {
+      lines.push([csvCell(row.productTitle), csvCell(row.unitsSold), csvCell(fromCents(row.revenueCents))].join(","));
+    }
+    lines.push("");
+  }
+
   lines.push(csvCell("Sales over time"));
-  lines.push(["Bucket", "Orders", "Revenue (PHP)"].map(csvCell).join(","));
+  lines.push(["Bucket", "Orders", "Net sales (PHP)"].map(csvCell).join(","));
   for (const point of trend) {
     lines.push(
       [

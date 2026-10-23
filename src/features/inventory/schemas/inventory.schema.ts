@@ -33,6 +33,16 @@ export const adjustStockSchema = z
     { message: "Add a note explaining this adjustment.", path: ["note"] },
   );
 
+/** A blank threshold clears the seller override and inherits the admin default. */
+export const updateInventoryThresholdSchema = z.object({
+  productId: z.uuid(),
+  variantId: z.uuid().optional(),
+  threshold: z.union([
+    z.literal(""),
+    z.string().regex(/^\d+$/, "Enter a whole number.").transform(Number).pipe(z.number().int().min(0).max(10000)),
+  ]),
+});
+
 /** Validates and normalises search params for the Seller/Admin dashboard inventory listing. */
 export const dashboardInventoryListParamsSchema = z.object({
   page: z.coerce.number().int().min(1).default(PAGINATION.defaultPage),
@@ -71,6 +81,15 @@ export const bulkAdjustStockSchema = z
     (value) => value.reason !== "other" || Boolean(value.note),
     { message: "Add a note explaining this adjustment.", path: ["note"] },
   );
+
+/** Applies one explicit threshold, or restores inheritance, to selected inventory rows. */
+export const bulkUpdateInventoryThresholdSchema = z.object({
+  items: z
+    .array(z.object({ productId: z.uuid(), variantId: z.uuid().nullable().optional() }))
+    .min(1, "Select at least one inventory row.")
+    .max(100),
+  threshold: z.number().int().min(0).max(10000).nullable(),
+});
 
 /** Payload for moving unassigned stock into a product's options. */
 export const allocateStockSchema = z.object({

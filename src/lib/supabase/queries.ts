@@ -103,7 +103,6 @@ import {
   type InventoryItem,
   type StockAdjustment,
 } from "@/features/inventory/types/inventory.types";
-import { DEFAULT_LOW_STOCK_THRESHOLD } from "@/features/inventory/constants/inventory.constants";
 import { RETURN_SELLER_RESPONSE_SLA_DAYS } from "@/features/returns/constants/return.constants";
 import { SHIP_OVERDUE_DAYS } from "@/features/seller/constants/fulfilment";
 import { interleaveByKey } from "@/features/products/lib/interleave-by-key";
@@ -5953,11 +5952,11 @@ export async function listAdminActionLog(
 // ============================================================================
 
 const PLATFORM_SETTINGS_COLUMNS =
-  "support_email, support_phone, business_address, business_hours, updated_at";
+  "support_email, support_phone, business_address, business_hours, default_low_stock_threshold, updated_at";
 
 type PlatformSettingsRow = Pick<
   Database["public"]["Tables"]["platform_settings"]["Row"],
-  "support_email" | "support_phone" | "business_address" | "business_hours" | "updated_at"
+  | "support_email" | "support_phone" | "business_address" | "business_hours" | "default_low_stock_threshold" | "updated_at"
 >;
 
 function toPlatformSettings(row: PlatformSettingsRow): PlatformSettings {
@@ -5966,6 +5965,7 @@ function toPlatformSettings(row: PlatformSettingsRow): PlatformSettings {
     supportPhone: row.support_phone,
     businessAddress: row.business_address,
     businessHours: row.business_hours,
+    defaultLowStockThreshold: row.default_low_stock_threshold,
     updatedAt: row.updated_at,
   };
 }
@@ -6001,6 +6001,18 @@ export async function updatePlatformSettings(input: UpdatePlatformSettingsInput)
 
   if (error) {
     throw curatedRpcError("Could not save the settings.", error, ADMIN_USER_RPC_SAFE_ERROR_CODES);
+  }
+  return toPlatformSettings(data);
+}
+
+/** Admin-only update to the inherited inventory threshold; the database logs it and refreshes inheriting rows. */
+export async function updateDefaultLowStockThreshold(threshold: number): Promise<PlatformSettings> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("admin_update_default_low_stock_threshold", {
+    p_threshold: threshold,
+  });
+  if (error) {
+    throw curatedRpcError("Could not save the threshold.", error, ADMIN_USER_RPC_SAFE_ERROR_CODES);
   }
   return toPlatformSettings(data);
 }
@@ -7056,7 +7068,7 @@ type ProductVariantRow = Database["public"]["Tables"]["product_variants"]["Row"]
  * `PRODUCT_COLUMNS`/`PAYMENT_COLUMNS`.
  */
 const INVENTORY_COLUMNS = `
-  id, product_id, variant_id, shop_id, quantity, low_stock_threshold, created_at, updated_at,
+  id, product_id, variant_id, shop_id, quantity, low_stock_threshold, low_stock_threshold_override, created_at, updated_at,
   product:products!inventory_product_id_fkey ( title, slug, status, product_variants ( count ) ),
   shop:shops!inventory_shop_id_fkey ( name ),
   variant:product_variants!inventory_variant_id_fkey ( sku, color, size )
@@ -7088,6 +7100,7 @@ function toInventoryItem(row: InventoryRowWithJoins): InventoryItem {
     isUnassigned: row.variant_id === null && (row.product?.product_variants?.[0]?.count ?? 0) > 0,
     quantity: row.quantity,
     lowStockThreshold: row.low_stock_threshold,
+    lowStockThresholdOverride: row.low_stock_threshold_override,
     stockStatus: getStockStatus(row.quantity, row.low_stock_threshold),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -7122,14 +7135,9 @@ export async function listDashboardInventory(): Promise<InventoryItem[]> {
  * unpaginated by `getLowStockReport` (KPI tiles, low-stock report), which
  * this would have broken.
  *
- * The stock-status filter compares `quantity` against the *default*
- * low-stock threshold (`DEFAULT_LOW_STOCK_THRESHOLD`), not each row's own
- * `low_stock_threshold` column — PostgREST filters take a literal value, not
- * another column, so a per-row threshold comparison isn't expressible here
- * without a database view/RPC. Every row is created with the same default
- * today (there's no UI to change it per-row), so this matches
- * `getStockStatus()` exactly in practice; if a per-row override is ever
- * introduced, this filter needs to move into a computed column or RPC.
+ * The database keeps `low_stock_threshold` synchronized to the platform
+ * default or the row's seller override, so all status filters use the same
+ * effective value as `getStockStatus()`.
  */
 export async function listDashboardInventoryPage(
   params: DashboardInventoryListParams,
@@ -7145,7 +7153,7 @@ export async function listDashboardInventoryPage(
     .from(DATABASE_TABLES.INVENTORY)
     .select(
       `
-        id, product_id, variant_id, shop_id, quantity, low_stock_threshold, created_at, updated_at,
+        id, product_id, variant_id, shop_id, quantity, low_stock_threshold, low_stock_threshold_override, created_at, updated_at,
         product:products!inventory_product_id_fkey!inner ( title, slug, status, product_variants ( count ) ),
         shop:shops!inventory_shop_id_fkey ( name ),
         variant:product_variants!inventory_variant_id_fkey ( sku, color, size )
@@ -7159,13 +7167,13 @@ export async function listDashboardInventoryPage(
   }
   if (params.shopId) query = query.eq("shop_id", params.shopId);
   if (params.stockStatus === "out_of_stock") {
-    query = query.lte("quantity", 0);
+    query = query.eq("stock_status", "out_of_stock");
   } else if (params.stockStatus === "low_stock") {
-    query = query.gt("quantity", 0).lte("quantity", DEFAULT_LOW_STOCK_THRESHOLD);
+    query = query.eq("stock_status", "low_stock");
   } else if (params.stockStatus === "needs_attention") {
-    query = query.lte("quantity", DEFAULT_LOW_STOCK_THRESHOLD);
+    query = query.neq("stock_status", "in_stock");
   } else if (params.stockStatus === "in_stock") {
-    query = query.gt("quantity", DEFAULT_LOW_STOCK_THRESHOLD);
+    query = query.eq("stock_status", "in_stock");
   }
 
   query = query.order("updated_at", { ascending: false });
@@ -7226,6 +7234,57 @@ export async function getVariantInventory(
     throw queryError("Failed to load inventory", error);
   }
   return data ? toInventoryItem(data as InventoryRowWithJoins) : null;
+}
+
+/** Effective thresholds and current default for the dashboard product page. */
+export async function getInventoryThresholdsForProducts(productIds: string[]): Promise<{
+  byItem: Record<string, number>;
+  defaultThreshold: number;
+}> {
+  const supabase = await createSupabaseServerClient();
+  const [inventoryResult, settingsResult] = await Promise.all([
+    productIds.length
+      ? supabase.from(DATABASE_TABLES.INVENTORY).select("product_id, variant_id, low_stock_threshold").in("product_id", productIds)
+      : Promise.resolve(null),
+    supabase.from(DATABASE_TABLES.PLATFORM_SETTINGS).select("default_low_stock_threshold").single(),
+  ]);
+  if (inventoryResult?.error) throw queryError("Failed to load inventory thresholds", inventoryResult.error);
+  if (settingsResult.error) throw queryError("Failed to load the default inventory threshold", settingsResult.error);
+
+  return {
+    byItem: Object.fromEntries(
+      (inventoryResult?.data ?? []).map((row) => [row.variant_id ?? row.product_id, row.low_stock_threshold]),
+    ),
+    defaultThreshold: settingsResult.data.default_low_stock_threshold,
+  };
+}
+
+/** Seller/admin override; null clears the override and inherits the platform default. */
+export async function setInventoryLowStockThreshold(input: {
+  productId: string;
+  variantId: string | null;
+  threshold: number | null;
+}): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc("update_inventory_low_stock_threshold", {
+    p_product_id: input.productId,
+    p_variant_id: input.variantId,
+    p_threshold: input.threshold,
+  });
+  if (error) throw curatedRpcError("Could not save the inventory threshold.", error, ADMIN_USER_RPC_SAFE_ERROR_CODES);
+}
+
+export async function updateInventoryLowStockThreshold(input: {
+  productId: string;
+  variantId: string | null;
+  threshold: number | null;
+}): Promise<InventoryItem> {
+  await setInventoryLowStockThreshold(input);
+  const item = input.variantId
+    ? await getVariantInventory(input.variantId)
+    : await getInventoryForProduct(input.productId);
+  if (!item) throw new Error("The inventory row could not be reloaded.");
+  return item;
 }
 
 /**
@@ -7977,7 +8036,7 @@ export async function getRestockPriorityReport(
   limit = 5,
   owner: DashboardOrderOwner | null = null,
 ): Promise<RestockPriorityItem[]> {
-  const lowStockItems = await getLowStockReport();
+  const lowStockItems = await getLowStockReport(owner?.shopId ?? null);
   if (lowStockItems.length === 0) return [];
 
   const supabase = await createSupabaseServerClient();
@@ -8013,7 +8072,7 @@ export async function getRestockPriorityReport(
       const k = key(item.product_id, item.variant_id);
       const entry = perVariant.get(k) ?? { units: 0, revenueCents: 0 };
       entry.units += item.quantity;
-      if (order.payment_status === PAYMENT_STATUS.paid) entry.revenueCents += item.subtotal_cents;
+      entry.revenueCents += item.subtotal_cents;
       perVariant.set(k, entry);
     }
   }
@@ -8036,64 +8095,33 @@ export async function getRestockPriorityReport(
     .slice(0, limit);
 }
 
-type CategoryRevenueOrderRow = {
-  order_items: Array<{
-    quantity: number;
-    subtotal_cents: number;
-    product: {
-      category_id: string | null;
-      category: { name: string } | null;
-    } | null;
-  }>;
-};
-
 /**
- * Revenue/units rollup per category for paid orders in `[from, to]`. Seller
- * Reports only. Relies on RLS alone, same pattern as `getRestockPriorityReport`.
+ * Sales per category for ever-paid orders placed in `[from, to]` (Asia/Manila
+ * days), before refunds — the same orders as Gross sales. `report_revenue_by_category`
+ * scopes a seller to their own shop; admins may narrow with `shopId`.
  */
-export async function getRevenueByCategory(from: string, to: string): Promise<CategoryRevenue[]> {
+export async function getRevenueByCategory(
+  from: string,
+  to: string,
+  shopId: string | null = null,
+): Promise<CategoryRevenue[]> {
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from(DATABASE_TABLES.ORDERS)
-    .select(
-      `
-        order_items!inner (
-          quantity, subtotal_cents,
-          product:products!order_items_product_id_fkey (
-            category_id,
-            category:categories!products_category_id_fkey ( name )
-          )
-        )
-      `,
-    )
-    .eq("payment_status", PAYMENT_STATUS.paid)
-    .gte("placed_at", `${from}T00:00:00Z`)
-    .lte("placed_at", `${to}T23:59:59Z`);
+  const { data, error } = await supabase.rpc("report_revenue_by_category", {
+    p_from: from,
+    p_to: to,
+    p_shop_id: shopId ?? undefined,
+  });
 
   if (error) {
     throw queryError("Failed to load revenue by category", error);
   }
 
-  const perCategory = new Map<string, { name: string; revenueCents: number; units: number }>();
-  for (const order of (data ?? []) as CategoryRevenueOrderRow[]) {
-    for (const item of order.order_items) {
-      const categoryId = item.product?.category_id ?? "uncategorized";
-      const categoryName = item.product?.category?.name ?? "Uncategorized";
-      const entry = perCategory.get(categoryId) ?? { name: categoryName, revenueCents: 0, units: 0 };
-      entry.revenueCents += item.subtotal_cents;
-      entry.units += item.quantity;
-      perCategory.set(categoryId, entry);
-    }
-  }
-
-  return Array.from(perCategory.entries())
-    .map(([categoryId, v]) => ({
-      categoryId: categoryId === "uncategorized" ? null : categoryId,
-      categoryName: v.name,
-      revenueCents: v.revenueCents,
-      unitsSold: v.units,
-    }))
-    .sort((a, b) => b.revenueCents - a.revenueCents);
+  return (data ?? []).map((row) => ({
+    categoryId: row.category_id,
+    categoryName: row.category_name,
+    revenueCents: Number(row.revenue_cents),
+    unitsSold: Number(row.units_sold),
+  }));
 }
 
 /** Safety cap on the unbounded per-buyer history scan below — generous for one seller's real buyer base. */

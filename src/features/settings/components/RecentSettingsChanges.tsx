@@ -7,9 +7,11 @@ const TRACKED_FIELDS = [
   { key: "support_phone", label: "Support phone" },
   { key: "business_address", label: "Business address" },
   { key: "business_hours", label: "Business hours" },
+  { key: "low_stock_threshold", label: "Default low-stock threshold" },
 ] as const;
 
 function display(value: unknown): string {
+  if (typeof value === "number") return String(value);
   return typeof value === "string" && value.length > 0 ? value : "empty";
 }
 

@@ -24,6 +24,7 @@ import {
   respondToCancellationSchema,
   retryOrderRefundSchema,
   scanOrderNumberSchema,
+  scanOrderNumbersSchema,
 } from "@/features/orders/schemas/order.schema";
 import { submitCancellationRefundsSafely } from "@/features/payments/lib/cancellation-refund";
 import { cancellationConfirmationMessage } from "@/features/orders/utils/cancellation-refund";
@@ -661,26 +662,76 @@ export async function resolveSellerOrderByNumberAction(
     await queries.requireRateLimit(`scanOrder:${user.id}`, 30, 60);
 
     const owner = { sellerId: user.id, shopId: await queries.getOwnShopId(user.id) };
-    const order = await queries.getDashboardOrderByNumber(parsed.data.orderNumber, owner);
-    if (!order) {
+    const resolution = await lookupScannedOrder(parsed.data.orderNumber, owner);
+    if (!resolution) {
       return fail("Order not found, or it isn't in your shop.");
     }
-
-    // A To Pack order gets a confirm popup on scan, so ship back what it shows
-    // (still read-only). Every other status just navigates.
-    let summary: ScannedOrderSummary | undefined;
-    if (order.status === ORDER_STATUS.confirmed) {
-      const full = await queries.getDashboardOrder(order.id, owner);
-      if (full) {
-        summary = {
-          orderNumber: full.orderNumber,
-          buyerName: full.buyerName ?? full.shippingAddress?.fullName ?? null,
-          items: full.items,
-        };
-      }
-    }
-    return ok({ orderId: order.id, status: order.status, summary });
+    return ok(resolution);
   } catch {
     return fail("Could not look up that order. Please try again.");
   }
+}
+
+/** One barcode's lookup result in a batch: the order, or why there is none. */
+export type ScannedOrderLookup =
+  | ({ orderNumber: string; found: true } & ScannedOrderResolution)
+  | { orderNumber: string; found: false; error: string };
+
+/**
+ * Resolves several decoded order barcodes (the "Upload barcode photos" flow)
+ * in one round trip. Read-only, same shop scoping and the same generic
+ * "not found" copy as the single lookup, so it discloses nothing about
+ * orders in other shops. One rate-limit hit per call, so a batch of up to
+ * `MAX_SCAN_BATCH` (see the order schema) photos doesn't exhaust the per-minute scan allowance.
+ */
+export async function resolveSellerOrdersByNumbersAction(
+  orderNumbers: string[],
+): Promise<ActionResult<ScannedOrderLookup[]>> {
+  const parsed = scanOrderNumbersSchema.safeParse({ orderNumbers });
+  if (!parsed.success) return fromZodError(parsed.error);
+
+  try {
+    const user = await queries.requireRole([USER_ROLES.seller]);
+    await queries.requireRateLimit(`scanOrder:${user.id}`, 30, 60);
+
+    const owner = { sellerId: user.id, shopId: await queries.getOwnShopId(user.id) };
+    const unique = Array.from(new Set(parsed.data.orderNumbers));
+    const results = await Promise.all(
+      unique.map(async (orderNumber): Promise<ScannedOrderLookup> => {
+        const resolution = await lookupScannedOrder(orderNumber, owner);
+        return resolution
+          ? { orderNumber, found: true, ...resolution }
+          : { orderNumber, found: false, error: "Order not found, or it isn't in your shop." };
+      }),
+    );
+    return ok(results);
+  } catch {
+    return fail("Could not look up those orders. Please try again.");
+  }
+}
+
+/**
+ * Read-only lookup shared by the single and batch scan actions. A To Pack
+ * order also returns what its confirm popup shows; every other status just
+ * navigates. Returns null when the order isn't the seller's own.
+ */
+async function lookupScannedOrder(
+  orderNumber: string,
+  owner: { sellerId: string; shopId: string | null },
+): Promise<ScannedOrderResolution | null> {
+  const order = await queries.getDashboardOrderByNumber(orderNumber, owner);
+  if (!order) return null;
+
+  let summary: ScannedOrderSummary | undefined;
+  if (order.status === ORDER_STATUS.confirmed) {
+    const full = await queries.getDashboardOrder(order.id, owner);
+    if (full) {
+      summary = {
+        orderNumber: full.orderNumber,
+        buyerName: full.buyerName ?? full.shippingAddress?.fullName ?? null,
+        items: full.items,
+      };
+    }
+  }
+  return { orderId: order.id, status: order.status, summary };
 }

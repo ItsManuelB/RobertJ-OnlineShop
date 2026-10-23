@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ROUTES } from "@/constants/routes";
 import { ChangePasswordForm, PortalAccountForm, SignOutOtherDevicesPanel } from "@/features/account";
 import type { AuditLogAction } from "@/features/audit-log/constants/audit-log.constants";
-import { ContactSettingsForm, PLATFORM_POLICIES, RecentSettingsChanges } from "@/features/settings";
+import { ContactSettingsForm, DefaultLowStockThresholdForm, PLATFORM_POLICIES, RecentSettingsChanges } from "@/features/settings";
 import { getMyProfile, getPlatformSettings, listAdminActionLog, listUserIdentities, requireSessionUser } from "@/lib/supabase/queries";
 
 export const metadata: Metadata = { title: "Settings — Admin Portal" };
@@ -29,8 +29,8 @@ function Section({ title, description, children }: { title: string; description?
 
 /**
  * Admin settings: the admin's own account + password, the storefront support
- * contact (the only platform value persisted today), a read-only reference of
- * the fixed platform policies, and a pointer to the audit log. `/admin/*` is
+ * contact, editable default inventory threshold, a read-only reference of
+ * other fixed platform policies, and a pointer to the audit log. `/admin/*` is
  * restricted to the admin role by the layout; the contact write re-checks it.
  */
 export default async function AdminSettingsPage() {
@@ -69,7 +69,7 @@ export default async function AdminSettingsPage() {
         )}
       </Section>
 
-      <Section title="Platform policies" description="Fixed in code today and shown here for reference only.">
+      <Section title="Platform policies" description="Set the default low-stock threshold; other policies are fixed.">
         <dl className="divide-y divide-border">
           {PLATFORM_POLICIES.map((policy) => (
             <div key={policy.label} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2.5">
@@ -81,6 +81,11 @@ export default async function AdminSettingsPage() {
             </div>
           ))}
         </dl>
+        {settings ? (
+          <DefaultLowStockThresholdForm settings={settings} />
+        ) : (
+          <ErrorState message="The low-stock threshold couldn't be loaded. Make sure the latest database migration has been applied." />
+        )}
       </Section>
 
       <Section title="Recent settings changes" description="Every settings change is recorded in the audit log.">

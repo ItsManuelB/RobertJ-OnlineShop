@@ -403,9 +403,11 @@ export type Database = {
           created_at: string
           id: string
           low_stock_threshold: number
+          low_stock_threshold_override: number | null
           product_id: string
           quantity: number
           shop_id: string | null
+          stock_status: string
           updated_at: string
           variant_id: string | null
         }
@@ -413,9 +415,11 @@ export type Database = {
           created_at?: string
           id?: string
           low_stock_threshold?: number
+          low_stock_threshold_override?: number | null
           product_id: string
           quantity?: number
           shop_id?: string | null
+          stock_status?: never
           updated_at?: string
           variant_id?: string | null
         }
@@ -423,9 +427,11 @@ export type Database = {
           created_at?: string
           id?: string
           low_stock_threshold?: number
+          low_stock_threshold_override?: number | null
           product_id?: string
           quantity?: number
           shop_id?: string | null
+          stock_status?: never
           updated_at?: string
           variant_id?: string | null
         }
@@ -869,6 +875,7 @@ export type Database = {
         Row: {
           business_address: string | null
           business_hours: string | null
+          default_low_stock_threshold: number
           id: boolean
           support_email: string
           support_phone: string | null
@@ -878,6 +885,7 @@ export type Database = {
         Insert: {
           business_address?: string | null
           business_hours?: string | null
+          default_low_stock_threshold?: number
           id?: boolean
           support_email?: string
           support_phone?: string | null
@@ -887,6 +895,7 @@ export type Database = {
         Update: {
           business_address?: string | null
           business_hours?: string | null
+          default_low_stock_threshold?: number
           id?: boolean
           support_email?: string
           support_phone?: string | null
@@ -2022,18 +2031,30 @@ export type Database = {
           p_support_email: string
           p_support_phone: string
         }
-        Returns: {
-          business_address: string | null
-          business_hours: string | null
-          id: boolean
-          support_email: string
-          support_phone: string | null
-          updated_at: string
-          updated_by: string | null
-        }
+        Returns: Database["public"]["Tables"]["platform_settings"]["Row"]
         SetofOptions: {
           from: "*"
           to: "platform_settings"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      admin_update_default_low_stock_threshold: {
+        Args: { p_threshold: number }
+        Returns: Database["public"]["Tables"]["platform_settings"]["Row"]
+        SetofOptions: {
+          from: "*"
+          to: "platform_settings"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      update_inventory_low_stock_threshold: {
+        Args: { p_product_id: string; p_variant_id: string | null; p_threshold: number | null }
+        Returns: Database["public"]["Tables"]["inventory"]["Row"]
+        SetofOptions: {
+          from: "*"
+          to: "inventory"
           isOneToOne: true
           isSetofReturn: false
         }
@@ -2850,6 +2871,15 @@ export type Database = {
           amount_cents: number
           order_count: number
           source_key: string
+        }[]
+      }
+      report_revenue_by_category: {
+        Args: { p_from: string; p_shop_id?: string; p_to: string }
+        Returns: {
+          category_id: string
+          category_name: string
+          revenue_cents: number
+          units_sold: number
         }[]
       }
       report_sales_summary: {

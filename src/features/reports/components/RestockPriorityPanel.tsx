@@ -33,7 +33,10 @@ export async function RestockPriorityPanel({ filters }: { filters: Pick<ReportFi
     <Card>
       <CardContent className="flex flex-col gap-1 p-5">
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-bold text-foreground">Restock priority</h3>
+          <div>
+            <h3 className="text-sm font-bold text-foreground">Restock priority</h3>
+            <p className="text-xs text-muted-foreground">Low or out of stock, best sellers first · stock is live</p>
+          </div>
           <Link href={ROUTES.sellerInventory} className="text-xs font-bold text-primary hover:underline">
             View inventory →
           </Link>
@@ -42,7 +45,7 @@ export async function RestockPriorityPanel({ filters }: { filters: Pick<ReportFi
         {items.length === 0 ? (
           <EmptyState
             title="Nothing urgent"
-            description="None of your low-stock items have recent sales in this range."
+            description="None of your products are low or out of stock right now."
           />
         ) : (
           <ul className="flex flex-col divide-y divide-border">
@@ -57,13 +60,20 @@ export async function RestockPriorityPanel({ filters }: { filters: Pick<ReportFi
                     {item.variantLabel ? <span className="font-normal text-muted-foreground"> — {item.variantLabel}</span> : null}
                   </p>
                   <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                    {item.quantity} left · {item.unitsSoldInRange} sold this period
+                    {item.quantity === 0 ? "None left" : `${item.quantity} left`} · {item.unitsSoldInRange} sold in these dates
                     <StockStatusBadge status={item.stockStatus} />
                   </p>
                 </div>
                 <div className="shrink-0 text-right">
                   <p className="text-sm font-bold text-foreground">{formatCurrency(item.revenueCentsInRange)}</p>
-                  <p className="text-[10px] text-muted-foreground">period revenue</p>
+                  <p className="text-[10px] text-muted-foreground">sales in these dates</p>
+                  <Link
+                    href={`${ROUTES.sellerInventory}?search=${encodeURIComponent(item.productTitle)}`}
+                    aria-label={`Restock ${item.productTitle}${item.variantLabel ? ` ${item.variantLabel}` : ""}`}
+                    className="mt-1 inline-block text-xs font-bold text-primary hover:underline"
+                  >
+                    Restock →
+                  </Link>
                 </div>
               </li>
             ))}

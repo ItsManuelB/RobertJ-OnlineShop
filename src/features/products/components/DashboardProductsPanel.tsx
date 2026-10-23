@@ -12,6 +12,7 @@ import type { Product, ProductVariant } from "@/features/products/types/product.
 import type { Shop } from "@/features/shops/types/shop.types";
 import {
   getVariantStock,
+  getInventoryThresholdsForProducts,
   listActiveCategories,
   listDashboardProductVariants,
   listDashboardProductsPage,
@@ -61,6 +62,7 @@ export async function DashboardProductsPanel({
     categories: Category[];
     variants: ProductVariant[];
     variantStock: Record<string, number>;
+    inventoryThresholds: { byItem: Record<string, number>; defaultThreshold: number };
   };
   try {
     const [result, categories, variants] = await Promise.all([
@@ -71,17 +73,19 @@ export async function DashboardProductsPanel({
     // One batched lookup for the options of this page's products, for the Stock column. A failure
     // only leaves those counts blank (treated as 0); it must not take the whole list down.
     const pageProductIds = new Set(result.items.map((product) => product.id));
-    const variantStock = Object.fromEntries(
-      await getVariantStock(variants.filter((variant) => pageProductIds.has(variant.productId)).map((variant) => variant.id)).catch(
+    const [variantStockMap, inventoryThresholds] = await Promise.all([
+      getVariantStock(variants.filter((variant) => pageProductIds.has(variant.productId)).map((variant) => variant.id)).catch(
         () => new Map<string, number>(),
       ),
-    );
-    data = { result, categories, variants, variantStock };
+      getInventoryThresholdsForProducts([...pageProductIds]),
+    ]);
+    const variantStock = Object.fromEntries(variantStockMap);
+    data = { result, categories, variants, variantStock, inventoryThresholds };
   } catch {
     return <ErrorState message="We couldn't load products right now." />;
   }
 
-  const { result, categories, variants, variantStock } = data;
+  const { result, categories, variants, variantStock, inventoryThresholds } = data;
   const { items, page, totalPages, total } = result;
 
   if (items.length === 0) {
@@ -138,6 +142,7 @@ export async function DashboardProductsPanel({
         isAdmin={isAdmin}
         variants={variants}
         variantStock={variantStock}
+        inventoryThresholds={inventoryThresholds}
         view={view}
         isArchivedView={isArchivedView}
       />
