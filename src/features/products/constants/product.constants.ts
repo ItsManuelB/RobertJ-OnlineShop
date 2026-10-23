@@ -19,10 +19,8 @@ export function getProductStatusTone(status: ProductStatus): ProductStatusTone {
 }
 
 /**
- * At or below this remaining quantity, stock UI switches from a plain "in
- * stock" state to an "Only N left" warning — matches the wording in the
- * `create_order` stock-check error ("Only % left of %"). Shared by
- * `ProductTile`, the PDP, and `ProductQuantityAndAddToCart` so the threshold
- * reads the same everywhere a buyer sees it.
+ * Buyer-facing scarcity copy switches to "Only N left" at or below this
+ * quantity. This is presentation policy and intentionally separate from the
+ * editable inventory restock thresholds.
  */
 export const LOW_STOCK_THRESHOLD = 5;

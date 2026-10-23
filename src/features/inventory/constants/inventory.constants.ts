@@ -41,9 +41,6 @@ export const MANUAL_STOCK_ADJUSTMENT_REASONS: readonly StockAdjustmentReason[] =
   STOCK_ADJUSTMENT_REASON.other,
 ];
 
-/** Matches inventory.low_stock_threshold's DB default and ProductTile's prior hardcoded value. */
-export const DEFAULT_LOW_STOCK_THRESHOLD = 5;
-
 /** Badge tones for the stock status chip — mirrors `PRODUCT_STATUS_TONE_MAP`'s exact pattern. */
 export type StockStatusTone = "neutral" | "info" | "success" | "warning" | "danger";
 

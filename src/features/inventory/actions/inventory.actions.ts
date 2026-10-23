@@ -11,7 +11,9 @@ import {
   adjustStockSchema,
   allocateStockSchema,
   bulkAdjustStockSchema,
+  bulkUpdateInventoryThresholdSchema,
   startingStockSchema,
+  updateInventoryThresholdSchema,
 } from "@/features/inventory/schemas/inventory.schema";
 import type {
   InventoryItem,
@@ -37,6 +39,38 @@ export async function adjustStockAction(
     return ok(item);
   } catch (error) {
     return fail(error instanceof Error ? error.message : "Could not adjust stock.");
+  }
+}
+
+/** Seller override for one inventory row; a blank value restores the admin default. */
+export async function updateInventoryThresholdAction(
+  _prevState: ActionResult<InventoryItem> | null,
+  formData: FormData,
+): Promise<ActionResult<InventoryItem>> {
+  const parsed = updateInventoryThresholdSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return fromZodError(parsed.error);
+
+  try {
+    const user = await queries.requireRole(DASHBOARD_ROLES);
+    await queries.requireRateLimit(`updateInventoryThreshold:${user.id}`, 30, 60);
+    const item = await queries.updateInventoryLowStockThreshold({
+      productId: parsed.data.productId,
+      variantId: parsed.data.variantId ?? null,
+      threshold: parsed.data.threshold === "" ? null : parsed.data.threshold,
+    });
+    revalidatePath(ROUTES.adminInventory);
+    revalidatePath(ROUTES.sellerInventory);
+    revalidatePath(ROUTES.adminProducts);
+    revalidatePath(ROUTES.sellerProducts);
+    revalidatePath(ROUTES.adminReports);
+    revalidatePath(ROUTES.sellerReports);
+    revalidatePath(ROUTES.adminDashboard);
+    revalidatePath(ROUTES.sellerDashboard);
+    revalidatePath(ROUTES.admin, "layout");
+    revalidatePath(ROUTES.seller, "layout");
+    return ok(item);
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "Could not save the threshold.");
   }
 }
 
@@ -94,6 +128,52 @@ export async function bulkAdjustStockAction(
     return ok({ updated, failed });
   } catch (error) {
     return fail(error instanceof Error ? error.message : "Could not adjust stock.");
+  }
+}
+
+/** Applies one threshold to the selected rows; null restores each row's inherited admin default. */
+export async function bulkUpdateInventoryThresholdAction(
+  items: Array<{ productId: string; variantId?: string | null }>,
+  threshold: number | null,
+): Promise<ActionResult<{ updated: number; failed: Array<{ productId: string; error: string }> }>> {
+  const parsed = bulkUpdateInventoryThresholdSchema.safeParse({ items, threshold });
+  if (!parsed.success) return fromZodError(parsed.error);
+
+  try {
+    const user = await queries.requireRole(DASHBOARD_ROLES);
+    await queries.requireRateLimit(`bulkUpdateInventoryThreshold:${user.id}`, 10, 60);
+
+    const failed: Array<{ productId: string; error: string }> = [];
+    let updated = 0;
+    for (const item of parsed.data.items) {
+      try {
+        await queries.setInventoryLowStockThreshold({
+          productId: item.productId,
+          variantId: item.variantId ?? null,
+          threshold: parsed.data.threshold,
+        });
+        updated += 1;
+      } catch (error) {
+        failed.push({
+          productId: item.productId,
+          error: error instanceof Error ? error.message : "Could not save the threshold.",
+        });
+      }
+    }
+
+    revalidatePath(ROUTES.adminInventory);
+    revalidatePath(ROUTES.sellerInventory);
+    revalidatePath(ROUTES.adminProducts);
+    revalidatePath(ROUTES.sellerProducts);
+    revalidatePath(ROUTES.adminReports);
+    revalidatePath(ROUTES.sellerReports);
+    revalidatePath(ROUTES.adminDashboard);
+    revalidatePath(ROUTES.sellerDashboard);
+    revalidatePath(ROUTES.admin, "layout");
+    revalidatePath(ROUTES.seller, "layout");
+    return ok({ updated, failed });
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "Could not save the thresholds.");
   }
 }
 

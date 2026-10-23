@@ -26,7 +26,10 @@ export interface InventoryItem {
    */
   isUnassigned: boolean;
   quantity: number;
+  /** Current threshold used for status; falls back to the platform default. */
   lowStockThreshold: number;
+  /** Seller override, or null when inheriting the platform default. */
+  lowStockThresholdOverride: number | null;
   stockStatus: StockStatus;
   createdAt: string;
   updatedAt: string;
