@@ -1,5 +1,6 @@
 import { formatDateTime } from "@/lib/utils/date";
 import { Barcode128 } from "@/features/orders/components/Barcode128";
+import { QrCode } from "@/features/orders/components/QrCode";
 import { formatAddressCityLine, type Order, type OrderShipment } from "@/features/orders/types/order.types";
 
 export interface ShippingLabelProps {
@@ -11,7 +12,9 @@ export interface ShippingLabelProps {
 
 /**
  * The printable RobertJ shipping label — plain HTML, self-contained (no
- * external assets, no barcode/scanning in v1). Built entirely from data
+ * external assets). Carries the order number as a QR code (best for phone
+ * cameras) and a full-width Code 128 barcode (for handheld scanners), both
+ * decoded by the seller's scanner. Built entirely from data
  * already on the order: the shipping-address snapshot, order number, item
  * lines, and the manually-captured courier + tracking. Rendered inside a
  * `data-print-root` wrapper so the print stylesheet isolates it from the
@@ -31,13 +34,19 @@ export function ShippingLabel({ order, shipment, shopName }: ShippingLabelProps)
       </div>
 
       <div className="mt-4">
-        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-600">
-          Order
-        </p>
-        <p className="text-xl font-bold">{order.orderNumber}</p>
-        <p className="text-xs text-gray-600">Placed {formatDateTime(order.placedAt)}</p>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-600">
+              Order
+            </p>
+            <p className="text-2xl font-bold tracking-tight">{order.orderNumber}</p>
+            <p className="text-xs text-gray-600">Placed {formatDateTime(order.placedAt)}</p>
+          </div>
+          {/* QR first: it reads from a phone even when the label is smudged, curved or slightly out of focus. */}
+          <QrCode value={order.orderNumber} size={112} />
+        </div>
         <div className="mt-3">
-          <Barcode128 value={order.orderNumber} />
+          <Barcode128 value={order.orderNumber} height={80} fullWidth showText={false} />
         </div>
       </div>
 

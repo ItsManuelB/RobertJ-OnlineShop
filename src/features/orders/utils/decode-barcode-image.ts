@@ -50,7 +50,7 @@ function drawScaled(image: HTMLImageElement, longestSide: number, angleDeg: numb
 }
 
 /**
- * Reads one Code 128 barcode from a photo or screenshot, entirely in the
+ * Reads one QR code or Code 128 barcode from a photo or screenshot, entirely in the
  * browser (the image never leaves the device). Tries the browser's native
  * BarcodeDetector first where it exists, then ZXing at several sizes with
  * the "try harder" hint, at several sizes and rotations (sideways, tilted and
@@ -69,7 +69,7 @@ export async function decodeBarcodeFromFile(file: File): Promise<BarcodeImageRes
     const Native = (window as unknown as { BarcodeDetector?: NativeBarcodeDetectorCtor }).BarcodeDetector;
     if (Native) {
       try {
-        const found = await new Native({ formats: ["code_128"] }).detect(loaded.image);
+        const found = await new Native({ formats: ["code_128", "qr_code"] }).detect(loaded.image);
         const text = found[0]?.rawValue?.trim();
         if (text) return { ok: true, text };
       } catch {
@@ -82,7 +82,7 @@ export async function decodeBarcodeFromFile(file: File): Promise<BarcodeImageRes
       import("@zxing/library"),
     ]);
     const hints = new Map();
-    hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.CODE_128]);
+    hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.CODE_128, BarcodeFormat.QR_CODE]);
     hints.set(DecodeHintType.TRY_HARDER, true);
     const reader = new BrowserMultiFormatReader(hints);
 

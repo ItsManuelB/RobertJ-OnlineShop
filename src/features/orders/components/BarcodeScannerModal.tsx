@@ -79,7 +79,7 @@ export function BarcodeScannerModal({
   noCameraFallbackLabel,
   onUpload,
   title = "Scan order barcode",
-  instructions = "Point the camera at the Code 128 barcode on the shipping label.",
+  instructions = "Point the camera at the QR code or barcode on the shipping label.",
   resolvingLabel = "Looking up the order…",
   fallbackLabel = "Use manual search",
 }: BarcodeScannerModalProps) {
@@ -153,7 +153,7 @@ export function BarcodeScannerModal({
         if (!videoEl) return;
 
         const hints = new Map();
-        hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.CODE_128]);
+        hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.CODE_128, BarcodeFormat.QR_CODE]);
         const reader = new BrowserMultiFormatReader(hints);
 
         const controls = await reader.decodeFromConstraints(

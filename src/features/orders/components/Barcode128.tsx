@@ -1,4 +1,4 @@
-import { encodeCode128B } from "@/features/orders/utils/code128";
+import { encodeCode128 } from "@/features/orders/utils/code128";
 
 export interface Barcode128Props {
   /** The value to encode — the RobertJ `order_number`. */
@@ -9,6 +9,14 @@ export interface Barcode128Props {
   height?: number;
   /** Show the human-readable value beneath the bars. */
   showText?: boolean;
+  /**
+   * Stretch the bars to the full width of the container (height stays fixed)
+   * instead of a fixed pixel width. On the shipping label the fixed width was
+   * wider than the label and got squeezed down, making the bars thin; filling
+   * the available width keeps them as wide as the label allows. The label's
+   * own padding provides the quiet zone, so none is added inside the SVG.
+   */
+  fullWidth?: boolean;
 }
 
 /**
@@ -22,10 +30,11 @@ export function Barcode128({
   moduleWidth = 2,
   height = 56,
   showText = true,
+  fullWidth = false,
 }: Barcode128Props) {
   let encoding;
   try {
-    encoding = encodeCode128B(value);
+    encoding = encodeCode128(value, { quietModules: fullWidth ? 0 : undefined });
   } catch {
     return (
       <p className="font-mono text-sm font-bold tracking-widest text-black">{value}</p>
@@ -35,9 +44,9 @@ export function Barcode128({
   const pxWidth = encoding.totalModules * moduleWidth;
 
   return (
-    <div className="flex flex-col items-start gap-1">
+    <div className={fullWidth ? "flex w-full flex-col items-start gap-1" : "flex flex-col items-start gap-1"}>
       <svg
-        width={pxWidth}
+        width={fullWidth ? "100%" : pxWidth}
         height={height}
         viewBox={`0 0 ${encoding.totalModules} ${height}`}
         preserveAspectRatio="none"
