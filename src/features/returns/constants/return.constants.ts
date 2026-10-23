@@ -102,6 +102,8 @@ export const RETURN_REASON_CODE_LABELS: Record<ReturnReasonCode, string> = {
   missing_item: "Missing Item/Parts",
   item_not_received: "Item Not Received",
   other: "Other",
+  // System-opened refund for a cancelled order; never offered in the buyer's return form.
+  order_cancelled: "Order cancelled",
 };
 
 /**

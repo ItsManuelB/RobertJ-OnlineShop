@@ -5,6 +5,7 @@ import { THEMED_CARD } from "@/components/ui/card";
 import { cn } from "@/lib/utils/cn";
 import { getBuyerDisplayName } from "@/features/orders/types/order.types";
 import { BuyerReceiptConfirmation } from "@/features/orders/components/BuyerReceiptConfirmation";
+import { OrderCancellationSection } from "@/features/orders/components/OrderCancellationSection";
 import { OrderHeader } from "@/features/orders/components/OrderHeader";
 import { OrderItemsList } from "@/features/orders/components/OrderItemsList";
 import { OrderStatusControl } from "@/features/orders/components/OrderStatusControl";
@@ -77,6 +78,12 @@ export default async function AdminOrderDetailPage({ params }: AdminOrderDetailP
         items={order.items}
         themed
         paymentRequired={paymentRequired}
+      />
+
+      <OrderCancellationSection
+        orderId={order.id}
+        viewer="dashboard"
+        paidOnline={order.paymentMethod === "xendit"}
       />
 
       {returnRequest ? (

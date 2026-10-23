@@ -4,6 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { getServerEnv } from "@/config/env";
 import * as queries from "@/lib/supabase/queries";
+import { recoverCancellationRefunds } from "@/features/payments/lib/cancellation-refund";
 import { reconcileXenditRefund } from "@/features/payments/lib/xendit-refund-reconciliation";
 import {
   isStaleXenditAttempt,
@@ -158,11 +159,27 @@ async function runReturnExpirySweep(): Promise<{ expired: number; replacementsCo
 /**
  * Catch-up for refunds Xendit accepted but whose `refund.*` webhook never
  * settled: asks Xendit for the real status and applies it through the same
- * RPC the webhook uses (see `reconcileXenditRefund`). Never creates or
- * retries a refund.
+ * RPC the webhook uses (see `reconcileXenditRefund`). Also sends cancellation
+ * refunds that never reached Xendit and re-tries ones that failed on our side.
  */
-async function runRefundSweep(): Promise<{ checked: number; settled: number; errors: number }> {
-  const summary = { checked: 0, settled: 0, errors: 0 };
+async function runRefundSweep(): Promise<{
+  checked: number;
+  settled: number;
+  errors: number;
+  retried: number;
+  submitted: number;
+}> {
+  const summary = { checked: 0, settled: 0, errors: 0, retried: 0, submitted: 0 };
+  // First make sure every cancellation refund has actually been sent to Xendit
+  // (an interrupted request or a failed call must never leave one stranded).
+  try {
+    const recovered = await recoverCancellationRefunds();
+    summary.retried = recovered.retried;
+    summary.submitted = recovered.submitted;
+  } catch (error) {
+    console.error("[xendit refund sweep] cancellation refund recovery failed", error);
+    summary.errors++;
+  }
   let pending: Awaited<ReturnType<typeof queries.getPendingXenditRefundsForSweep>>;
   try {
     pending = await queries.getPendingXenditRefundsForSweep(REFUND_MIN_AGE_MINUTES, REFUND_BATCH_LIMIT);

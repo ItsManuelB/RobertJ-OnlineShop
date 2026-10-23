@@ -6,6 +6,8 @@ import { getServerEnv } from "@/config/env";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import type { Json } from "@/lib/supabase/database.types";
 import { xenditAmountToCents } from "@/lib/xendit/client";
+import { refundLatePaymentOnCancelledOrder } from "@/lib/supabase/queries";
+import { submitUnsubmittedRefunds } from "@/features/payments/lib/cancellation-refund";
 import type { XenditPaymentWebhookPayload, XenditRefundWebhookPayload } from "@/lib/xendit/types";
 
 /**
@@ -112,6 +114,29 @@ export async function POST(request: NextRequest) {
   if (error) {
     console.error("[xendit webhook] process_xendit_webhook failed", error);
     return NextResponse.json({ error: "Processing failed" }, { status: 500 });
+  }
+
+  // A payment that succeeds AFTER its order was cancelled is ignored by
+  // process_xendit_webhook ("order_cancelled"), which would keep the buyer's
+  // money with nothing to show for it. Record it and refund it in full. Idempotent;
+  // a failure returns 500 so Xendit redelivers.
+  if (status === "SUCCEEDED") {
+    try {
+      const opened = await refundLatePaymentOnCancelledOrder({
+        referenceId,
+        xenditPaymentRequestId: data.payment_request_id ?? "",
+        xenditPaymentId: data.payment_id ?? "",
+        status,
+        amountCents,
+        currency: data.currency ?? "PHP",
+        channelCode: data.channel_code ?? "",
+        rawPayload: payload as unknown as Json,
+      });
+      if (opened > 0) await submitUnsubmittedRefunds();
+    } catch (lateError) {
+      console.error("[xendit webhook] late-payment refund failed", lateError);
+      return NextResponse.json({ error: "Processing failed" }, { status: 500 });
+    }
   }
 
   return NextResponse.json({ received: true });

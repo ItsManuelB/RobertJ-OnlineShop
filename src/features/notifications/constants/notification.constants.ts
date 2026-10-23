@@ -61,4 +61,21 @@ export const ACTIVITY_EVENT_COPY: Record<
     icon: "📦",
     label: (orderNumber) => `A replacement was approved for order ${orderNumber}.`,
   },
+  cancellation_requested: {
+    icon: "📨",
+    label: (orderNumber) => `You asked the shop to cancel order ${orderNumber}.`,
+  },
+  cancellation_declined: {
+    icon: "⚠️",
+    label: (orderNumber) => `The shop could not cancel order ${orderNumber}. It will continue as normal.`,
+  },
+  refund_completed: {
+    icon: "💸",
+    label: (orderNumber) => `Your refund for cancelled order ${orderNumber} is complete.`,
+  },
+  refund_needs_attention: {
+    icon: "⚠️",
+    label: (orderNumber) =>
+      `Your refund for cancelled order ${orderNumber} needs attention. The shop has been alerted.`,
+  },
 };

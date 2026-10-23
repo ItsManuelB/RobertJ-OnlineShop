@@ -15,7 +15,11 @@ export type BuyerActivityEventType =
   | "return_rejected_by_seller"
   | "return_rejected"
   | "return_refunded"
-  | "return_replacement_approved";
+  | "return_replacement_approved"
+  | "cancellation_requested"
+  | "cancellation_declined"
+  | "refund_completed"
+  | "refund_needs_attention";
 
 /** One row of the derived, read-only buyer activity feed. */
 export interface BuyerActivityEvent {

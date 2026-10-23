@@ -8,6 +8,7 @@ import { ROUTES } from "@/constants/routes";
 import { cn } from "@/lib/utils/cn";
 import { getBuyerDisplayName, isShippingLabelEligible } from "@/features/orders/types/order.types";
 import { BuyerReceiptConfirmation } from "@/features/orders/components/BuyerReceiptConfirmation";
+import { OrderCancellationSection } from "@/features/orders/components/OrderCancellationSection";
 import { OrderHeader } from "@/features/orders/components/OrderHeader";
 import { OrderItemsList } from "@/features/orders/components/OrderItemsList";
 import { OrderStatusControl } from "@/features/orders/components/OrderStatusControl";
@@ -109,6 +110,12 @@ export default async function SellerOrderDetailPage({ params, searchParams }: Se
             </Link>
           ) : null
         }
+      />
+
+      <OrderCancellationSection
+        orderId={order.id}
+        viewer="dashboard"
+        paidOnline={order.paymentMethod === "xendit"}
       />
 
       {returnRequest ? (

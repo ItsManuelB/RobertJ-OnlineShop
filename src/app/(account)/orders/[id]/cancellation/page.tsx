@@ -5,6 +5,7 @@ import type { Metadata } from "next";
 import { buttonVariants } from "@/components/ui/button";
 import { USER_ROLES } from "@/constants/roles";
 import { ROUTES } from "@/constants/routes";
+import { OrderCancellationSection } from "@/features/orders/components/OrderCancellationSection";
 import { CopyOrderIdButton } from "@/features/orders/components/CopyOrderIdButton";
 import { OrderItemsList } from "@/features/orders/components/OrderItemsList";
 import { paymentMethodLabel } from "@/features/orders/utils/payment-method-label";
@@ -90,6 +91,12 @@ export default async function OrderCancellationPage({ params }: OrderCancellatio
           </Link>
         ) : null}
       </div>
+
+      <OrderCancellationSection
+        orderId={order.id}
+        viewer="buyer"
+        paidOnline={order.paymentMethod === "xendit"}
+      />
 
       <OrderItemsList items={order.items} currency={order.currency} />
 

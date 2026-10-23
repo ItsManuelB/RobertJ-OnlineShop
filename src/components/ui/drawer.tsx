@@ -30,12 +30,17 @@ export function Drawer({ open, onClose, title, children, footer }: DrawerProps) 
 
   useEffect(() => {
     if (!open) return;
+    // Return focus to whatever opened the drawer once it closes.
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     closeRef.current?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };
     document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      opener?.focus();
+    };
   }, [open, onClose]);
 
   if (!open) return null;

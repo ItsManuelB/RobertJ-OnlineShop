@@ -91,10 +91,12 @@ export function getPreviousPeriod(from: string, to: string): { from: string; to:
  * today only rather than the last {@link DEFAULT_REPORT_DAYS} days — used by
  * the Dashboard Overview's lighter date filter (no granularity/shop concept
  * of its own), so its unfiltered default view is unchanged from before this
- * filter existed.
+ * filter existed. Pass `fallback` for a different default (the Seller
+ * Dashboard uses {@link getDefaultRange}, matching Reports).
  */
 export function parseDashboardDateRange(
   params: Record<string, string | string[] | undefined>,
+  fallback?: { from: string; to: string },
 ): { from: string; to: string } {
   const pick = (key: string): string | undefined => {
     const v = params[key];
@@ -105,8 +107,8 @@ export function parseDashboardDateRange(
   const rawFrom = pick("from");
   const rawTo = pick("to");
 
-  let from = rawFrom && ISO_DATE.test(rawFrom) ? rawFrom : today;
-  let to = rawTo && ISO_DATE.test(rawTo) ? rawTo : today;
+  let from = rawFrom && ISO_DATE.test(rawFrom) ? rawFrom : (fallback?.from ?? today);
+  let to = rawTo && ISO_DATE.test(rawTo) ? rawTo : (fallback?.to ?? today);
   if (from > to) {
     [from, to] = [to, from];
   }

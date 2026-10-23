@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils/cn";
 import { ROUTES } from "@/constants/routes";
 import { BuyAgainButton } from "@/features/orders/components/BuyAgainButton";
 import { CancelOrderButton } from "@/features/orders/components/CancelOrderButton";
+import { OrderCancellationSection } from "@/features/orders/components/OrderCancellationSection";
 import { DeliveryResolutionChoice } from "@/features/orders/components/DeliveryResolutionChoice";
 import { OrderHeader } from "@/features/orders/components/OrderHeader";
 import { OrderItemsList } from "@/features/orders/components/OrderItemsList";
@@ -28,12 +29,16 @@ import {
   getOrderIdsForCheckoutGroup,
   getOrderShipment,
   getReturnEvidenceSignedUrl,
+  getCancellationRefundForOrder,
+  getCancellationRequestForOrder,
   getReturnRequestForOrder,
   getShopMembershipBySellerIds,
   listReviewedOrderItemIds,
   requireSessionUser,
 } from "@/lib/supabase/queries";
 import { ORDER_STATUS } from "@/constants/status";
+import { CANCELLATION_REQUEST_ORDER_STATUSES } from "@/features/orders/constants/order.constants";
+import { formatCurrency } from "@/lib/utils/currency";
 import { USER_ROLES } from "@/constants/roles";
 
 interface OrderDetailPageProps {
@@ -125,10 +130,28 @@ export default async function OrderDetailPage({
   // reachable before a seller ever marks the order delivered, so a
   // negligent/inactive seller no longer strands the buyer with zero
   // recourse.
+  // A paid order cancelled BEFORE it shipped is refunded automatically (its own
+  // refund card below), so only a cancelled-after-shipping paid order (failed
+  // delivery) still goes through the return flow.
+  const cancellationRefund =
+    order.status === ORDER_STATUS.cancelled
+      ? await getCancellationRefundForOrder(order.id).catch(() => null)
+      : null;
+  const hasAutomaticRefund = cancellationRefund !== null && cancellationRefund.refund.kind !== "none";
   const canRequestReturn =
     order.status === ORDER_STATUS.delivered ||
     order.status === ORDER_STATUS.shipped ||
-    (order.status === ORDER_STATUS.cancelled && order.paymentStatus === "paid");
+    (order.status === ORDER_STATUS.cancelled && order.paymentStatus === "paid" && !hasAutomaticRefund);
+
+  // Preparation has started: the buyer can no longer cancel alone, but can ask.
+  const canRequestCancellation = CANCELLATION_REQUEST_ORDER_STATUSES.includes(order.status);
+  const cancellationRequest = canRequestCancellation
+    ? await getCancellationRequestForOrder(order.id).catch(() => null)
+    : null;
+  const paidOnline = order.paymentMethod === "xendit" && order.paymentStatus === "paid";
+  const refundHint = paidOnline
+    ? `Your ${formatCurrency(order.totalCents, order.currency)} payment will be refunded automatically to the account you paid with.`
+    : null;
 
   // Whole-order return only in this UI (the RPC also supports a per-item
   // scope — see request_return — but a single "Request Return" entry point
@@ -173,7 +196,19 @@ export default async function OrderDetailPage({
       />
       <div className="flex flex-wrap items-center gap-3">
         {order.cancellable ? (
-          <CancelOrderButton orderId={order.id} orderNumber={order.orderNumber} />
+          <CancelOrderButton
+            orderId={order.id}
+            orderNumber={order.orderNumber}
+            refundHint={refundHint}
+          />
+        ) : null}
+        {canRequestCancellation && cancellationRequest?.status !== "pending" ? (
+          <CancelOrderButton
+            orderId={order.id}
+            orderNumber={order.orderNumber}
+            mode="request"
+            refundHint={refundHint}
+          />
         ) : null}
         {order.status === ORDER_STATUS.cancelled ? (
           <Link
@@ -197,6 +232,8 @@ export default async function OrderDetailPage({
       {showTracking ? (
         <ShipmentTrackingCard shipment={shipment} shippedAt={order.shippedAt} />
       ) : null}
+
+      <OrderCancellationSection orderId={order.id} viewer="buyer" paidOnline={paidOnline} />
 
       {needsPayment ? (
         <div className={cn(RJ_CARD, "flex flex-col gap-3 p-5")}>

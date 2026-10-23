@@ -77,6 +77,19 @@ export const dashboardOrderExportFiltersSchema = dashboardOrderListParamsObjectS
 export const bulkOrderIdsSchema = z.array(uuidSchema).min(1, "Select at least one order.").max(100);
 
 /** Payload for cancelling one of the buyer's own orders. */
+export const respondToCancellationSchema = z
+  .object({
+    requestId: uuidSchema,
+    decision: z.enum(["approve", "reject"]),
+    note: z.string().trim().max(500, "Note must be 500 characters or fewer.").optional(),
+  })
+  .refine((value) => value.decision === "approve" || Boolean(value.note), {
+    message: "Please tell the buyer why the cancellation was declined.",
+    path: ["note"],
+  });
+
+export const retryOrderRefundSchema = z.object({ returnRequestId: uuidSchema });
+
 export const cancelOrderSchema = z.object({
   orderId: uuidSchema,
   reason: z

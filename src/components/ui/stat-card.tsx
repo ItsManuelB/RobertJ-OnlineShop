@@ -1,8 +1,13 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { cn } from "@/lib/utils/cn";
+
 export interface StatCardProps {
-  /** Wraps the tile in a Link when provided (Admin/Seller KPI rows). Omitted = a plain, non-clickable tile (Reports). */
+  /**
+   * Makes the tile clickable (Admin/Seller KPI rows). Omitted = a plain tile (Reports). With `action`, the
+   * label becomes a stretched link covering the tile and the action sits above it, so no button nests in a link.
+   */
   href?: string;
   label: string;
   value: ReactNode;
@@ -12,6 +17,10 @@ export interface StatCardProps {
   iconColor?: string;
   /** Optional secondary line under the label — e.g. "Paid orders only". */
   hint?: string;
+  /** Optional control in the tile's top-right corner (e.g. an info button). */
+  action?: ReactNode;
+  /** Visually emphasises the tile (headline metric). */
+  emphasis?: boolean;
 }
 
 /**
@@ -20,9 +29,18 @@ export interface StatCardProps {
  * Theme-aware (generic tokens only), so it repaints correctly under the
  * Admin/Seller dark-mode toggle.
  */
-export function StatCard({ href, label, value, icon: Icon, iconBg, iconColor, hint }: StatCardProps) {
+export function StatCard({ href, label, value, icon: Icon, iconBg, iconColor, hint, action, emphasis = false }: StatCardProps) {
+  const stretched = Boolean(href && action);
   const body = (
-    <div className="h-full rounded-xl border border-border bg-card p-5 transition-shadow hover:shadow-md">
+    <div
+      className={cn(
+        "relative h-full rounded-xl border p-5 transition-shadow hover:shadow-md",
+        emphasis ? "border-primary bg-primary/5" : "border-border bg-card",
+        action && "pr-12",
+        stretched && "focus-within:ring-2 focus-within:ring-ring/40",
+      )}
+    >
+      {action ? <div className={cn("absolute right-3 top-3", stretched && "z-10")}>{action}</div> : null}
       {Icon ? (
         <div className={`mb-4 flex h-9 w-9 items-center justify-center rounded-lg ${iconBg}`}>
           <Icon className={`h-4.5 w-4.5 ${iconColor}`} />
@@ -31,12 +49,20 @@ export function StatCard({ href, label, value, icon: Icon, iconBg, iconColor, hi
       <div className="mb-1 truncate text-2xl font-semibold leading-none tabular-nums text-foreground">
         {value}
       </div>
-      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="text-xs text-muted-foreground">
+        {stretched && href ? (
+          <Link href={href} className="after:absolute after:inset-0 after:rounded-xl focus-visible:outline-none">
+            {label}
+          </Link>
+        ) : (
+          label
+        )}
+      </div>
       {hint ? <div className="mt-1 text-xs text-muted-foreground">{hint}</div> : null}
     </div>
   );
 
-  return href ? (
+  return href && !stretched ? (
     <Link href={href} className="block">
       {body}
     </Link>

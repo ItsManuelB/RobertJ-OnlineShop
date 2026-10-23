@@ -104,6 +104,8 @@ import {
   type StockAdjustment,
 } from "@/features/inventory/types/inventory.types";
 import { DEFAULT_LOW_STOCK_THRESHOLD } from "@/features/inventory/constants/inventory.constants";
+import { RETURN_SELLER_RESPONSE_SLA_DAYS } from "@/features/returns/constants/return.constants";
+import { SHIP_OVERDUE_DAYS } from "@/features/seller/constants/fulfilment";
 import { interleaveByKey } from "@/features/products/lib/interleave-by-key";
 import type {
   CategoryRevenue,
@@ -121,6 +123,13 @@ import type {
   Review,
 } from "@/features/reviews/types/review.types";
 import type { BuyerActivityEvent } from "@/features/notifications/types/notification.types";
+import {
+  NO_CANCELLATION_REFUND,
+  type CancellationRefundState,
+  type CancellationRequest,
+  type CancellationResponseResult,
+  type OrderCancellationResult,
+} from "@/features/orders/types/cancellation.types";
 import type {
   AdminReturnDecision,
   CodRefundMethod,
@@ -2754,48 +2763,366 @@ export async function getDashboardOrderSummary(
 }
 
 /**
- * Cancels one of the buyer's own orders. Ownership is enforced by RLS and the
- * `buyer_id` filter; the cancellable-state rule (pending/confirmed) is enforced
- * here because the DB trigger permits a buyer to set `cancelled` from any state.
+ * Cancels one of the buyer's own pending/confirmed orders through the
+ * `cancel_order_with_refund` RPC: ownership, the cancellable-state rule, the
+ * stock restore and (for a paid order) the automatic refund all happen in one
+ * database transaction, and a repeated call returns the same result. The caller
+ * submits any returned `needsSubmission` refund to Xendit afterwards.
  */
 export async function cancelBuyerOrder(
   orderId: string,
-  buyerId: string,
   reason: string,
-): Promise<void> {
+): Promise<OrderCancellationResult> {
   const supabase = await createSupabaseServerClient();
-
-  const { data: existing, error: readError } = await supabase
-    .from(DATABASE_TABLES.ORDERS)
-    .select("order_status")
-    .eq("id", orderId)
-    .eq("buyer_id", buyerId)
-    .maybeSingle();
-
-  if (readError) {
-    throw new Error(`Failed to load order: ${readError.message}`);
-  }
-  if (!existing) {
-    throw new Error("Order not found.");
-  }
-  if (!CANCELLABLE_ORDER_STATUSES.includes(existing.order_status)) {
-    throw new Error("This order can no longer be cancelled.");
-  }
-
-  const { error } = await supabase
-    .from(DATABASE_TABLES.ORDERS)
-    .update({
-      order_status: ORDER_STATUS.cancelled,
-      cancelled_at: new Date().toISOString(),
-      cancellation_reason: reason,
-      cancelled_by: "buyer",
-    })
-    .eq("id", orderId)
-    .eq("buyer_id", buyerId);
+  const { data, error } = await supabase.rpc("cancel_order_with_refund", {
+    p_order_id: orderId,
+    p_reason: reason,
+  });
 
   if (error) {
-    throw queryError("Failed to cancel order", error);
+    throw rpcError("Could not cancel this order.", error);
   }
+  const result = data as { order_id: string; already_cancelled: boolean; refund: unknown };
+  return {
+    orderId: result.order_id,
+    alreadyCancelled: result.already_cancelled,
+    refund: toCancellationRefundState(result.refund),
+  };
+}
+
+/** Maps the database's `_cancellation_refund_state()` jsonb to the domain type. */
+export function toCancellationRefundState(raw: unknown): CancellationRefundState {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const kind = r.kind === "xendit" || r.kind === "manual" ? r.kind : "none";
+  if (kind === "none") return NO_CANCELLATION_REFUND;
+  const text = (v: unknown) => (typeof v === "string" ? v : null);
+  return {
+    kind,
+    returnRequestId: text(r.return_request_id),
+    returnStatus: text(r.return_status),
+    refundId: text(r.refund_id),
+    refundStatus:
+      r.refund_status === "pending" || r.refund_status === "succeeded" || r.refund_status === "failed"
+        ? r.refund_status
+        : null,
+    failureCode: text(r.failure_code),
+    amountCents: typeof r.amount_cents === "number" ? r.amount_cents : null,
+    currency: text(r.currency),
+    needsSubmission: r.needs_submission === true,
+  };
+}
+
+function toCancellationRequest(row: {
+  id: string;
+  order_id: string;
+  reason: string;
+  status: CancellationRequest["status"];
+  decision_note: string | null;
+  created_at: string;
+  decided_at: string | null;
+}): CancellationRequest {
+  return {
+    id: row.id,
+    orderId: row.order_id,
+    reason: row.reason,
+    status: row.status,
+    decisionNote: row.decision_note,
+    createdAt: row.created_at,
+    decidedAt: row.decided_at,
+  };
+}
+
+/** Buyer asks the seller to cancel an order that is already being prepared. */
+export async function requestOrderCancellation(
+  orderId: string,
+  reason: string,
+): Promise<CancellationRequest> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("request_order_cancellation", {
+    p_order_id: orderId,
+    p_reason: reason,
+  });
+  if (error) throw rpcError("Could not send your cancellation request.", error);
+  return toCancellationRequest(data);
+}
+
+/** Seller / shop member / admin approves or declines a cancellation request. */
+export async function respondToCancellationRequest(
+  requestId: string,
+  decision: "approve" | "reject",
+  note: string | null,
+): Promise<CancellationResponseResult> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("respond_to_cancellation_request", {
+    p_request_id: requestId,
+    p_decision: decision,
+    p_note: note ?? undefined,
+  });
+  if (error) throw rpcError("Could not respond to this cancellation request.", error);
+  const r = data as {
+    outcome: CancellationResponseResult["outcome"];
+    order_id: string;
+    already_decided: boolean;
+    refund: unknown;
+  };
+  return {
+    outcome: r.outcome,
+    orderId: r.order_id,
+    alreadyDecided: r.already_decided,
+    refund: toCancellationRefundState(r.refund),
+  };
+}
+
+/** The latest cancellation request on an order (RLS scopes who can see it), or null. */
+export async function getCancellationRequestForOrder(
+  orderId: string,
+): Promise<CancellationRequest | null> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from(DATABASE_TABLES.CANCELLATION_REQUESTS)
+    .select("id, order_id, reason, status, decision_note, created_at, decided_at")
+    .eq("order_id", orderId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw queryError("Failed to load the cancellation request", error);
+  return data ? toCancellationRequest(data) : null;
+}
+
+/**
+ * The refund opened by an order's cancellation, plus the payment channel it
+ * goes back to. RLS scopes the rows (buyer / seller / shop member / admin).
+ * Attempt priority matches `_cancellation_refund_state`: succeeded, then
+ * pending, then the newest failed one.
+ */
+export async function getCancellationRefundForOrder(
+  orderId: string,
+): Promise<{ refund: CancellationRefundState; channel: string | null }> {
+  const supabase = await createSupabaseServerClient();
+  const { data: request, error } = await supabase
+    .from(DATABASE_TABLES.RETURN_REQUESTS)
+    .select("id, status, refund_amount_cents")
+    .eq("order_id", orderId)
+    .eq("reason_code", "order_cancelled")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw queryError("Failed to load the refund", error);
+  if (!request) return { refund: NO_CANCELLATION_REFUND, channel: null };
+
+  const [{ data: attempts, error: attemptError }, { data: payment }] = await Promise.all([
+    supabase
+      .from(DATABASE_TABLES.XENDIT_REFUNDS)
+      .select("id, status, failure_code, amount_cents, currency, xendit_refund_id, created_at")
+      .eq("return_request_id", request.id)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from(DATABASE_TABLES.PAYMENTS)
+      .select("payment_channel")
+      .eq("order_id", orderId)
+      .in("status", ["paid", "partially_refunded", "refunded"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+  if (attemptError) throw queryError("Failed to load the refund attempts", attemptError);
+
+  const rank = (status: string) => (status === "succeeded" ? 0 : status === "pending" ? 1 : 2);
+  const best = [...(attempts ?? [])].sort((a, b) => rank(a.status) - rank(b.status))[0];
+
+  return {
+    channel: payment?.payment_channel ?? null,
+    refund: best
+      ? {
+          kind: "xendit",
+          returnRequestId: request.id,
+          returnStatus: request.status,
+          refundId: best.id,
+          refundStatus: best.status,
+          failureCode: best.failure_code,
+          amountCents: best.amount_cents,
+          currency: best.currency,
+          needsSubmission: best.status === "pending" && best.xendit_refund_id === null,
+        }
+      : {
+          kind: "manual",
+          returnRequestId: request.id,
+          returnStatus: request.status,
+          refundId: null,
+          refundStatus: null,
+          failureCode: null,
+          amountCents: request.refund_amount_cents,
+          currency: null,
+          needsSubmission: false,
+        },
+  };
+}
+
+/** Seller / shop member / admin re-opens a failed cancellation refund (the caller then submits it). */
+export async function retryOrderRefund(returnRequestId: string): Promise<CancellationRefundState> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("retry_order_refund", {
+    p_return_request_id: returnRequestId,
+  });
+  if (error) throw rpcError("Could not retry this refund.", error);
+  return toCancellationRefundState(data);
+}
+
+/** A cancellation refund attempt that exists in our database but was never sent to Xendit. */
+export interface UnsubmittedXenditRefund {
+  id: string;
+  xenditPaymentRequestId: string;
+  amountCents: number;
+  currency: string;
+}
+
+/**
+ * Pending Xendit refund attempts with no Xendit refund id yet (service-role read,
+ * used right after a cancellation and by the reconciliation sweep). Scope with
+ * `orderId`, or with `minAgeMinutes` to leave brand-new ones to the request that
+ * created them.
+ */
+export async function getUnsubmittedXenditRefunds(filter: {
+  orderId?: string;
+  minAgeMinutes?: number;
+  limit?: number;
+}): Promise<UnsubmittedXenditRefund[]> {
+  const admin = createSupabaseAdminClient();
+  let query = admin
+    .from(DATABASE_TABLES.XENDIT_REFUNDS)
+    .select("id, xendit_payment_request_id, amount_cents, currency, return_request_id, created_at")
+    .eq("status", "pending")
+    .is("xendit_refund_id", null)
+    .order("created_at", { ascending: true })
+    .limit(filter.limit ?? 20);
+
+  if (filter.minAgeMinutes !== undefined) {
+    query = query.lte("created_at", new Date(Date.now() - filter.minAgeMinutes * 60_000).toISOString());
+  }
+  if (filter.orderId) {
+    const { data: requests, error: requestError } = await admin
+      .from(DATABASE_TABLES.RETURN_REQUESTS)
+      .select("id")
+      .eq("order_id", filter.orderId)
+      .eq("reason_code", "order_cancelled");
+    if (requestError) throw queryError("Failed to load cancellation refunds", requestError);
+    const ids = (requests ?? []).map((r) => r.id);
+    if (ids.length === 0) return [];
+    query = query.in("return_request_id", ids);
+  }
+
+  const { data, error } = await query;
+  if (error) throw queryError("Failed to load unsubmitted refunds", error);
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    xenditPaymentRequestId: row.xendit_payment_request_id,
+    amountCents: row.amount_cents,
+    currency: row.currency,
+  }));
+}
+
+/** Return-request ids whose Xendit attempt failed because OUR call to Xendit failed (sweep auto-retry). */
+export async function getCancellationRefundsWithSubmissionErrors(limit: number): Promise<string[]> {
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin
+    .from(DATABASE_TABLES.XENDIT_REFUNDS)
+    .select("return_request_id")
+    .eq("status", "failed")
+    .eq("failure_code", "submission_error")
+    .order("created_at", { ascending: true })
+    .limit(limit);
+  if (error) throw queryError("Failed to load failed refund submissions", error);
+  return [...new Set((data ?? []).map((row) => row.return_request_id))];
+}
+
+/** Service-role: records Xendit's synchronous response for a refund the server submitted (no admin session). */
+export async function systemRecordXenditRefundSubmission(
+  refundId: string,
+  xenditRefundId: string,
+  rawResponse: Json,
+): Promise<void> {
+  const admin = createSupabaseAdminClient();
+  const { error } = await admin.rpc("system_record_xendit_refund_submission", {
+    p_refund_id: refundId,
+    p_xendit_refund_id: xenditRefundId,
+    p_raw_response: rawResponse,
+  });
+  if (error) throw rpcError("Could not record the refund submission.", error);
+}
+
+/** Service-role: our call to Xendit failed, so the attempt is marked failed (safe to retry). */
+export async function systemFailXenditRefundSubmission(
+  refundId: string,
+  errorNote: string,
+): Promise<void> {
+  const admin = createSupabaseAdminClient();
+  const { error } = await admin.rpc("system_fail_xendit_refund_submission", {
+    p_refund_id: refundId,
+    p_error_note: errorNote,
+  });
+  if (error) throw rpcError("Could not record the refund failure.", error);
+}
+
+/** Service-role: opens a fresh attempt after a submission error; false when nothing was retried. */
+export async function systemRetryCancellationRefund(returnRequestId: string): Promise<boolean> {
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin.rpc("system_retry_cancellation_refund", {
+    p_return_request_id: returnRequestId,
+  });
+  if (error) throw rpcError("Could not retry the refund.", error);
+  return (data as { retried?: boolean } | null)?.retried === true;
+}
+
+/**
+ * Service-role: a SUCCEEDED payment webhook for an order that is already
+ * cancelled. Records the captured payment and opens the automatic refund.
+ * Returns the number of refunds opened (0 for the normal case).
+ */
+export async function refundLatePaymentOnCancelledOrder(input: {
+  referenceId: string;
+  xenditPaymentRequestId: string;
+  xenditPaymentId: string;
+  status: string;
+  amountCents: number;
+  currency: string;
+  channelCode: string;
+  rawPayload: Json;
+}): Promise<number> {
+  if (input.status !== "SUCCEEDED") return 0;
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin.rpc("refund_late_payment_on_cancelled_order", {
+    p_reference_id: input.referenceId,
+    p_xendit_payment_request_id: input.xenditPaymentRequestId,
+    p_xendit_payment_id: input.xenditPaymentId,
+    p_status: input.status,
+    p_amount_cents: input.amountCents,
+    p_currency: input.currency,
+    p_channel_code: input.channelCode,
+    p_raw_payload: input.rawPayload,
+  });
+  if (error) throw rpcError("Could not refund the late payment.", error);
+  return Array.isArray(data) ? data.length : 0;
+}
+
+/** Refunds still in flight and refunds needing attention (all attempts failed), for the sales report. */
+export async function getRefundPipeline(
+  range: { from: string; to: string },
+  shopId?: string | null,
+): Promise<{ pendingCount: number; pendingCents: number; attentionCount: number; attentionCents: number }> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("report_refund_pipeline", {
+    p_from: range.from,
+    p_to: range.to,
+    p_shop_id: shopId ?? undefined,
+  });
+  if (error) throw rpcError("Could not load the refund summary.", error);
+  const row = data?.[0];
+  return {
+    pendingCount: Number(row?.pending_refunds ?? 0),
+    pendingCents: Number(row?.pending_refund_cents ?? 0),
+    attentionCount: Number(row?.attention_refunds ?? 0),
+    attentionCents: Number(row?.attention_refund_cents ?? 0),
+  };
 }
 
 /**
@@ -2805,6 +3132,11 @@ export async function cancelBuyerOrder(
  * boundary behind either query.
  */
 export type DashboardOrderOwner = { sellerId: string; shopId: string | null };
+
+/** PostgREST `.or()` filter for a seller's own orders: their shop, or legacy shop-less rows they sold. */
+function orderOwnerFilter(owner: DashboardOrderOwner): string {
+  return owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`;
+}
 
 export async function listDashboardOrders(
   params: OrderListParams,
@@ -2955,12 +3287,7 @@ async function listDashboardOrdersNeedingAttention(
   };
 }
 
-/**
- * Exact counts for the dashboard's "Needs attention" summary strip — same
- * two conditions as `listDashboardOrdersNeedingAttention`, but a `head`
- * count-only query instead of fetching rows.
- */
-export async function getOrderAttentionCounts(shopId?: string | null): Promise<{
+export interface OrderAttentionCounts {
   needsConfirmation: number;
   codAwaitingCollection: number;
   /**
@@ -2980,8 +3307,60 @@ export async function getOrderAttentionCounts(shopId?: string | null): Promise<{
   pendingReturnRequests: number;
   /** Return and Refund: parcels the buyer has shipped back that the seller still has to confirm as received. */
   returnsAwaitingReceipt: number;
-}> {
+  /** Pending return requests with less than a day left of the seller's response window (`RETURN_SELLER_RESPONSE_SLA_DAYS`), overdue ones included. */
+  returnsDueSoon: number;
+  /** Confirmed orders still to be prepared (status `confirmed`). */
+  toPrepare: number;
+  /** Orders in `processing`, waiting for the shipment to be recorded. */
+  inProcessing: number;
+  /** Confirmed or processing orders confirmed more than `SHIP_OVERDUE_DAYS` ago. */
+  overdueToShip: number;
+  /** Total (integer cents) of shipped/delivered COD orders whose cash isn't marked collected yet. */
+  codAwaitingCents: number;
+}
+
+const COD_SUM_PAGE_SIZE = 1000;
+
+/** Sums `total_cents` over COD orders awaiting collection, paging past the API row cap. */
+async function sumCodAwaitingCents(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  shopId: string | null | undefined,
+): Promise<number> {
+  let total = 0;
+  for (let offset = 0; ; offset += COD_SUM_PAGE_SIZE) {
+    let query = supabase
+      .from(DATABASE_TABLES.ORDERS)
+      .select("total_cents")
+      .eq("payment_method", "cod")
+      .eq("payment_status", PAYMENT_STATUS.pending)
+      .in("order_status", [ORDER_STATUS.shipped, ORDER_STATUS.delivered])
+      .order("id")
+      .range(offset, offset + COD_SUM_PAGE_SIZE - 1);
+    if (shopId) query = query.eq("shop_id", shopId);
+    const { data, error } = await query;
+    if (error) throw queryError("Failed to load COD totals", error);
+    const rows = data ?? [];
+    total += rows.reduce((sum, row) => sum + row.total_cents, 0);
+    if (rows.length < COD_SUM_PAGE_SIZE) return total;
+  }
+}
+
+/**
+ * Exact counts for the dashboard's "Needs attention" summary strip — same
+ * two conditions as `listDashboardOrdersNeedingAttention`, but a `head`
+ * count-only query instead of fetching rows. Pass the seller's `shopId`:
+ * RLS also returns orders the caller placed as a buyer (a buyer promoted to
+ * seller keeps them), so RLS alone is not a shop scope. `cache()`-wrapped so
+ * the Seller layout's bell and the dashboard share one set of queries.
+ */
+export const getOrderAttentionCounts = cache(async function getOrderAttentionCounts(
+  shopId?: string | null,
+): Promise<OrderAttentionCounts> {
   const supabase = await createSupabaseServerClient();
+  // Less than one day left of the response window.
+  const dueSoonBefore = new Date(
+    Date.now() - (RETURN_SELLER_RESPONSE_SLA_DAYS - 1) * 24 * 60 * 60 * 1000,
+  ).toISOString();
   let confirmQuery = supabase
       .from(DATABASE_TABLES.ORDERS)
       .select("id", { count: "exact", head: true })
@@ -3007,6 +3386,25 @@ export async function getOrderAttentionCounts(shopId?: string | null): Promise<{
       .from(DATABASE_TABLES.RETURN_REQUESTS)
       .select("id", { count: "exact", head: true })
       .eq("status", RETURN_STATUS.returnShipped);
+  let dueSoonQuery = supabase
+      .from(DATABASE_TABLES.RETURN_REQUESTS)
+      .select("id", { count: "exact", head: true })
+      .eq("status", RETURN_STATUS.pending)
+      .lt("created_at", dueSoonBefore);
+  let toPrepareQuery = supabase
+      .from(DATABASE_TABLES.ORDERS)
+      .select("id", { count: "exact", head: true })
+      .eq("order_status", ORDER_STATUS.confirmed);
+  let processingQuery = supabase
+      .from(DATABASE_TABLES.ORDERS)
+      .select("id", { count: "exact", head: true })
+      .eq("order_status", ORDER_STATUS.processing);
+  const overdueBefore = new Date(Date.now() - SHIP_OVERDUE_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  let overdueQuery = supabase
+      .from(DATABASE_TABLES.ORDERS)
+      .select("id", { count: "exact", head: true })
+      .in("order_status", [ORDER_STATUS.confirmed, ORDER_STATUS.processing])
+      .lt("confirmed_at", overdueBefore);
 
   if (shopId) {
     confirmQuery = confirmQuery.eq("shop_id", shopId);
@@ -3014,21 +3412,29 @@ export async function getOrderAttentionCounts(shopId?: string | null): Promise<{
     restockQuery = restockQuery.eq("shop_id", shopId);
     pendingReturnQuery = pendingReturnQuery.eq("shop_id", shopId);
     awaitingReceiptQuery = awaitingReceiptQuery.eq("shop_id", shopId);
+    dueSoonQuery = dueSoonQuery.eq("shop_id", shopId);
+    toPrepareQuery = toPrepareQuery.eq("shop_id", shopId);
+    processingQuery = processingQuery.eq("shop_id", shopId);
+    overdueQuery = overdueQuery.eq("shop_id", shopId);
   }
 
-  const [confirmResult, codResult, restockResult, pendingReturnResult, awaitingReceiptResult] = await Promise.all([
+  const [codAwaitingCents, ...results] = await Promise.all([
+    sumCodAwaitingCents(supabase, shopId),
     confirmQuery,
     codQuery,
     restockQuery,
     pendingReturnQuery,
     awaitingReceiptQuery,
+    dueSoonQuery,
+    toPrepareQuery,
+    processingQuery,
+    overdueQuery,
   ]);
 
-  if (confirmResult.error) throw queryError("Failed to load order counts", confirmResult.error);
-  if (codResult.error) throw queryError("Failed to load order counts", codResult.error);
-  if (restockResult.error) throw queryError("Failed to load order counts", restockResult.error);
-  if (pendingReturnResult.error) throw queryError("Failed to load order counts", pendingReturnResult.error);
-  if (awaitingReceiptResult.error) throw queryError("Failed to load order counts", awaitingReceiptResult.error);
+  for (const result of results) {
+    if (result.error) throw queryError("Failed to load order counts", result.error);
+  }
+  const [confirmResult, codResult, restockResult, pendingReturnResult, awaitingReceiptResult, dueSoonResult, toPrepareResult, processingResult, overdueResult] = results;
 
   return {
     needsConfirmation: confirmResult.count ?? 0,
@@ -3036,8 +3442,13 @@ export async function getOrderAttentionCounts(shopId?: string | null): Promise<{
     returnsAwaitingRestock: restockResult.count ?? 0,
     pendingReturnRequests: pendingReturnResult.count ?? 0,
     returnsAwaitingReceipt: awaitingReceiptResult.count ?? 0,
+    returnsDueSoon: dueSoonResult.count ?? 0,
+    toPrepare: toPrepareResult.count ?? 0,
+    inProcessing: processingResult.count ?? 0,
+    overdueToShip: overdueResult.count ?? 0,
+    codAwaitingCents,
   };
-}
+});
 
 /**
  * Fulfillment/returns audit finding B1: how many `pending` return requests
@@ -3074,21 +3485,24 @@ const RECENTLY_CONFIRMED_WINDOW_HOURS = 72;
  * Orders the signed-in seller fulfilled whose buyer confirmed receipt within
  * the last `RECENTLY_CONFIRMED_WINDOW_HOURS` — surfaced as a seller
  * notification (the "Order Received" flow has no seller-facing signal
- * otherwise; see `getSellerNotifications` in `app/seller/layout.tsx`). Relies
- * on RLS alone for the seller scope, same pattern as
- * `getOrderAttentionCounts`.
+ * otherwise; see `getSellerNotifications` in `app/seller/layout.tsx`). Pass
+ * `owner` so a seller never sees receipts for orders they placed as a buyer.
  */
 export async function getRecentlyConfirmedOrders(
   limit = 5,
+  owner: DashboardOrderOwner | null = null,
 ): Promise<Array<{ id: string; orderNumber: string; buyerConfirmedReceivedAt: string }>> {
   const supabase = await createSupabaseServerClient();
   const since = new Date(Date.now() - RECENTLY_CONFIRMED_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
 
-  const { data, error } = await supabase
+  let query = supabase
     .from(DATABASE_TABLES.ORDERS)
     .select("id, order_number, buyer_confirmed_received_at")
     .not("buyer_confirmed_received_at", "is", null)
-    .gte("buyer_confirmed_received_at", since)
+    .gte("buyer_confirmed_received_at", since);
+  if (owner) query = query.or(orderOwnerFilter(owner));
+
+  const { data, error } = await query
     .order("buyer_confirmed_received_at", { ascending: false })
     .limit(limit);
 
@@ -4427,6 +4841,19 @@ export async function reconcileXenditWebhookStatus(input: {
   if (error) {
     throw rpcError("Could not confirm the status of your previous payment attempt.", error);
   }
+  // Same late-payment safety net as the webhook route: a SUCCEEDED status found
+  // by reconciliation for an order that was cancelled meanwhile is refunded
+  // (the sweep then sends the refund to Xendit).
+  await refundLatePaymentOnCancelledOrder({
+    referenceId: input.referenceId,
+    xenditPaymentRequestId: input.xenditPaymentRequestId,
+    xenditPaymentId: input.xenditPaymentId,
+    status: input.status,
+    amountCents: input.amountCents,
+    currency: input.currency,
+    channelCode: input.channelCode,
+    rawPayload: { source: "reconciliation_check", status: input.status } as Json,
+  });
   return data ? toPaymentAttempt(data as PaymentRow) : null;
 }
 
@@ -5401,6 +5828,8 @@ export async function getReturnRequestForOrder(
     .from(DATABASE_TABLES.RETURN_REQUESTS)
     .select(RETURN_REQUEST_COLUMNS)
     .eq("order_id", orderId)
+    // The refund a cancellation opens automatically has its own card; this lookup is for genuine buyer returns.
+    .neq("reason_code", "order_cancelled")
     .order("created_at", { ascending: false })
     .limit(1);
 
@@ -7503,16 +7932,26 @@ export const getTopProducts = cache(async function getTopProducts(
  * inventory read (no new SQL). A seller sees their own shop's stock; an admin
  * sees every shop's — optionally narrowed to one shop via `shopId` (the
  * admin Reports page's shop filter; every other caller omits it and keeps
- * today's unfiltered behavior unchanged).
+ * today's unfiltered behavior unchanged). `cache()`-wrapped: the Seller
+ * layout's bell and several dashboard panels read it in the same request.
  */
-export async function getLowStockReport(shopId?: string | null): Promise<InventoryItem[]> {
+export const getLowStockReport = cache(async function getLowStockReport(
+  shopId?: string | null,
+): Promise<InventoryItem[]> {
   const items = await listDashboardInventory();
   return items
     .filter((item) => !item.isUnassigned)
     .filter((item) => item.stockStatus !== "in_stock")
     .filter((item) => !shopId || item.shopId === shopId)
     .sort((a, b) => a.quantity - b.quantity);
-}
+});
+
+/** Payment states of an order that was paid at some point (matches the report RPCs' `was_paid`). */
+const EVER_PAID_STATUSES: readonly PaymentStatus[] = [
+  PAYMENT_STATUS.paid,
+  PAYMENT_STATUS.partiallyRefunded,
+  PAYMENT_STATUS.refunded,
+];
 
 type RestockOrderRow = {
   payment_status: PaymentStatus;
@@ -7528,21 +7967,24 @@ type RestockOrderRow = {
  * Cross-references the caller's low/out-of-stock items (see
  * `getLowStockReport`) with their sales in `[from, to]`, ranked by revenue
  * earned — "your best-seller is about to run out." Seller Dashboard/Reports
- * only. Relies on RLS alone for the `orders`/`order_items` read, same "RLS is
- * the primary boundary" pattern as `listDashboardOrders`.
+ * only. Pass `owner`: RLS alone also returns orders the caller placed as a
+ * buyer. Units count paid orders only (same rule as the sales reports);
+ * dates use the Asia/Manila day boundary.
  */
 export async function getRestockPriorityReport(
   from: string,
   to: string,
   limit = 5,
+  owner: DashboardOrderOwner | null = null,
 ): Promise<RestockPriorityItem[]> {
   const lowStockItems = await getLowStockReport();
   if (lowStockItems.length === 0) return [];
 
   const supabase = await createSupabaseServerClient();
   const productIds = Array.from(new Set(lowStockItems.map((item) => item.productId)));
+  const bounds = manilaDateRangeBounds(from, to);
 
-  const { data, error } = await supabase
+  let query = supabase
     .from(DATABASE_TABLES.ORDERS)
     .select(
       `
@@ -7551,8 +7993,12 @@ export async function getRestockPriorityReport(
       `,
     )
     .in("order_items.product_id", productIds)
-    .gte("placed_at", `${from}T00:00:00Z`)
-    .lte("placed_at", `${to}T23:59:59Z`);
+    .in("payment_status", [...EVER_PAID_STATUSES])
+    .gte("placed_at", bounds.start)
+    .lt("placed_at", bounds.endExclusive);
+  if (owner) query = query.or(orderOwnerFilter(owner));
+
+  const { data, error } = await query;
 
   if (error) {
     throw queryError("Failed to load restock priority", error);
@@ -7656,18 +8102,27 @@ const REPEAT_CUSTOMER_HISTORY_LIMIT = 5000;
 /**
  * Returning- vs. new-buyer split for orders placed in `[from, to]` — a
  * buyer counts as "returning" if they have more than one order with this
- * seller across all time (not just within the range). Seller Dashboard only.
- * Two round trips, both relying on RLS alone: the range itself, then every
- * historical order (any date) for just the buyers found in that range.
+ * seller across all time (not just within the range). Seller Reports only.
+ * Two round trips: the range itself, then every historical order (any date)
+ * for just the buyers found in that range. Pass `owner`: RLS alone also
+ * returns orders the caller placed as a buyer. Manila day boundary.
  */
-export async function getRepeatCustomerRate(from: string, to: string): Promise<RepeatCustomerStats> {
+export async function getRepeatCustomerRate(
+  from: string,
+  to: string,
+  owner: DashboardOrderOwner | null = null,
+): Promise<RepeatCustomerStats> {
   const supabase = await createSupabaseServerClient();
+  const bounds = manilaDateRangeBounds(from, to);
 
-  const { data: rangeOrders, error: rangeError } = await supabase
+  let rangeQuery = supabase
     .from(DATABASE_TABLES.ORDERS)
     .select("buyer_id")
-    .gte("placed_at", `${from}T00:00:00Z`)
-    .lte("placed_at", `${to}T23:59:59Z`);
+    .gte("placed_at", bounds.start)
+    .lt("placed_at", bounds.endExclusive);
+  if (owner) rangeQuery = rangeQuery.or(orderOwnerFilter(owner));
+
+  const { data: rangeOrders, error: rangeError } = await rangeQuery;
 
   if (rangeError) {
     throw queryError("Failed to load repeat customer stats", rangeError);
@@ -7680,11 +8135,13 @@ export async function getRepeatCustomerRate(from: string, to: string): Promise<R
 
   const buyerIds = Array.from(new Set((rangeOrders ?? []).map((row) => row.buyer_id)));
 
-  const { data: historyOrders, error: historyError } = await supabase
+  let historyQuery = supabase
     .from(DATABASE_TABLES.ORDERS)
     .select("buyer_id")
-    .in("buyer_id", buyerIds)
-    .limit(REPEAT_CUSTOMER_HISTORY_LIMIT);
+    .in("buyer_id", buyerIds);
+  if (owner) historyQuery = historyQuery.or(orderOwnerFilter(owner));
+
+  const { data: historyOrders, error: historyError } = await historyQuery.limit(REPEAT_CUSTOMER_HISTORY_LIMIT);
 
   if (historyError) {
     throw queryError("Failed to load repeat customer stats", historyError);
@@ -7856,6 +8313,16 @@ export async function requireOwnShopId(): Promise<string> {
   }
   return shopId;
 }
+
+/**
+ * The signed-in seller's owner scope (`{ sellerId, shopId }`) — the same
+ * shape the Orders page passes to `listDashboardOrders`. `cache()`-wrapped so
+ * the Seller layout and every dashboard panel resolve it once per request.
+ */
+export const getCurrentSellerOwner = cache(async (): Promise<DashboardOrderOwner> => {
+  const user = await requireSessionUser();
+  return { sellerId: user.id, shopId: await getOwnShopId(user.id) };
+});
 
 /**
  * Throws when `key` has been hit more than `maxHits` times within

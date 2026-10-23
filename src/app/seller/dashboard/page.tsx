@@ -1,23 +1,20 @@
 import { Suspense } from "react";
+import Link from "next/link";
 import type { Metadata } from "next";
 
-import { Card, CardContent } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { DashboardDateFilter } from "@/features/dashboard/components/DashboardDateFilter";
-import { RecentOrdersCard, RecentOrdersCardSkeleton } from "@/features/dashboard/components/RecentOrdersCard";
-import { LowStockCard, LowStockCardSkeleton } from "@/features/dashboard/components/LowStockCard";
-import { ActionCenterCard, ActionCenterCardSkeleton } from "@/features/seller/components/ActionCenterCard";
-import { SellerKpiRow, SellerKpiRowSkeleton } from "@/features/seller/components/SellerKpiRow";
-import { SellerQuickAccess, SellerQuickAccessSkeleton } from "@/features/seller/components/SellerQuickAccess";
-import { OrderStatusPanel } from "@/features/reports/components/OrderStatusPanel";
-import { RepeatCustomersPanel } from "@/features/reports/components/RepeatCustomersPanel";
-import { RestockPriorityPanel } from "@/features/reports/components/RestockPriorityPanel";
-import { SalesTrendPanel } from "@/features/reports/components/SalesTrendPanel";
-import { DEFAULT_GRANULARITY } from "@/features/reports/constants/report.constants";
-import type { ReportFilters } from "@/features/reports/types/report.types";
-import { parseDashboardDateRange } from "@/features/reports/utils/report-range";
 import { ROUTES } from "@/constants/routes";
-import { requireSessionUser } from "@/lib/supabase/queries";
+import { getDefaultRange, parseDashboardDateRange } from "@/features/reports/utils/report-range";
+import { SellerAttentionPanel, SellerAttentionPanelSkeleton } from "@/features/seller/components/SellerAttentionPanel";
+import { SellerDateFilterButton } from "@/features/seller/components/SellerDateFilterButton";
+import { SellerLowStock, SellerLowStockSkeleton } from "@/features/seller/components/SellerLowStock";
+import { SellerPerformanceSection, SellerPerformanceSectionSkeleton } from "@/features/seller/components/SellerPerformanceSection";
+import { SellerQuickActions } from "@/features/seller/components/SellerQuickActions";
+import { SellerSalesTrend, SellerSalesTrendSkeleton } from "@/features/seller/components/SellerSalesTrend";
+import { SellerTopProducts, SellerTopProductsSkeleton } from "@/features/seller/components/SellerTopProducts";
+import { SellerRecentOrders, SellerRecentOrdersSkeleton } from "@/features/seller/components/SellerRecentOrders";
+import { parseSellerOrderTab } from "@/features/seller/constants/order-tabs";
+import { parseSellerStockFilter } from "@/features/seller/constants/stock-filters";
+import { getCurrentSellerOwner, requireSessionUser } from "@/lib/supabase/queries";
 
 export const metadata: Metadata = { title: "Dashboard — Seller Portal" };
 
@@ -25,76 +22,89 @@ interface SellerDashboardPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-function ChartCardSkeleton() {
-  return (
-    <Card className="border-border">
-      <CardContent className="p-5">
-        <Skeleton className="h-40 w-full" />
-      </CardContent>
-    </Card>
-  );
-}
-
+/**
+ * Seller Dashboard: tasks (live, collapsible), shop performance (date range),
+ * then recent orders and low stock (live). Every read is scoped to the
+ * signed-in seller's shop — money through the `report_*` RPCs, lists and
+ * counts through the same owner filter the Orders page uses.
+ */
 export default async function SellerDashboardPage({ searchParams }: SellerDashboardPageProps) {
-  const user = await requireSessionUser();
-  const params = await searchParams;
-  const { from, to } = parseDashboardDateRange(params);
-  const filters: ReportFilters = { from, to, granularity: DEFAULT_GRANULARITY, shopId: null };
+  const [user, owner, params] = await Promise.all([
+    requireSessionUser(),
+    getCurrentSellerOwner(),
+    searchParams,
+  ]);
+  const { from, to } = parseDashboardDateRange(params, getDefaultRange());
+  const ordersTab = parseSellerOrderTab(params.ordersTab);
+  const stockFilter = parseSellerStockFilter(params.stockFilter);
+  const rangeQuery = `from=${from}&to=${to}`;
+  const firstName = user.fullName?.split(" ")[0];
+
+  const header = (
+    <div className="flex flex-wrap items-end justify-between gap-4">
+      <h2 className="text-lg font-semibold text-foreground">
+        Welcome back{firstName ? `, ${firstName}` : ""}
+      </h2>
+      {owner.shopId ? <SellerQuickActions reportsQuery={rangeQuery} /> : null}
+    </div>
+  );
+
+  if (!owner.shopId) {
+    return (
+      <div className="flex flex-col gap-6 p-5 lg:p-7">
+        {header}
+        <section className="flex flex-col items-start gap-3 rounded-2xl border border-border bg-card p-6">
+          <h3 className="text-base font-semibold text-foreground">Your account isn&apos;t linked to a shop yet</h3>
+          <p className="max-w-xl text-sm text-muted-foreground">
+            Sales, orders and stock appear here once an administrator assigns you to one of the RobertJ shops.
+          </p>
+          <Link href={ROUTES.sellerSettings} className="text-sm font-semibold text-primary underline">
+            Check account settings
+          </Link>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6 p-5 lg:p-7">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-semibold text-foreground">
-            Welcome back{user.fullName ? `, ${user.fullName}` : ""}
-          </h2>
-          <p className="text-sm text-muted-foreground">Here&apos;s what&apos;s happening with your shop.</p>
-        </div>
-        <DashboardDateFilter from={from} to={to} />
-      </div>
+      {header}
 
-      <Suspense fallback={<ActionCenterCardSkeleton />}>
-        <ActionCenterCard />
+      <Suspense fallback={<SellerAttentionPanelSkeleton />}>
+        <SellerAttentionPanel />
       </Suspense>
 
-      <Suspense key={`kpi:${from}:${to}`} fallback={<SellerKpiRowSkeleton />}>
-        <SellerKpiRow from={from} to={to} />
-      </Suspense>
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <Suspense key={`trend:${from}:${to}`} fallback={<ChartCardSkeleton />}>
-            <SalesTrendPanel filters={filters} />
-          </Suspense>
+      <section aria-labelledby="performance-heading" className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 id="performance-heading" className="text-base font-semibold text-foreground">Shop performance</h2>
+            <p className="text-xs text-muted-foreground">Orders placed in the selected dates, compared with the previous equal period.</p>
+          </div>
+          <SellerDateFilterButton from={from} to={to} />
         </div>
-        <Suspense key={`status:${from}:${to}`} fallback={<ChartCardSkeleton />}>
-          <OrderStatusPanel filters={filters} />
+
+        <Suspense key={`kpi:${from}:${to}`} fallback={<SellerPerformanceSectionSkeleton />}>
+          <SellerPerformanceSection from={from} to={to} />
         </Suspense>
-      </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <Suspense key={`restock:${from}:${to}`} fallback={<ChartCardSkeleton />}>
-            <RestockPriorityPanel filters={filters} />
-          </Suspense>
-        </div>
-        <Suspense key={`repeat:${from}:${to}`} fallback={<ChartCardSkeleton />}>
-          <RepeatCustomersPanel filters={filters} />
+        <Suspense key={`trend:${from}:${to}`} fallback={<SellerSalesTrendSkeleton />}>
+          <SellerSalesTrend from={from} to={to} />
         </Suspense>
-      </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <Suspense fallback={<RecentOrdersCardSkeleton />}>
-            <RecentOrdersCard viewAllHref={ROUTES.sellerOrders} orderHref={ROUTES.sellerOrderDetail} />
+        <Suspense key={`top:${from}:${to}`} fallback={<SellerTopProductsSkeleton />}>
+          <SellerTopProducts from={from} to={to} />
+        </Suspense>
+      </section>
+
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-5">
+        <div className="min-w-0 xl:col-span-3">
+          <Suspense key={`orders:${ordersTab}`} fallback={<SellerRecentOrdersSkeleton />}>
+            <SellerRecentOrders tab={ordersTab} baseQuery={rangeQuery} />
           </Suspense>
         </div>
-        <div className="flex flex-col gap-4">
-          <Suspense fallback={<SellerQuickAccessSkeleton />}>
-            <SellerQuickAccess />
-          </Suspense>
-          <Suspense fallback={<LowStockCardSkeleton />}>
-            <LowStockCard viewAllHref={ROUTES.sellerInventory} />
+        <div className="min-w-0 xl:col-span-2">
+          <Suspense key={`stock:${stockFilter}`} fallback={<SellerLowStockSkeleton />}>
+            <SellerLowStock filter={stockFilter} baseQuery={rangeQuery} />
           </Suspense>
         </div>
       </div>

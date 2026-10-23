@@ -6,7 +6,7 @@ import { ErrorState } from "@/components/feedback/ErrorState";
 import { ROUTES } from "@/constants/routes";
 import { StockStatusBadge } from "@/features/inventory";
 import { formatCurrency } from "@/lib/utils/currency";
-import { getRestockPriorityReport } from "@/lib/supabase/queries";
+import { getCurrentSellerOwner, getRestockPriorityReport } from "@/lib/supabase/queries";
 
 import type { ReportFilters } from "../types/report.types";
 
@@ -24,7 +24,7 @@ function initials(title: string) {
 export async function RestockPriorityPanel({ filters }: { filters: Pick<ReportFilters, "from" | "to"> }) {
   let items: Awaited<ReturnType<typeof getRestockPriorityReport>>;
   try {
-    items = await getRestockPriorityReport(filters.from, filters.to, 5);
+    items = await getRestockPriorityReport(filters.from, filters.to, 5, await getCurrentSellerOwner());
   } catch {
     return <ErrorState message="We couldn't load restock priority right now." />;
   }

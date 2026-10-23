@@ -2,7 +2,7 @@ import { ErrorState } from "@/components/feedback/ErrorState";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatCard } from "@/components/ui/stat-card";
 import { formatCurrency } from "@/lib/utils/currency";
-import { getSalesSummary } from "@/lib/supabase/queries";
+import { getRefundPipeline, getSalesSummary } from "@/lib/supabase/queries";
 
 import { PaymentSourceBreakdown } from "./PaymentSourceBreakdown";
 import type { ReportFilters } from "../types/report.types";
@@ -20,6 +20,14 @@ export async function SalesSummaryPanel({ filters }: { filters: ReportFilters })
   } catch {
     return <ErrorState message="We couldn't load the sales summary right now." />;
   }
+
+  // Refunds in flight are shown beside the settled figures so "payments received",
+  // "refunds pending", "refunds completed" and "net revenue" can be told apart.
+  // A failure here must not hide the rest of the summary.
+  const pipeline = await getRefundPipeline(
+    { from: filters.from, to: filters.to },
+    filters.shopId,
+  ).catch(() => null);
 
   return (
     <div className="flex flex-col gap-6">
@@ -45,8 +53,19 @@ export async function SalesSummaryPanel({ filters }: { filters: ReportFilters })
         <StatCard
           label="Refunds"
           value={formatCurrency(summary.refundsCents)}
-          hint={`${summary.refundedOrders} refunded order${summary.refundedOrders === 1 ? "" : "s"}`}
+          hint={`${summary.refundedOrders} completed refund${summary.refundedOrders === 1 ? "" : "s"}`}
         />
+        {pipeline ? (
+          <StatCard
+            label="Refunds pending"
+            value={formatCurrency(pipeline.pendingCents)}
+            hint={
+              pipeline.attentionCount > 0
+                ? `${pipeline.pendingCount} in progress · ${pipeline.attentionCount} need attention (${formatCurrency(pipeline.attentionCents)})`
+                : `${pipeline.pendingCount} in progress — still counted in net revenue until confirmed`
+            }
+          />
+        ) : null}
       </div>
 
       <Card>

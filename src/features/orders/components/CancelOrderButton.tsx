@@ -5,7 +5,10 @@ import { useRef, useState, useTransition } from "react";
 import { buttonVariants } from "@/components/ui/button";
 import { ConfirmPanel } from "@/components/ui/confirm-panel";
 import { ErrorState } from "@/components/feedback/ErrorState";
-import { cancelOrderAction } from "@/features/orders/actions/order.actions";
+import {
+  cancelOrderAction,
+  requestOrderCancellationAction,
+} from "@/features/orders/actions/order.actions";
 import {
   CANCELLATION_REASONS,
   OTHER_CANCELLATION_REASON,
@@ -13,25 +16,33 @@ import {
 import { cn } from "@/lib/utils/cn";
 
 /**
- * Cancel trigger + inline confirm for a cancellable order (pending/confirmed).
- * The confirm panel requires picking a reason (or typing one under "Other")
- * before the button enables — persisted as `orders.cancellation_reason` and
- * surfaced later on the order's "View Cancellation Details" page. Calls the
- * non-form `cancelOrderAction` from the event handler inside `startTransition`
- * (the documented pattern for actions without a form); the action revalidates
- * so the timeline and history update in place.
+ * Cancel trigger + inline confirm. Two modes, one reason picker:
+ *  - `cancel` (pending/confirmed): cancels immediately; a paid order is refunded
+ *    automatically, so `refundHint` tells the buyer that up front.
+ *  - `request` (processing — the seller already started preparing it): asks the
+ *    seller to approve; nothing changes until they respond.
+ * The confirm panel requires a reason (or typed text under "Other") before the
+ * button enables — persisted as `orders.cancellation_reason` /
+ * `cancellation_requests.reason`. The action revalidates, and the success
+ * message stays on screen so the buyer sees exactly what happens next.
  */
 export function CancelOrderButton({
   orderId,
   orderNumber,
+  mode = "cancel",
+  refundHint = null,
 }: {
   orderId: string;
   orderNumber: string;
+  mode?: "cancel" | "request";
+  refundHint?: string | null;
 }) {
+  const isRequest = mode === "request";
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [selectedReason, setSelectedReason] = useState<string | null>(null);
   const [otherText, setOtherText] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [doneMessage, setDoneMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const triggerRef = useRef<HTMLButtonElement>(null);
 
@@ -40,12 +51,19 @@ export function CancelOrderButton({
       ? otherText.trim()
       : (CANCELLATION_REASONS.find((reason) => reason.value === selectedReason)?.label ?? "");
 
-  function handleCancel() {
-    if (!resolvedReason) return;
+  function handleConfirm() {
+    if (!resolvedReason || isPending) return;
     setError(null);
     startTransition(async () => {
-      const result = await cancelOrderAction(orderId, resolvedReason);
-      if (!result.success) setError(result.error);
+      const result = isRequest
+        ? await requestOrderCancellationAction(orderId, resolvedReason)
+        : await cancelOrderAction(orderId, resolvedReason);
+      if (!result.success) {
+        setError(result.error);
+        return;
+      }
+      setDoneMessage(result.data.message);
+      setConfirmOpen(false);
     });
   }
 
@@ -56,6 +74,21 @@ export function CancelOrderButton({
     setError(null);
   }
 
+  if (doneMessage) {
+    return (
+      <p
+        role="status"
+        className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-foreground"
+      >
+        {doneMessage}
+      </p>
+    );
+  }
+
+  const description = isRequest
+    ? "The shop has already started preparing this order, so they need to approve the cancellation. Please select a reason. If they decline, your order stays active."
+    : "Please select a cancellation reason. Take note that this will cancel the whole order and the action cannot be undone.";
+
   return (
     <div className="flex flex-col gap-3">
       <div>
@@ -65,26 +98,31 @@ export function CancelOrderButton({
           className={cn(buttonVariants({ variant: "rjOutline", size: "rjSm" }))}
           onClick={() => setConfirmOpen(true)}
         >
-          Cancel order
+          {isRequest ? "Request cancellation" : "Cancel order"}
         </button>
       </div>
 
       {confirmOpen ? (
         <>
           <ConfirmPanel
-            label={`Cancel order ${orderNumber}`}
-            title={`Cancel order ${orderNumber}?`}
-            description="Please select a cancellation reason. Take note that this will cancel the whole order and the action cannot be undone."
+            label={`${isRequest ? "Request cancellation of" : "Cancel"} order ${orderNumber}`}
+            title={isRequest ? `Request cancellation of order ${orderNumber}?` : `Cancel order ${orderNumber}?`}
+            description={description}
             tone="danger"
-            confirmLabel="Yes, cancel order"
-            pendingLabel="Cancelling…"
+            confirmLabel={isRequest ? "Send request" : "Yes, cancel order"}
+            pendingLabel={isRequest ? "Sending…" : "Cancelling…"}
             cancelLabel="Not now"
             isPending={isPending}
             triggerRef={triggerRef}
-            onConfirm={handleCancel}
+            onConfirm={handleConfirm}
             onCancel={reset}
             confirmDisabled={!resolvedReason}
           >
+            {refundHint ? (
+              <p className="mt-3 rounded-md bg-muted/50 px-3 py-2 text-xs text-foreground">
+                {refundHint}
+              </p>
+            ) : null}
             <fieldset className="mt-3 flex flex-col gap-2">
               <legend className="text-xs font-semibold text-foreground">
                 Select a cancellation reason
@@ -130,7 +168,10 @@ export function CancelOrderButton({
             </fieldset>
           </ConfirmPanel>
           {error ? (
-            <ErrorState title="Couldn't cancel the order" message={error} />
+            <ErrorState
+              title={isRequest ? "Couldn't send the request" : "Couldn't cancel the order"}
+              message={error}
+            />
           ) : null}
         </>
       ) : null}
