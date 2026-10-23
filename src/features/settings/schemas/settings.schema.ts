@@ -13,4 +13,12 @@ export const updatePlatformSettingsSchema = z.object({
   businessHours: z.string().trim().max(200, "Keep the hours under 200 characters.").default(""),
 });
 
+export const updateDefaultLowStockThresholdSchema = z.object({
+  threshold: z
+    .string()
+    .regex(/^\d+$/, "Enter a whole number.")
+    .transform(Number)
+    .pipe(z.number().int().min(0).max(10000)),
+});
+
 export type UpdatePlatformSettingsInput = z.infer<typeof updatePlatformSettingsSchema>;

@@ -44,7 +44,9 @@ export function AuditLogTable({ entries, filtering = false }: AuditLogTableProps
 
   return (
     <div className="flex flex-col gap-3">
-      {entries.map((entry) => (
+      {entries.map((entry) => {
+        const thresholdChange = entry.action === "update_inventory_threshold" ? entry.metadata : null;
+        return (
         <Card key={entry.id}>
           <CardContent className="flex flex-col gap-2 p-5 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
@@ -66,11 +68,21 @@ export function AuditLogTable({ entries, filtering = false }: AuditLogTableProps
                   </>
                 ) : null}
               </p>
+              {thresholdChange ? (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {typeof thresholdChange.product_title === "string" ? `${thresholdChange.product_title}: ` : "Item: "}
+                  {typeof thresholdChange.previous_effective === "number" ? thresholdChange.previous_effective : "?"}
+                  {" → "}
+                  {typeof thresholdChange.new_effective === "number" ? thresholdChange.new_effective : "?"}
+                  {thresholdChange.new_override === null ? " (using admin default)" : " (seller override)"}
+                </p>
+              ) : null}
             </div>
             <p className="shrink-0 text-xs text-muted-foreground">{formatDateTime(entry.createdAt)}</p>
           </CardContent>
         </Card>
-      ))}
+        );
+      })}
     </div>
   );
 }
