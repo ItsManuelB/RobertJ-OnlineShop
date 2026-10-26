@@ -27,7 +27,7 @@ Set these under Project Settings -> Environment Variables for **Production and P
 
 ## 4. Cron
 
-`vercel.json` runs `/api/cron/xendit-reconciliation` daily at 03:00 UTC, the most the Hobby plan allows. The route also auto-cancels orders left unpaid for 60 minutes, so it should run about every 15 minutes. Either upgrade the plan and tighten the schedule, or call the route from an external scheduler with `Authorization: Bearer <CRON_SECRET>`.
+`vercel.json` runs `/api/cron/xendit-reconciliation` daily at 03:00 UTC, the most the Hobby plan allows. The route also auto-cancels orders left unpaid for 60 minutes, so it should run about every 15 minutes. `.github/workflows/xendit-reconciliation.yml` calls the route every 15 minutes from GitHub Actions. In the repository Vercel deploys from, add the Actions secret `CRON_SECRET` (same value as in Vercel); optionally set the variable `SITE_URL`. The workflow runs only from that repository's default branch, so it starts once it is merged to `main`. Test it with Actions -> Xendit reconciliation -> Run workflow. Alternatively, upgrade the Vercel plan and tighten the schedule in `vercel.json`.
 
 ## 5. Custom domain (DNS stays at Spaceship)
 
