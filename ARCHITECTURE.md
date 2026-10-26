@@ -511,7 +511,7 @@ src/
 │   ├── cache/      tags.ts
 │   ├── utils/      cn, currency, date, format, result
 │   └── validations/ common.schema.ts
-├── hooks/          useDebouncedValue, useMediaQuery
+├── hooks/          useDebouncedValue
 ├── providers/      AppProviders, QueryProvider
 ├── services/       Reserved for cross-feature services (placeholder today)
 ├── config/         env.ts (validated), site.ts

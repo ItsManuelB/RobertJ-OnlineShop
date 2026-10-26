@@ -69,23 +69,6 @@ export const ORDER_STATUS = {
   refunded: "refunded",
 } as const satisfies Record<string, OrderStatus>;
 
-export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
-  pending: "Pending",
-  confirmed: "Confirmed",
-  processing: "Processing",
-  shipped: "Shipped",
-  delivered: "Delivered",
-  cancelled: "Cancelled",
-  refunded: "Refunded",
-};
-
-/** Order states that can no longer transition. */
-export const TERMINAL_ORDER_STATUSES: readonly OrderStatus[] = [
-  ORDER_STATUS.delivered,
-  ORDER_STATUS.cancelled,
-  ORDER_STATUS.refunded,
-];
-
 /**
  * Return/refund lifecycle. See `decide_return`'s doc comment
  * (`supabase/migrations/20260826000000_returns_and_refunds.sql`) for the
@@ -131,11 +114,3 @@ export const RETURN_STATUS_LABELS: Record<ReturnStatus, string> = {
   return_received: "Return received",
   return_expired: "Return expired",
 };
-
-/** Return states that can no longer transition. */
-export const TERMINAL_RETURN_STATUSES: readonly ReturnStatus[] = [
-  RETURN_STATUS.adminRejected,
-  RETURN_STATUS.refunded,
-  RETURN_STATUS.replacementCompleted,
-  RETURN_STATUS.returnExpired,
-];
