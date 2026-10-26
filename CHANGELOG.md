@@ -7,6 +7,9 @@ All notable changes to RoberJ Online Shop are documented here, newest first. For
 
 ## [Unreleased]
 
+### Changed (Hosting)
+- **Hosting moved from Netlify to Vercel.** Netlify paused the site for hitting its usage limits, so `robertjshop.store` now points at Vercel (DNS stays at Spaceship). The Netlify setup (`netlify.toml`, `netlify/functions/xendit-reconciliation.mts`, `docs/deployment-netlify.md`) is removed and replaced by `docs/deployment-vercel.md`. `vercel.json` is kept. **Note:** the Vercel Hobby plan only runs the reconciliation cron daily, where Netlify ran it every 15 minutes; unpaid-order auto-cancel needs a tighter schedule (external scheduler or a paid plan). No application logic changed.
+
 ### Added (Inventory)
 - **Editable low-stock thresholds.** Admins set the default in Admin Settings; sellers can override it per product or variant, or clear the override to inherit the default. Inventory statuses, filters, and low-stock reports use the effective per-row threshold. Changes are logged, and the buyer-facing “Only N left” display remains a separate storefront rule. Migration `20261023075334_editable_low_stock_thresholds.sql` is applied to the connected RobertJShop database; deploy the app changes after the migration.
 

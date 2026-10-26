@@ -14,9 +14,9 @@ import { absoluteUrl, isInternalPath } from "@/lib/utils/url";
  * password recovery) and OAuth. Trades the `?code` for a session, sets the
  * session cookies, then forwards to `next` (or the home page).
  *
- * Redirects are built from `NEXT_PUBLIC_SITE_URL`, not the request origin: on
- * Netlify the request origin is the per-deploy address, which would bounce the
- * user off the host that just set their session cookies.
+ * Redirects are built from `NEXT_PUBLIC_SITE_URL`, not the request origin: on a
+ * host like Vercel the request origin can be the per-deploy address, which would
+ * bounce the user off the host that just set their session cookies.
  *
  * This route exists now so the Login / Registration / Forgot Password /
  * Email Verification screens built in the auth phase have a working callback.
