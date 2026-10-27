@@ -35,7 +35,11 @@ export function GuidedOptionCards({ legend, options, selected, onSelect, columns
   const pointer = useRef(false);
 
   return (
-    <fieldset>
+    <fieldset
+      onKeyDown={() => {
+        pointer.current = false;
+      }}
+    >
       <legend className="sr-only">{legend}</legend>
       <div
         className={cn(

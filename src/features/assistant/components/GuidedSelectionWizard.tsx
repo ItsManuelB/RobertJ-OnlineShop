@@ -112,6 +112,10 @@ export function GuidedSelectionWizard({
 
   const headingRef = useRef<HTMLHeadingElement>(null);
   const firstRender = useRef(true);
+  // The pending auto-advance, cancelled by any other move so a late timer never jumps a step.
+  const advanceTimer = useRef<number | null>(null);
+  // Only the newest category request may update the step data; a slower, older reply is ignored.
+  const latestRequest = useRef(0);
 
   const category = categories.find((entry) => entry.id === answers.categoryId);
   const steps = stepsFor(category, overview);
@@ -141,14 +145,35 @@ export function GuidedSelectionWizard({
     else setStep(nextSteps[position + 1]);
   }
 
-  function later(run: () => void, viaPointer: boolean) {
-    if (viaPointer) window.setTimeout(run, AUTO_ADVANCE_MS);
+  function cancelAdvance() {
+    if (advanceTimer.current !== null) window.clearTimeout(advanceTimer.current);
+    advanceTimer.current = null;
   }
+
+  function later(run: () => void, viaPointer: boolean) {
+    cancelAdvance();
+    if (viaPointer) {
+      advanceTimer.current = window.setTimeout(() => {
+        advanceTimer.current = null;
+        run();
+      }, AUTO_ADVANCE_MS);
+    }
+  }
+
+  function goTo(target: GuidedStep) {
+    cancelAdvance();
+    setStep(target);
+  }
+
+  useEffect(() => cancelAdvance, []);
 
   function loadCategory(next: GuidedAnswers, viaPointer: boolean) {
     setError(null);
+    cancelAdvance();
+    const request = ++latestRequest.current;
     startLoading(async () => {
       const result = await getGuidedSelectionStepDataAction(next.categoryId);
+      if (request !== latestRequest.current) return;
       if (!result.success) {
         setError(result.error);
         return;
@@ -218,6 +243,7 @@ export function GuidedSelectionWizard({
   }
 
   function handleNext() {
+    cancelAdvance();
     const final = withCustomBudget();
     if (!final) return;
     setAnswers(final);
@@ -225,6 +251,7 @@ export function GuidedSelectionWizard({
   }
 
   function handleSkip() {
+    cancelAdvance();
     const cleared: GuidedAnswerKey[] =
       current === "details" ? ["size", "color", "material", "dimensions"] : [current as GuidedAnswerKey];
     let next = answers;
@@ -233,6 +260,10 @@ export function GuidedSelectionWizard({
     setAnswers(next);
     if (current === "category") loadCategory(next, false);
     goNext(steps, current, next);
+  }
+
+  function editAnswer(key: GuidedAnswerKey) {
+    goTo(STEP_FOR_ANSWER[key]);
   }
 
   function removeAnswer(key: GuidedAnswerKey) {
@@ -378,7 +409,7 @@ export function GuidedSelectionWizard({
   const singleChoice = current === "category" || current === "occasion" || (current === "budget" && !customBudget);
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 pb-24 md:pb-0">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-3 text-xs">
           <span className="font-bold uppercase tracking-[0.12em] text-rj-red">
@@ -428,19 +459,17 @@ export function GuidedSelectionWizard({
         <GuidedAnswerChips
           items={(Object.keys(labels) as GuidedAnswerKey[])
             .filter((key) => labels[key])
-            .map((key) => ({
-              key,
-              label: labels[key] as string,
-              onEdit: () => setStep(STEP_FOR_ANSWER[key]),
-              onRemove: () => removeAnswer(key),
-            }))}
+            .map((key) => ({ key, label: labels[key] as string }))}
+          onEdit={editAnswer}
+          onRemove={removeAnswer}
         />
       ) : null}
 
       <div
         className={cn(
-          "fixed inset-x-0 bottom-0 z-30 flex items-center justify-between gap-3 border-t border-rj-gray-100 bg-rj-white px-4 py-3",
-          "md:static md:border-0 md:bg-transparent md:p-0",
+          // Sticky, not fixed: it rides along at the bottom on phones but stops above the site footer.
+          "sticky bottom-0 z-30 -mx-4 flex items-center justify-between gap-3 border-t border-rj-gray-100 bg-rj-white px-4 py-3",
+          "md:static md:mx-0 md:border-0 md:bg-transparent md:p-0",
         )}
       >
         {index === 0 ? (
@@ -448,7 +477,7 @@ export function GuidedSelectionWizard({
             Cancel
           </Link>
         ) : (
-          <Button type="button" variant="rjOutline" size="rjSm" onClick={() => setStep(steps[index - 1])}>
+          <Button type="button" variant="rjOutline" size="rjSm" onClick={() => goTo(steps[index - 1])}>
             Back
           </Button>
         )}

@@ -198,7 +198,7 @@ export async function GuidedResults({ answers, category }: GuidedResultsProps) {
   const editAnswersHref = `${ROUTES.assistant}${guidedSearch(answers)}`;
 
   return (
-    <div className="flex flex-col gap-8 pb-20 md:pb-0">
+    <div className="flex flex-col gap-8">
       {chips}
       <p className="text-sm text-rj-gray-600" role="status">
         {capped
@@ -226,7 +226,7 @@ export async function GuidedResults({ answers, category }: GuidedResultsProps) {
         </section>
       ))}
 
-      <div className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-between gap-3 border-t border-rj-gray-100 bg-rj-white px-4 py-3 md:hidden">
+      <div className="sticky bottom-0 z-30 -mx-4 flex items-center justify-between gap-3 border-t border-rj-gray-100 bg-rj-white px-4 py-3 md:hidden">
         <span className="text-sm font-semibold text-rj-black">
           {matches.length} {matches.length === 1 ? "match" : "matches"}
         </span>

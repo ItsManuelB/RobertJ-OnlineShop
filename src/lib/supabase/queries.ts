@@ -2457,14 +2457,15 @@ async function buyerOrderSearchFilter(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
   search: string,
 ): Promise<string | null> {
-  const term = search.replace(/[,()*%\\]/g, " ").trim();
+  const term = search.replace(/[,()*%\\"]/g, " ").trim();
   if (!term) return null;
 
   const { data, error } = await supabase
     .from(DATABASE_TABLES.ORDER_ITEMS)
     .select("order_id")
     .ilike("product_title", `%${term}%`)
-    .limit(200);
+    // Kept well under the length a long `id.in.(…)` filter can reach before the API gateway rejects the URL.
+    .limit(100);
   if (error) {
     throw queryError("Failed to search orders", error);
   }
