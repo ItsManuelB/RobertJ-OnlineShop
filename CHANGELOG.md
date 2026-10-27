@@ -7,6 +7,11 @@ All notable changes to RoberJ Online Shop are documented here, newest first. For
 
 ## [Unreleased]
 
+### Added (Admin Reports: per-shop view)
+- **Sales by shop.** Admin Reports now opens with a table of every shop side by side (net sales with previous-period change, share of total, gross, refunds, orders, paid, average order, units, cancelled %, refunded %) and an **All shops** total that is the sum of the rows. Orders linked to no shop appear as **Unassigned** so the rows always add up. Choosing a shop row filters the whole page to it. A per-shop net-sales chart grid shows when all shops are selected.
+- **Summary KPIs** show previous-period change chips and cancellation / refund rates; the Payment source card now shows its "adds up to Gross sales" check. The CSV export adds the shop name, a by-shop section (admin) and the shop in the file name.
+- **Scoping fix** (`20261027000000_admin_report_shop_scope.sql`, **not yet applied** — paste into the Supabase SQL editor, then deploy): the admin shop filter now uses one rule (`report_order_shop`: the order's `shop_id`, falling back to its seller's shop) in all six report RPCs. Before, four used the order's seller and two used `shop_id`, so figures could disagree after a seller moved shops. Adds `report_sales_by_shop` and `report_sales_timeseries_by_shop` (admin only).
+
 ### Changed (Hosting)
 - **Hosting moved from Netlify to Vercel.** Netlify paused the site for hitting its usage limits, so `robertjshop.store` now points at Vercel (DNS stays at Spaceship). The Netlify setup (`netlify.toml`, `netlify/functions/xendit-reconciliation.mts`, `docs/deployment-netlify.md`) is removed and replaced by `docs/deployment-vercel.md`. `vercel.json` is kept. **Note:** the Vercel Hobby plan only runs the reconciliation cron daily, where Netlify ran it every 15 minutes; unpaid-order auto-cancel needs a tighter schedule, so `.github/workflows/xendit-reconciliation.yml` calls the same route every 15 minutes from GitHub Actions (needs the `CRON_SECRET` Actions secret). No application logic changed.
 

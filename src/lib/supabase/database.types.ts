@@ -2882,6 +2882,22 @@ export type Database = {
           units_sold: number
         }[]
       }
+      report_sales_by_shop: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          avg_order_value_cents: number
+          cancelled_orders: number
+          gross_revenue_cents: number
+          paid_orders: number
+          refunded_orders: number
+          refunds_cents: number
+          revenue_cents: number
+          shop_id: string | null
+          shop_name: string
+          total_orders: number
+          units_sold: number
+        }[]
+      }
       report_sales_summary: {
         Args: { p_from: string; p_shop_id?: string; p_to: string }
         Returns: {
@@ -2911,6 +2927,15 @@ export type Database = {
           bucket: string
           order_count: number
           revenue_cents: number
+        }[]
+      }
+      report_sales_timeseries_by_shop: {
+        Args: { p_from: string; p_granularity?: string; p_to: string }
+        Returns: {
+          bucket: string
+          order_count: number
+          revenue_cents: number
+          shop_id: string | null
         }[]
       }
       report_top_products: {

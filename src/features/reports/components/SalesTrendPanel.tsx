@@ -6,16 +6,7 @@ import { getSalesTimeseries } from "@/lib/supabase/queries";
 
 import { GRANULARITY_LABELS } from "../constants/report.constants";
 import type { ReportFilters, SalesTrendPoint } from "../types/report.types";
-import { fillTrendGaps } from "../utils/report-range";
-
-/** Short axis label for a bucket date, tuned to the granularity. */
-function bucketLabel(bucket: string, granularity: ReportFilters["granularity"]): string {
-  const d = new Date(`${bucket}T00:00:00Z`);
-  if (granularity === "month") {
-    return d.toLocaleDateString("en-US", { month: "short", year: "2-digit", timeZone: "UTC" });
-  }
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
-}
+import { fillTrendGaps, formatBucketLabel } from "../utils/report-range";
 
 /**
  * Revenue and order-volume trend over the range, on the single placed_at /
@@ -37,12 +28,12 @@ export async function SalesTrendPanel({ filters }: { filters: ReportFilters }) {
   const filled = fillTrendGaps(series, filters);
 
   const revenuePoints: TrendChartPoint[] = filled.map((p) => ({
-    label: bucketLabel(p.bucket, filters.granularity),
+    label: formatBucketLabel(p.bucket, filters.granularity),
     value: p.revenueCents,
     valueLabel: formatCurrency(p.revenueCents),
   }));
   const orderPoints: TrendChartPoint[] = filled.map((p) => ({
-    label: bucketLabel(p.bucket, filters.granularity),
+    label: formatBucketLabel(p.bucket, filters.granularity),
     value: p.orderCount,
     valueLabel: `${p.orderCount} order${p.orderCount === 1 ? "" : "s"}`,
   }));

@@ -115,6 +115,8 @@ import type {
   SalesSummary,
   SalesTrendPoint,
   PaymentSourceSummaryRow,
+  ShopSalesRow,
+  ShopTrendPoint,
   TopProduct,
 } from "@/features/reports/types/report.types";
 import type {
@@ -7932,6 +7934,65 @@ export const getSalesTimeseries = cache(async function getSalesTimeseries(
     bucket: row.bucket,
     orderCount: row.order_count,
     revenueCents: row.revenue_cents,
+  }));
+});
+
+/**
+ * Admin only: one row per shop (plus "Unassigned" when orders belong to no
+ * shop) for the range, so the rows add up to the All-shops summary. The RPC
+ * rejects non-admins.
+ */
+export const getSalesByShop = cache(async function getSalesByShop(
+  from: string,
+  to: string,
+): Promise<ShopSalesRow[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("report_sales_by_shop", {
+    p_from: from,
+    p_to: to,
+  });
+
+  if (error) {
+    throw queryError("Failed to load sales by shop", error);
+  }
+
+  return (data ?? []).map((row) => ({
+    shopId: row.shop_id,
+    shopName: row.shop_name,
+    totalOrders: Number(row.total_orders),
+    paidOrders: Number(row.paid_orders),
+    cancelledOrders: Number(row.cancelled_orders),
+    grossRevenueCents: Number(row.gross_revenue_cents),
+    refundsCents: Number(row.refunds_cents),
+    revenueCents: Number(row.revenue_cents),
+    avgOrderValueCents: Number(row.avg_order_value_cents),
+    unitsSold: Number(row.units_sold),
+    refundedOrders: Number(row.refunded_orders),
+  }));
+});
+
+/** Admin only: net-sales trend per shop (non-empty buckets only), for the by-shop trend cards. */
+export const getSalesTimeseriesByShop = cache(async function getSalesTimeseriesByShop(
+  from: string,
+  to: string,
+  granularity: ReportGranularity,
+): Promise<ShopTrendPoint[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("report_sales_timeseries_by_shop", {
+    p_from: from,
+    p_to: to,
+    p_granularity: granularity,
+  });
+
+  if (error) {
+    throw queryError("Failed to load sales trend by shop", error);
+  }
+
+  return (data ?? []).map((row) => ({
+    shopId: row.shop_id,
+    bucket: row.bucket,
+    orderCount: Number(row.order_count),
+    revenueCents: Number(row.revenue_cents),
   }));
 });
 

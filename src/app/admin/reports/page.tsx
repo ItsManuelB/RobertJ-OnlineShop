@@ -8,9 +8,11 @@ import {
   parseReportFilters,
   ReportCardSkeleton,
   ReportsFilters,
+  SalesByShopPanel,
   SalesSummaryPanel,
   SalesSummarySkeleton,
   SalesTrendPanel,
+  ShopTrendPanel,
   TopProductsPanel,
   type ReportShopOption,
 } from "@/features/reports";
@@ -33,9 +35,21 @@ export default async function AdminReportsPage({ searchParams }: AdminReportsPag
     shops = undefined;
   }
 
+  const selectedShop = shops?.find((shop) => shop.id === filters.shopId);
+
   return (
     <div className="flex flex-col gap-6 p-5 lg:p-7">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <h2 className="text-lg font-semibold text-foreground">
+            {selectedShop ? selectedShop.name : "All shops"}
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            {selectedShop
+              ? "Every figure below is for this shop only."
+              : "Combined figures for every shop. Pick a shop in the table or the filter to narrow it down."}
+          </p>
+        </div>
         <ExportReportButton filters={filters} />
       </div>
 
@@ -43,6 +57,10 @@ export default async function AdminReportsPage({ searchParams }: AdminReportsPag
 
       {/* Keyed so changing filters restarts every panel's suspense boundary. */}
       <div key={JSON.stringify(filters)} className="flex flex-col gap-6">
+        <Suspense fallback={<ReportCardSkeleton />}>
+          <SalesByShopPanel filters={filters} />
+        </Suspense>
+
         <Suspense fallback={<SalesSummarySkeleton />}>
           <SalesSummaryPanel filters={filters} />
         </Suspense>
@@ -50,6 +68,12 @@ export default async function AdminReportsPage({ searchParams }: AdminReportsPag
         <Suspense fallback={<ReportCardSkeleton />}>
           <SalesTrendPanel filters={filters} />
         </Suspense>
+
+        {filters.shopId === null ? (
+          <Suspense fallback={<ReportCardSkeleton />}>
+            <ShopTrendPanel filters={filters} />
+          </Suspense>
+        ) : null}
 
         <div className="grid gap-6 lg:grid-cols-2">
           <Suspense fallback={<ReportCardSkeleton />}>
