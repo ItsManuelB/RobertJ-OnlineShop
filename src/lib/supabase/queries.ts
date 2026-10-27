@@ -7956,19 +7956,25 @@ export const getSalesByShop = cache(async function getSalesByShop(
     throw queryError("Failed to load sales by shop", error);
   }
 
-  return (data ?? []).map((row) => ({
-    shopId: row.shop_id,
-    shopName: row.shop_name,
-    totalOrders: Number(row.total_orders),
-    paidOrders: Number(row.paid_orders),
-    cancelledOrders: Number(row.cancelled_orders),
-    grossRevenueCents: Number(row.gross_revenue_cents),
-    refundsCents: Number(row.refunds_cents),
-    revenueCents: Number(row.revenue_cents),
-    avgOrderValueCents: Number(row.avg_order_value_cents),
-    unitsSold: Number(row.units_sold),
-    refundedOrders: Number(row.refunded_orders),
-  }));
+  // Name order (like every other shop list), not ranking order, so shops keep a fixed
+  // position when comparing; the synthetic Unassigned row goes last.
+  return (data ?? [])
+    .map((row) => ({
+      shopId: row.shop_id,
+      shopName: row.shop_name,
+      totalOrders: Number(row.total_orders),
+      paidOrders: Number(row.paid_orders),
+      cancelledOrders: Number(row.cancelled_orders),
+      grossRevenueCents: Number(row.gross_revenue_cents),
+      refundsCents: Number(row.refunds_cents),
+      revenueCents: Number(row.revenue_cents),
+      avgOrderValueCents: Number(row.avg_order_value_cents),
+      unitsSold: Number(row.units_sold),
+      refundedOrders: Number(row.refunded_orders),
+    }))
+    .sort((a, b) =>
+      a.shopId === null ? 1 : b.shopId === null ? -1 : compareNatural(a.shopName, b.shopName),
+    );
 });
 
 /** Admin only: net-sales trend per shop (non-empty buckets only), for the by-shop trend cards. */
