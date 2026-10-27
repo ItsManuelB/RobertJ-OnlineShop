@@ -9,6 +9,7 @@ import {
   getLowStockReport,
   getOrderAttentionCounts,
   getOverduePendingReturnCount,
+  getStalePaymentCount,
   listReturnRequests,
 } from "@/lib/supabase/queries";
 
@@ -26,13 +27,15 @@ import {
  * even see, let alone act on (the RPC refused anything still `pending`).
  */
 async function loadAdminNotifications(): Promise<PortalNotification[]> {
-  const [attentionCounts, lowStock, pendingReturns, payoutReturns, receivedReturns, overdueReturns] = await Promise.all([
+  const [attentionCounts, lowStock, pendingReturns, payoutReturns, receivedReturns, overdueReturns, stalePayments] = await Promise.all([
     getOrderAttentionCounts(),
     getLowStockReport(),
     listReturnRequests(RETURN_STATUS.sellerAccepted),
     listReturnRequests(RETURN_STATUS.refundDue),
     listReturnRequests(RETURN_STATUS.returnReceived),
     getOverduePendingReturnCount(),
+    // A failed count must not take the whole bell down.
+    getStalePaymentCount().catch(() => 0),
   ]);
 
   const notifications: PortalNotification[] = [];
@@ -95,6 +98,16 @@ async function loadAdminNotifications(): Promise<PortalNotification[]> {
       href: ROUTES.adminReturns,
       tone: "danger",
       count: overdueReturns,
+    });
+  }
+  if (stalePayments > 0) {
+    notifications.push({
+      id: "stale-payments",
+      title: "Payments to reconcile",
+      description: `${stalePayments} online payment${stalePayments === 1 ? " has" : "s have"} been pending for over 30 minutes`,
+      href: `${ROUTES.adminPayments}?staleOnly=true`,
+      tone: "warning",
+      count: stalePayments,
     });
   }
 

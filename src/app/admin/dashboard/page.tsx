@@ -5,6 +5,11 @@ import { ROUTES } from "@/constants/routes";
 import { RecentOrdersCard, RecentOrdersCardSkeleton } from "@/features/dashboard/components/RecentOrdersCard";
 import { LowStockCard, LowStockCardSkeleton } from "@/features/dashboard/components/LowStockCard";
 import { AdminAttentionPanel, AdminAttentionPanelSkeleton } from "@/features/admin/components/AdminAttentionPanel";
+import { AdminOrderPipeline, AdminOrderPipelineSkeleton } from "@/features/admin/components/AdminOrderPipeline";
+import { AdminRecentActivity, AdminRecentActivitySkeleton } from "@/features/admin/components/AdminRecentActivity";
+import { AdminServiceSpeed, AdminServiceSpeedSkeleton } from "@/features/admin/components/AdminServiceSpeed";
+import { AdminShopHealth, AdminShopHealthSkeleton } from "@/features/admin/components/AdminShopHealth";
+import { DashboardRefresh } from "@/features/admin/components/DashboardRefresh";
 import { AdminGlanceStrip, AdminGlanceStripSkeleton } from "@/features/admin/components/AdminGlanceStrip";
 import { AdminTopShops, AdminTopShopsSkeleton } from "@/features/admin/components/AdminTopShops";
 import {
@@ -31,11 +36,14 @@ export default async function AdminDashboardPage({ searchParams }: AdminDashboar
 
   return (
     <div className="flex flex-col gap-6 p-5 lg:p-7">
-      <div>
-        <h1 className="text-2xl font-semibold text-foreground">Dashboard</h1>
-        <p className="text-sm text-muted-foreground">
-          Welcome back{firstName ? `, ${firstName}` : ""}. Here is what needs you today and how the marketplace is doing.
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-foreground">Dashboard</h1>
+          <p className="text-sm text-muted-foreground">
+            Welcome back{firstName ? `, ${firstName}` : ""}. Here is what needs you today and how the marketplace is doing.
+          </p>
+        </div>
+        <DashboardRefresh />
       </div>
 
       <Suspense fallback={<AdminAttentionPanelSkeleton />}>
@@ -65,6 +73,19 @@ export default async function AdminDashboardPage({ searchParams }: AdminDashboar
 
         <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-5">
           <div className="min-w-0 xl:col-span-3">
+            <Suspense key={`health:${from}:${to}`} fallback={<AdminShopHealthSkeleton />}>
+              <AdminShopHealth from={from} to={to} />
+            </Suspense>
+          </div>
+          <div className="min-w-0 xl:col-span-2">
+            <Suspense fallback={<AdminOrderPipelineSkeleton />}>
+              <AdminOrderPipeline />
+            </Suspense>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-5">
+          <div className="min-w-0 xl:col-span-3">
             <Suspense key={`trend:${from}:${to}`} fallback={<SellerSalesTrendSkeleton />}>
               <SellerSalesTrend from={from} to={to} />
             </Suspense>
@@ -75,6 +96,10 @@ export default async function AdminDashboardPage({ searchParams }: AdminDashboar
             </Suspense>
           </div>
         </div>
+
+        <Suspense key={`speed:${from}:${to}`} fallback={<AdminServiceSpeedSkeleton />}>
+          <AdminServiceSpeed from={from} to={to} />
+        </Suspense>
       </section>
 
       <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-5">
@@ -84,9 +109,14 @@ export default async function AdminDashboardPage({ searchParams }: AdminDashboar
           </Suspense>
         </div>
         <div className="min-w-0 xl:col-span-2">
-          <Suspense fallback={<LowStockCardSkeleton />}>
-            <LowStockCard viewAllHref={ROUTES.adminInventory} />
-          </Suspense>
+          <div className="flex flex-col gap-4">
+            <Suspense fallback={<LowStockCardSkeleton />}>
+              <LowStockCard viewAllHref={ROUTES.adminInventory} />
+            </Suspense>
+            <Suspense fallback={<AdminRecentActivitySkeleton />}>
+              <AdminRecentActivity />
+            </Suspense>
+          </div>
         </div>
       </div>
     </div>

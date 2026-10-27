@@ -8210,6 +8210,37 @@ export const getSalesByShop = cache(async function getSalesByShop(
     );
 });
 
+export interface ServiceSpeed {
+  shippedOrders: number;
+  /** Mean seconds from order placed to shipped; null when no order shipped. */
+  avgShipSeconds: number | null;
+  decidedReturns: number;
+  /** Mean seconds from a return being filed to its first decision; null when none was decided. */
+  avgReturnDecisionSeconds: number | null;
+}
+
+/** Admin only: how fast orders ship and returns get decided for work started in the range. The RPC rejects non-admins. */
+export const getServiceSpeed = cache(async function getServiceSpeed(
+  from: string,
+  to: string,
+): Promise<ServiceSpeed> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("report_service_speed", { p_from: from, p_to: to });
+
+  if (error) {
+    throw queryError("Failed to load service speed", error);
+  }
+
+  const row = data?.[0];
+  return {
+    shippedOrders: Number(row?.shipped_orders ?? 0),
+    avgShipSeconds: row?.avg_ship_seconds == null ? null : Number(row.avg_ship_seconds),
+    decidedReturns: Number(row?.decided_returns ?? 0),
+    avgReturnDecisionSeconds:
+      row?.avg_return_decision_seconds == null ? null : Number(row.avg_return_decision_seconds),
+  };
+});
+
 /** Order counts grouped by fulfilment status within the range. */
 export const getOrderStatusBreakdown = cache(
   async function getOrderStatusBreakdown(

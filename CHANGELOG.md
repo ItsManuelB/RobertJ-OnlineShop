@@ -7,6 +7,16 @@ All notable changes to RoberJ Online Shop are documented here, newest first. For
 
 ## [Unreleased]
 
+### Added (Admin Dashboard)
+
+- **Payments to reconcile** join the attention list, the bell and the Payments menu badge (online payments pending for over 30 minutes; the count already existed).
+- **Refunds in progress** (money owed back, not date bound) appears in the performance figures.
+- **Shop health:** one row per active shop with net sales, orders to confirm, orders late to ship and low stock, each count linking to that shop's filtered list.
+- **Order pipeline:** open orders right now by step (Pending, Confirmed, Processing, Shipped), each row opening Orders on that status.
+- **Recent admin activity:** the last five audit-log entries, linking to the Audit Log.
+- **Service speed:** average time from order placed to shipped and from return filed to decided, for work started in the selected dates. Uses the new read-only, admin-only `report_service_speed` function (migration `20261028000000_admin_service_speed.sql`); until it is applied the card says it is unavailable. "Order to confirmed" is not reported because orders keep no confirmation timestamp.
+- **Last updated** time with a Refresh button in the dashboard header.
+
 ### Changed (Admin Portal: Dashboard, Reports, Settings)
 
 - **Dashboard:** now reuses the Seller layout. Heading, a collapsible "Needs your attention" list built from the same entries as the bell and menu badges (one shared, request-cached source), four performance numbers with change against the previous period, a "Marketplace at a glance" strip (active shops, products live, low or out of stock, online payments paid), the sales trend beside a new "Top shops by net sales" card, then recent orders and low stock. The seven tiles, Action Center and Quick Access (including the misleading "Add Product" tile) are removed.

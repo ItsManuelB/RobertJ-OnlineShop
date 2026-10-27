@@ -2936,6 +2936,15 @@ export type Database = {
           units_sold: number
         }[]
       }
+      report_service_speed: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          avg_return_decision_seconds: number | null
+          avg_ship_seconds: number | null
+          decided_returns: number
+          shipped_orders: number
+        }[]
+      }
       report_sales_summary: {
         Args: { p_from: string; p_shop_id?: string; p_to: string }
         Returns: {

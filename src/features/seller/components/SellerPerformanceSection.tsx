@@ -75,6 +75,8 @@ export async function SellerPerformanceSection({
   const previous = getPreviousPeriod(from, to);
 
   const isReports = variant === "reports";
+  // Refunds in progress is money owed back right now. Reports always shows it; the Admin dashboard does too.
+  const showPipeline = isReports || audience === "admin";
   let current: Awaited<ReturnType<typeof getSalesSummary>>;
   let prior: Awaited<ReturnType<typeof getSalesSummary>>;
   let pipeline: Awaited<ReturnType<typeof getRefundPipeline>> | null = null;
@@ -83,7 +85,7 @@ export async function SellerPerformanceSection({
       getSalesSummary(from, to, shopId),
       getSalesSummary(previous.from, previous.to, shopId),
       // Refunds in progress are not date-bound: they are money on its way back right now.
-      isReports ? getRefundPipeline({ from, to }, shopId).catch(() => null) : Promise.resolve(null),
+      showPipeline ? getRefundPipeline({ from, to }, shopId).catch(() => null) : Promise.resolve(null),
     ]);
   } catch {
     return <ErrorState message={links.error} />;
@@ -105,7 +107,7 @@ export async function SellerPerformanceSection({
     { label: "Units sold (paid orders)", value: String(current.unitsSold) },
     { label: "Awaiting payment", value: `${current.pendingPaymentOrders} order${current.pendingPaymentOrders === 1 ? "" : "s"}` },
     { label: "Cancelled", value: `${current.cancelledOrders} order${current.cancelledOrders === 1 ? "" : "s"}` },
-    ...(isReports && pipeline
+    ...(showPipeline && pipeline
       ? [{ label: "Refunds in progress", value: `${money(inProgressCents)} · ${inProgressCount}` }]
       : []),
   ];
@@ -197,7 +199,7 @@ export async function SellerPerformanceSection({
         />
       </div>
 
-      <dl className={`grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl bg-muted px-4 py-3 ${isReports ? "sm:grid-cols-3" : "sm:grid-cols-4"}`}>
+      <dl className={`grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl bg-muted px-4 py-3 ${isReports || secondary.length > 4 ? "sm:grid-cols-3" : "sm:grid-cols-4"}`}>
         {secondary.map((item) => (
           <div key={item.label} className="flex min-w-0 flex-col">
             <dt className="text-[11px] text-muted-foreground">{item.label}</dt>
