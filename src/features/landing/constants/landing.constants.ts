@@ -57,13 +57,21 @@ export const CATEGORY_PLACEHOLDERS = [
 ] as const;
 
 /**
- * Bullet points beside the Guided Selection preview. Describes the real
- * mechanism (DECISIONS.md ADR-009 — explicit, human-authored rules, never
- * AI/ML) — no natural-language or "learns over time" claims.
+ * The four Guided Selection steps shown on the landing page, in the order the
+ * `/assistant` page asks them. Describes the real mechanism (DECISIONS.md
+ * ADR-009 and ADR-022 — matched from the live catalog by explicit rules, never
+ * AI/ML), with no natural-language or "learns over time" claims.
  */
 export const ASSISTANT_BENEFITS = [
-  "Matches by occasion, size, and budget — no guesswork",
-  "Searches every shop's rules at once",
+  "Answer up to four quick questions, and skip any you like",
+  "Matched from what is in stock right now, across every shop",
   "Budget is always checked against the live price",
-  "Every match traces back to a rule a seller explicitly set — no black box",
+  "Every result shows why it matched, with no black box",
+] as const;
+
+export const GUIDED_SELECTION_STEPS = [
+  { title: "What for", hint: "Pick a category" },
+  { title: "Occasion", hint: "Casual, work, party…" },
+  { title: "Details", hint: "Size, color, material" },
+  { title: "Budget", hint: "Ranges from real prices" },
 ] as const;

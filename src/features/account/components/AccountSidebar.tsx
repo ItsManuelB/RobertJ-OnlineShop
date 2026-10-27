@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -16,8 +15,8 @@ import {
 
 import { ROUTES } from "@/constants/routes";
 import { SignOutButton } from "@/features/auth/components/SignOutButton";
+import { Avatar } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils/cn";
-import { getInitials } from "@/lib/utils/format";
 import type { SessionUser } from "@/types/common.types";
 
 const ACCOUNT_NAV = [
@@ -37,25 +36,16 @@ const ACCOUNT_NAV = [
  */
 export function AccountSidebar({ user }: { user: SessionUser }) {
   const pathname = usePathname();
-  const initials = getInitials(user.fullName ?? user.email);
 
   return (
     <aside className="flex flex-col gap-6">
       <div className="flex items-center gap-3 rounded-2xl border border-rj-gray-100 bg-rj-gray-50 p-4">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-rj-black text-[13px] font-bold text-rj-white">
-          {user.avatarUrl ? (
-            <Image
-              src={user.avatarUrl}
-              alt=""
-              width={44}
-              height={44}
-              unoptimized
-              className="h-full w-full object-cover"
-            />
-          ) : (
-            initials
-          )}
-        </div>
+        <Avatar
+          src={user.avatarUrl}
+          name={user.fullName ?? user.email}
+          size={44}
+          className="h-11 w-11 bg-rj-black text-[13px] text-rj-white"
+        />
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-rj-black">
             {user.fullName ?? "My account"}

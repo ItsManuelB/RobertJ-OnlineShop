@@ -25,7 +25,7 @@ export function Drawer({ open, onClose, title, children, footer }: DrawerProps) 
   const closeRef = useRef<HTMLButtonElement>(null);
 
   // Lock background scroll while the drawer is open — same pattern as
-  // ProductLightbox/ProductFilters/GuidedSelectorQuiz.
+  // ProductLightbox/ProductFilters.
   useScrollLock(open);
 
   useEffect(() => {

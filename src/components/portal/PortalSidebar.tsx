@@ -6,8 +6,8 @@ import { ExternalLink, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
 
 import { ROLE_LABELS, type UserRole } from "@/constants/roles";
 import { ROUTES } from "@/constants/routes";
+import { Avatar } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils/cn";
-import { getInitials } from "@/lib/utils/format";
 import type { SessionUser } from "@/types/common.types";
 
 import { formatBadgeCount, isNavActive } from "./portal-nav";
@@ -233,12 +233,12 @@ export function PortalSidebar({
           <span className={cn(rail && "lg:hidden")}>{config.settings.label}</span>
         </Link>
         <div className={cn("flex items-center gap-3 px-3 py-2", rail && "lg:justify-center lg:px-0")}>
-          <div
-            aria-hidden="true"
-            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full border border-sidebar-accent-foreground/30 bg-sidebar-accent text-xs font-semibold text-sidebar-accent-foreground"
-          >
-            {getInitials(user.fullName ?? user.email)}
-          </div>
+          <Avatar
+            src={user.avatarUrl}
+            name={user.fullName ?? user.email}
+            size={28}
+            className="h-7 w-7 border border-sidebar-accent-foreground/30 bg-sidebar-accent text-xs font-semibold text-sidebar-accent-foreground"
+          />
           <div className={cn("min-w-0 flex-1", rail && "lg:hidden")}>
             <p className="truncate text-xs font-medium leading-tight text-sidebar-foreground">
               {user.fullName ?? user.email}

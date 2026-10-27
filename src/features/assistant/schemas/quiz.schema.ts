@@ -41,3 +41,41 @@ export const guidedSelectionQuerySchema = z
   );
 
 export type GuidedSelectionQueryInput = z.infer<typeof guidedSelectionQuerySchema>;
+
+const optionalText = (max: number) => z.string().trim().min(1).max(max).optional().catch(undefined);
+const optionalPesos = z.coerce.number().nonnegative().max(10_000_000).optional().catch(undefined);
+
+/**
+ * The `/assistant` address. Never throws: a bad or tampered value is simply dropped, so an
+ * old or hand-edited link still opens the page. A minimum above the maximum drops both.
+ */
+export const guidedSelectionPageParamsSchema = z
+  .object({
+    category: z.uuid().optional().catch(undefined),
+    occasion: occasionSchema.optional().catch(undefined),
+    size: optionalText(60),
+    color: optionalText(60),
+    material: optionalText(60),
+    dimensions: optionalText(80),
+    min: optionalPesos,
+    max: optionalPesos,
+    step: z.enum(["category", "occasion", "details", "budget"]).optional().catch(undefined),
+    show: z.literal("1").optional().catch(undefined),
+  })
+  .transform((value) => {
+    const budgetValid = value.min === undefined || value.max === undefined || value.min <= value.max;
+    return {
+      answers: {
+        categoryId: value.category,
+        occasion: value.occasion,
+        size: value.size,
+        color: value.color,
+        material: value.material,
+        dimensions: value.dimensions,
+        minPrice: budgetValid ? value.min : undefined,
+        maxPrice: budgetValid ? value.max : undefined,
+      },
+      step: value.step,
+      show: value.show === "1",
+    };
+  });

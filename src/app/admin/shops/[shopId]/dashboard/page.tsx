@@ -5,22 +5,20 @@ import type { Metadata } from "next";
 import { z } from "zod";
 
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 import { ROUTES } from "@/constants/routes";
-import { DashboardDateFilter } from "@/features/dashboard/components/DashboardDateFilter";
 import { RecentOrdersCard, RecentOrdersCardSkeleton } from "@/features/dashboard/components/RecentOrdersCard";
-import {
-  LowStockPanel,
-  OrderStatusPanel,
-  ReportCardSkeleton,
-  TopProductsPanel,
-} from "@/features/reports";
-import { DEFAULT_GRANULARITY } from "@/features/reports/constants/report.constants";
-import type { ReportFilters } from "@/features/reports/types/report.types";
+import { AdminOrderPipeline, AdminOrderPipelineSkeleton } from "@/features/admin/components/AdminOrderPipeline";
+import { AdminShopAttention, AdminShopAttentionSkeleton } from "@/features/admin/components/AdminShopAttention";
+import { DashboardRefresh } from "@/features/admin/components/DashboardRefresh";
+import { LowStockPanel, ReportCardSkeleton } from "@/features/reports";
 import { parseDashboardDateRange } from "@/features/reports/utils/report-range";
+import { SellerDateFilterButton } from "@/features/seller/components/SellerDateFilterButton";
+import {
+  SellerPerformanceSection,
+  SellerPerformanceSectionSkeleton,
+} from "@/features/seller/components/SellerPerformanceSection";
 import { SellerSalesTrend, SellerSalesTrendSkeleton } from "@/features/seller/components/SellerSalesTrend";
-import { ShopDashboardKpiRow, ShopDashboardKpiRowSkeleton } from "@/features/shops/components/ShopDashboardKpiRow";
+import { SellerTopProducts, SellerTopProductsSkeleton } from "@/features/seller/components/SellerTopProducts";
 import { getShopById } from "@/lib/supabase/queries";
 
 export const metadata: Metadata = { title: "Shop Dashboard — Admin Portal" };
@@ -30,17 +28,11 @@ interface AdminShopDashboardPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-function ChartCardSkeleton() {
-  return (
-    <Card>
-      <CardContent className="p-5">
-        <Skeleton className="h-40 w-full" />
-      </CardContent>
-    </Card>
-  );
-}
-
-/** The parent `/admin` layout enforces the admin role before this page runs. */
+/**
+ * One shop's dashboard for the admin, laid out like the Seller dashboard: what needs attention,
+ * performance for the chosen dates, then orders and stock. Every panel is scoped to this shop.
+ * The parent `/admin` layout enforces the admin role before this page runs.
+ */
 export default async function AdminShopDashboardPage({
   params,
   searchParams,
@@ -52,54 +44,64 @@ export default async function AdminShopDashboardPage({
   if (!shop) notFound();
 
   const { from, to } = parseDashboardDateRange(query);
-  const filters: ReportFilters = {
-    from,
-    to,
-    granularity: DEFAULT_GRANULARITY,
-    shopId: shop.id,
-  };
   const viewAllHref = `${ROUTES.adminOrders}?shopId=${encodeURIComponent(shop.id)}`;
 
   return (
     <div className="flex flex-col gap-6 p-5 lg:p-7">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-        <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-col gap-2">
           <Link href={ROUTES.adminShops} className="text-xs font-semibold text-primary underline">
             ← All shops
           </Link>
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-lg font-semibold text-foreground">{shop.name}</h1>
-              <Badge tone={shop.active ? "success" : "neutral"}>
-                {shop.active ? "Active" : "Inactive"}
-              </Badge>
-            </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Admin view · scoped to this shop · order metrics use Asia/Manila dates
-            </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-2xl font-semibold text-foreground">{shop.name}</h1>
+            <Badge tone={shop.active ? "success" : "neutral"}>{shop.active ? "Active" : "Inactive"}</Badge>
           </div>
+          <p className="text-sm text-muted-foreground">
+            Admin view of this shop only. Order dates use Asia/Manila time.
+          </p>
         </div>
-        <DashboardDateFilter from={from} to={to} />
+        <DashboardRefresh />
       </div>
 
-      <Suspense key={`shop-kpis:${shop.id}:${from}:${to}`} fallback={<ShopDashboardKpiRowSkeleton />}>
-        <ShopDashboardKpiRow from={from} to={to} shopId={shop.id} />
+      <Suspense key={`attention:${shop.id}`} fallback={<AdminShopAttentionSkeleton />}>
+        <AdminShopAttention shopId={shop.id} />
       </Suspense>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <Suspense key={`shop-trend:${shop.id}:${from}:${to}`} fallback={<SellerSalesTrendSkeleton />}>
-            <SellerSalesTrend from={from} to={to} shopId={shop.id} />
-          </Suspense>
+      <section aria-labelledby="performance-heading" className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h2 id="performance-heading" className="text-base font-semibold text-foreground">
+              Shop performance
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              Orders placed in the selected dates, compared with the previous equal period.
+            </p>
+          </div>
+          <SellerDateFilterButton from={from} to={to} />
         </div>
-        <Suspense key={`shop-status:${shop.id}:${from}:${to}`} fallback={<ChartCardSkeleton />}>
-          <OrderStatusPanel filters={filters} />
-        </Suspense>
-      </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <Suspense key={`shop-orders:${shop.id}:${from}:${to}`} fallback={<RecentOrdersCardSkeleton />}>
+        <Suspense key={`kpi:${shop.id}:${from}:${to}`} fallback={<SellerPerformanceSectionSkeleton audience="admin" />}>
+          <SellerPerformanceSection from={from} to={to} audience="admin" shopId={shop.id} />
+        </Suspense>
+
+        <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-5">
+          <div className="min-w-0 xl:col-span-3">
+            <Suspense key={`trend:${shop.id}:${from}:${to}`} fallback={<SellerSalesTrendSkeleton />}>
+              <SellerSalesTrend from={from} to={to} shopId={shop.id} />
+            </Suspense>
+          </div>
+          <div className="min-w-0 xl:col-span-2">
+            <Suspense key={`top:${shop.id}:${from}:${to}`} fallback={<SellerTopProductsSkeleton />}>
+              <SellerTopProducts from={from} to={to} audience="admin" shopId={shop.id} />
+            </Suspense>
+          </div>
+        </div>
+      </section>
+
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-5">
+        <div className="min-w-0 xl:col-span-3">
+          <Suspense key={`orders:${shop.id}:${from}:${to}`} fallback={<RecentOrdersCardSkeleton />}>
             <RecentOrdersCard
               from={from}
               to={to}
@@ -109,12 +111,14 @@ export default async function AdminShopDashboardPage({
             />
           </Suspense>
         </div>
-        <Suspense key={`shop-top-products:${shop.id}:${from}:${to}`} fallback={<ReportCardSkeleton />}>
-          <TopProductsPanel filters={filters} />
-        </Suspense>
+        <div className="min-w-0 xl:col-span-2">
+          <Suspense key={`pipeline:${shop.id}`} fallback={<AdminOrderPipelineSkeleton />}>
+            <AdminOrderPipeline shopId={shop.id} />
+          </Suspense>
+        </div>
       </div>
 
-      <Suspense key={`shop-low-stock:${shop.id}`} fallback={<ReportCardSkeleton />}>
+      <Suspense key={`low-stock:${shop.id}`} fallback={<ReportCardSkeleton />}>
         <LowStockPanel showShop={false} shopId={shop.id} />
       </Suspense>
     </div>

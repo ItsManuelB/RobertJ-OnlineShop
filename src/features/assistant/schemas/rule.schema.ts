@@ -18,8 +18,7 @@ export const occasionSchema = z.enum(OCCASIONS);
  * selection and a seller's rule are always drawn from the same vocabulary
  * instead of a free-text field that could never reliably match one typed by
  * someone else. If the catalog ever needs non-apparel sizing (shoes,
- * numeric), this list — and the `GUIDED_SELECTION_SIZES` re-export in
- * `assistant.constants.ts` — is the one place to widen it.
+ * numeric), this list is the one place to widen it.
  */
 export const SIZES = ["XS", "S", "M", "L", "XL", "XXL", "One Size"] as const;
 export const sizeSchema = z.enum(SIZES);
