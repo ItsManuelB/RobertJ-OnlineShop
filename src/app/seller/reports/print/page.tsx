@@ -153,9 +153,9 @@ export default async function SellerReportPrintPage({ searchParams }: SellerRepo
                 <table className="w-full">
                   <thead>
                     <tr>
-                      <th className={TH}>Measure</th>
-                      <th className={`${TH} ${RIGHT}`}>This period</th>
-                      <th className={`${TH} ${RIGHT}`}>Change</th>
+                      <th scope="col" className={TH}>Measure</th>
+                      <th scope="col" className={`${TH} ${RIGHT}`}>This period</th>
+                      <th scope="col" className={`${TH} ${RIGHT}`}>Change</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -232,9 +232,9 @@ export default async function SellerReportPrintPage({ searchParams }: SellerRepo
               <table className="w-full">
                 <thead>
                   <tr>
-                    <th className={TH}>{granularity === "week" ? "Week of" : granularity === "month" ? "Month" : "Day"}</th>
-                    <th className={`${TH} ${RIGHT}`}>Orders</th>
-                    <th className={`${TH} ${RIGHT}`}>Net sales</th>
+                    <th scope="col" className={TH}>{granularity === "week" ? "Week of" : granularity === "month" ? "Month" : "Day"}</th>
+                    <th scope="col" className={`${TH} ${RIGHT}`}>Orders</th>
+                    <th scope="col" className={`${TH} ${RIGHT}`}>Net sales</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -257,9 +257,9 @@ export default async function SellerReportPrintPage({ searchParams }: SellerRepo
               <table className="w-full">
                 <thead>
                   <tr>
-                    <th className={TH}>Source</th>
-                    <th className={`${TH} ${RIGHT}`}>Orders</th>
-                    <th className={`${TH} ${RIGHT}`}>Gross paid</th>
+                    <th scope="col" className={TH}>Source</th>
+                    <th scope="col" className={`${TH} ${RIGHT}`}>Orders</th>
+                    <th scope="col" className={`${TH} ${RIGHT}`}>Gross paid</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -290,8 +290,8 @@ export default async function SellerReportPrintPage({ searchParams }: SellerRepo
                 <table className="w-full">
                   <thead>
                     <tr>
-                      <th className={TH}>Status</th>
-                      <th className={`${TH} ${RIGHT}`}>Orders</th>
+                      <th scope="col" className={TH}>Status</th>
+                      <th scope="col" className={`${TH} ${RIGHT}`}>Orders</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -317,9 +317,9 @@ export default async function SellerReportPrintPage({ searchParams }: SellerRepo
                 <table className="w-full">
                   <thead>
                     <tr>
-                      <th className={TH}>Category</th>
-                      <th className={`${TH} ${RIGHT}`}>Units</th>
-                      <th className={`${TH} ${RIGHT}`}>Sales</th>
+                      <th scope="col" className={TH}>Category</th>
+                      <th scope="col" className={`${TH} ${RIGHT}`}>Units</th>
+                      <th scope="col" className={`${TH} ${RIGHT}`}>Sales</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -358,9 +358,9 @@ export default async function SellerReportPrintPage({ searchParams }: SellerRepo
                 <table className="w-full">
                   <thead>
                     <tr>
-                      <th className={TH}>Product</th>
-                      <th className={`${TH} ${RIGHT}`}>Units</th>
-                      <th className={`${TH} ${RIGHT}`}>Sales</th>
+                      <th scope="col" className={TH}>Product</th>
+                      <th scope="col" className={`${TH} ${RIGHT}`}>Units</th>
+                      <th scope="col" className={`${TH} ${RIGHT}`}>Sales</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -387,10 +387,10 @@ export default async function SellerReportPrintPage({ searchParams }: SellerRepo
                 <table className="w-full">
                   <thead>
                     <tr>
-                      <th className={TH}>Product</th>
-                      <th className={`${TH} ${RIGHT}`}>Left</th>
-                      <th className={`${TH} ${RIGHT}`}>Sold</th>
-                      <th className={`${TH} ${RIGHT}`}>Sales</th>
+                      <th scope="col" className={TH}>Product</th>
+                      <th scope="col" className={`${TH} ${RIGHT}`}>Left</th>
+                      <th scope="col" className={`${TH} ${RIGHT}`}>Sold</th>
+                      <th scope="col" className={`${TH} ${RIGHT}`}>Sales</th>
                     </tr>
                   </thead>
                   <tbody>

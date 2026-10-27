@@ -282,23 +282,23 @@ export function InventoryDataTable({ items, isAdmin, groupByShop = false }: Inve
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="border-b border-border bg-muted">
-              <th className="w-10 p-3">
+              <th scope="col" className="w-10 p-3">
                 <Checkbox
                   checked={someSelected && !allSelected ? "indeterminate" : allSelected}
                   onChange={(event) => toggleAll(event.target.checked)}
                   aria-label="Select all inventory rows on this page"
                 />
               </th>
-              <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Product</th>
+              <th scope="col" className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Product</th>
               {groupByShop ? null : (
-                <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <th scope="col" className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Shop
                 </th>
               )}
-              <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Quantity</th>
-              <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Threshold</th>
-              <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</th>
-              <th className="w-10 p-3" />
+              <th scope="col" className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Quantity</th>
+              <th scope="col" className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Threshold</th>
+              <th scope="col" className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</th>
+              <th scope="col" className="w-10 p-3" />
             </tr>
           </thead>
           <tbody>

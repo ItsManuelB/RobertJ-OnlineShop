@@ -6,7 +6,8 @@ import {
   AUDIT_LOG_ACTION_TONE,
 } from "@/features/audit-log/constants/audit-log.constants";
 import type { AdminActionLogEntry } from "@/features/audit-log/types/audit-log.types";
-import { formatDateTime } from "@/lib/utils/date";
+import { AUDIT_LOG_TIME_ZONE, groupEntriesByDay } from "@/features/audit-log/utils/audit-log-view";
+import { siteConfig } from "@/config/site";
 
 /** Known actions (`AUDIT_LOG_ACTION_LABELS`/`_TONE`) get a friendly label + tone; anything else (a future RPC that starts logging) falls back to the raw action string — never hidden, never crashes on an unrecognized value. */
 function actionLabel(action: string): string {
@@ -23,7 +24,7 @@ function actionTone(action: string): "neutral" | "info" | "success" | "danger" {
 
 export interface AuditLogTableProps {
   entries: AdminActionLogEntry[];
-  /** True when an action filter is active — swaps the empty-state copy (L3). */
+  /** True when an action or date filter is active — swaps the empty-state copy (L3). */
   filtering?: boolean;
 }
 
@@ -32,7 +33,7 @@ export function AuditLogTable({ entries, filtering = false }: AuditLogTableProps
     return filtering ? (
       <EmptyState
         title="No matching actions"
-        description="Try a different action filter."
+        description="Try a different action or a wider date range."
       />
     ) : (
       <EmptyState
@@ -42,9 +43,18 @@ export function AuditLogTable({ entries, filtering = false }: AuditLogTableProps
     );
   }
 
+  const groups = groupEntriesByDay(entries);
+  const timeFormat = new Intl.DateTimeFormat(siteConfig.locale, {
+    timeZone: AUDIT_LOG_TIME_ZONE,
+    timeStyle: "short",
+  });
+
   return (
-    <div className="flex flex-col gap-3">
-      {entries.map((entry) => {
+    <div className="flex flex-col gap-5">
+      {groups.map((group) => (
+        <section key={group.label} aria-label={group.label} className="flex flex-col gap-3">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{group.label}</h2>
+      {group.entries.map((entry) => {
         const thresholdChange = entry.action === "update_inventory_threshold" ? entry.metadata : null;
         return (
         <Card key={entry.id}>
@@ -78,11 +88,13 @@ export function AuditLogTable({ entries, filtering = false }: AuditLogTableProps
                 </p>
               ) : null}
             </div>
-            <p className="shrink-0 text-xs text-muted-foreground">{formatDateTime(entry.createdAt)}</p>
+            <p className="shrink-0 text-xs text-muted-foreground">{timeFormat.format(new Date(entry.createdAt))}</p>
           </CardContent>
         </Card>
         );
       })}
+        </section>
+      ))}
     </div>
   );
 }

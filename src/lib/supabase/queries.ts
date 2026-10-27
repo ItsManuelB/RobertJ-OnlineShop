@@ -6045,7 +6045,11 @@ function toAdminActionLogEntry(row: AdminActionLogRowWithJoins): AdminActionLogE
  * only how much of the list is fetched at once.
  */
 export async function listAdminActionLog(
-  params: PaginationParams & { action?: string },
+  params: PaginationParams & {
+    action?: string;
+    /** ISO timestamp: only entries created at or after it. */
+    since?: string;
+  },
 ): Promise<PaginatedResult<AdminActionLogEntry>> {
   const supabase = await createSupabaseServerClient();
 
@@ -6055,6 +6059,9 @@ export async function listAdminActionLog(
 
   if (params.action) {
     query = query.eq("action", params.action);
+  }
+  if (params.since) {
+    query = query.gte("created_at", params.since);
   }
 
   query = query.order("created_at", { ascending: false });
@@ -6074,6 +6081,32 @@ export async function listAdminActionLog(
     pageSize: params.pageSize,
     totalPages: Math.max(1, Math.ceil(total / params.pageSize)),
   };
+}
+
+/**
+ * Entry counts for the Audit Log's action dropdown: one per known action plus
+ * the total, optionally limited to entries at or after `since`. Head-only
+ * count queries, same approach as `getInventoryStatusCounts`.
+ */
+export async function getAdminActionCounts(
+  actions: readonly string[],
+  since?: string,
+): Promise<{ total: number; byAction: Record<string, number> }> {
+  const supabase = await createSupabaseServerClient();
+
+  async function countFor(action?: string): Promise<number> {
+    let query = supabase
+      .from(DATABASE_TABLES.ADMIN_ACTION_LOG)
+      .select("id", { count: "exact", head: true });
+    if (action) query = query.eq("action", action);
+    if (since) query = query.gte("created_at", since);
+    const { count, error } = await query;
+    if (error) throw queryError("Failed to count audit log entries", error);
+    return count ?? 0;
+  }
+
+  const [total, ...perAction] = await Promise.all([countFor(), ...actions.map((action) => countFor(action))]);
+  return { total, byAction: Object.fromEntries(actions.map((action, index) => [action, perAction[index]])) };
 }
 
 // ============================================================================

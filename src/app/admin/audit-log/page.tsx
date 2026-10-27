@@ -5,9 +5,17 @@ import { ErrorState } from "@/components/feedback/ErrorState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AuditLogActionFilter } from "@/features/audit-log/components/AuditLogActionFilter";
 import { AuditLogTable } from "@/features/audit-log/components/AuditLogTable";
-import { isAuditLogAction } from "@/features/audit-log/constants/audit-log.constants";
+import {
+  AUDIT_LOG_ACTIONS,
+  isAuditLogAction,
+} from "@/features/audit-log/constants/audit-log.constants";
+import {
+  auditRangeStart,
+  isAuditLogRange,
+  type AuditLogRange,
+} from "@/features/audit-log/utils/audit-log-view";
 import { PaginationControls } from "@/features/products/components/PaginationControls";
-import { listAdminActionLog } from "@/lib/supabase/queries";
+import { getAdminActionCounts, listAdminActionLog } from "@/lib/supabase/queries";
 import { paginationSchema } from "@/lib/validations/common.schema";
 
 export const metadata: Metadata = { title: "Audit Log — Admin Portal" };
@@ -25,21 +33,26 @@ function AuditLogSkeleton() {
 
 interface AuditLogDataProps {
   action: string | null;
+  range: AuditLogRange | null;
   page: number;
   pageSize: number;
 }
 
-/** L3: paginated + optionally filtered by action — see `listAdminActionLog`'s doc comment. Ordering and the underlying records are unchanged. */
-async function AuditLogData({ action, page, pageSize }: AuditLogDataProps) {
+/** L3: paginated + optionally filtered by action and date range — see `listAdminActionLog`'s doc comment. Ordering and the underlying records are unchanged. */
+async function AuditLogData({ action, range, page, pageSize }: AuditLogDataProps) {
   const result = await listAdminActionLog({
     page,
     pageSize,
     action: action ?? undefined,
+    since: range ? auditRangeStart(range) : undefined,
   });
 
   return (
     <div className="flex flex-col gap-4">
-      <AuditLogTable entries={result.items} filtering={Boolean(action)} />
+      <p className="text-sm text-muted-foreground" aria-live="polite">
+        {result.total} entr{result.total === 1 ? "y" : "ies"}
+      </p>
+      <AuditLogTable entries={result.items} filtering={Boolean(action || range)} />
       {result.totalPages > 1 ? (
         <PaginationControls page={result.page} totalPages={result.totalPages} themed />
       ) : null}
@@ -55,6 +68,8 @@ export default async function AdminAuditLogPage({ searchParams }: AdminAuditLogP
   const params = await searchParams;
   const actionParam = typeof params.action === "string" ? params.action : null;
   const action = isAuditLogAction(actionParam) ? actionParam : null;
+  const rangeParam = typeof params.range === "string" ? params.range : null;
+  const range = isAuditLogRange(rangeParam) ? rangeParam : null;
 
   const parsed = paginationSchema.safeParse(params);
   if (!parsed.success) {
@@ -66,14 +81,25 @@ export default async function AdminAuditLogPage({ searchParams }: AdminAuditLogP
   }
   const { page, pageSize } = parsed.data;
 
+  // The per-action numbers are a nicety — a failed count just leaves the plain dropdown.
+  const counts = await getAdminActionCounts(
+    AUDIT_LOG_ACTIONS,
+    range ? auditRangeStart(range) : undefined,
+  ).catch(() => undefined);
+
   return (
     <div className="flex flex-col gap-6 p-5 lg:p-7">
+      <div>
+        <h1 className="text-2xl font-semibold text-foreground">Audit Log</h1>
+        <p className="text-sm text-muted-foreground">A permanent record of administrative actions.</p>
+      </div>
+
       <Suspense fallback={null}>
-        <AuditLogActionFilter />
+        <AuditLogActionFilter counts={counts} />
       </Suspense>
 
       <Suspense key={JSON.stringify(params)} fallback={<AuditLogSkeleton />}>
-        <AuditLogData action={action} page={page} pageSize={pageSize} />
+        <AuditLogData action={action} range={range} page={page} pageSize={pageSize} />
       </Suspense>
     </div>
   );

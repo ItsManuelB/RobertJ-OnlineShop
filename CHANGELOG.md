@@ -7,6 +7,14 @@ All notable changes to RoberJ Online Shop are documented here, newest first. For
 
 ## [Unreleased]
 
+### Changed (Admin Portal: Management, and a polish pass)
+
+- **Users:** page heading, next-step cards (sellers with no shop, deactivated accounts, new this week) that filter the list through `?state=`, role chips with counts, a "No shop" flag on seller rows, and a result count. One read now serves the cards, counts and list. The user detail page is two columns: the management card on the left, account details and the seller's shop on the right.
+- **Shops:** page heading, summary cards (total, active, inactive, no seller), search by shop or seller, active / inactive chips with counts, and a "No seller" flag on rows. Filtering is local.
+- **Audit Log:** page heading, an action dropdown with per-action counts, date range chips (24 hours, 7 days, 30 days), entries grouped under Today, Yesterday and dates (Asia/Manila days), and an entry count. `listAdminActionLog` accepts an optional `since`; new `getAdminActionCounts`. Records are unchanged.
+- **Polish:** filter chips and small buttons are taller on phones (about 40px, up from 30-32px) and chip text is 12px; the light-mode success green is darker (`#166534`) so success badges meet the 4.5:1 text contrast; table headers now declare `scope="col"`.
+- Helpers `user-admin.ts`, `shop-admin.ts` and `audit-log-view.ts` have unit tests.
+
 ### Changed (Admin Portal: Catalog)
 
 - **Products:** page heading, status chips with counts, and a shop filter placed first in the toolbar. The list and the chip counts both follow the selected shop.

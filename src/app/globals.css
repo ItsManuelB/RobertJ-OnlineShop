@@ -29,7 +29,7 @@
   --primary-foreground: #ffffff;
   --secondary: #f4f4f5;
   --secondary-foreground: #171717;
-  --success: #16a34a;
+  --success: #166534;
   --warning: #b45309;
   /* Independently red on purpose: destructive actions (Archive/Reject/Cancel/
      Deactivate) keep a red "danger" regardless of brand color, so the
@@ -73,7 +73,7 @@
   --primary-foreground: #ffffff;
   --secondary: #e2f0eb; /* rj-gray-100 */
   --secondary-foreground: #09120f;
-  --success: #16a34a;
+  --success: #166534;
   --warning: #b45309;
   --danger: #c8111e; /* independent red — see :root comment */
   --danger-foreground: #ffffff;
