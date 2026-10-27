@@ -11,8 +11,8 @@ import { ChangePasswordForm, PortalAccountForm, SignOutOtherDevicesPanel } from 
 import { SellerAlertPreferencesPanel } from "@/features/seller/components/SellerAlertPreferencesPanel";
 import { SellerDownloadDataPanel } from "@/features/seller/components/SellerDownloadDataPanel";
 import { getMyProfile, getMySellerPreferences, getOwnShopId, getShopById, listUserIdentities, requireSessionUser } from "@/lib/supabase/queries";
+import { Avatar } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils/cn";
-import { getInitials } from "@/lib/utils/format";
 
 export const metadata: Metadata = { title: "Settings — Seller Portal" };
 
@@ -91,17 +91,12 @@ export default async function SellerSettingsPage() {
 
       <Card className="border-border">
         <CardContent className="flex flex-wrap items-center gap-4 p-5">
-          <span
-            aria-hidden="true"
-            className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary text-lg font-semibold text-primary-foreground"
-          >
-            {profile.avatarUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element -- small Storage avatar; no layout shift
-              <img src={profile.avatarUrl} alt="" className="h-full w-full object-cover" />
-            ) : (
-              getInitials(displayName)
-            )}
-          </span>
+          <Avatar
+            src={profile.avatarUrl}
+            name={displayName}
+            size={56}
+            className="h-14 w-14 bg-primary text-lg text-primary-foreground"
+          />
           <div className="min-w-0 flex-1">
             <p className="truncate text-base font-semibold text-foreground">{displayName}</p>
             <p className="truncate text-sm text-muted-foreground">{user.email}</p>

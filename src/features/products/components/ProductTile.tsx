@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { useState } from "react";
 
 import { ROUTES } from "@/constants/routes";
@@ -61,6 +61,8 @@ export interface ProductTileItem {
    * unaffected.
    */
   canPurchase?: boolean;
+  /** Optional extra line under the price, e.g. Guided Selection's reason chips. */
+  footer?: ReactNode;
 }
 
 export interface ProductTileProps {
@@ -280,6 +282,7 @@ export function ProductTile({ item, style }: ProductTileProps) {
             <span className="text-[11px] text-rj-gray-400">{item.soldCount} sold</span>
           ) : null}
         </div>
+        {item.footer ? <div className="mt-1.5">{item.footer}</div> : null}
       </div>
     </Link>
   );

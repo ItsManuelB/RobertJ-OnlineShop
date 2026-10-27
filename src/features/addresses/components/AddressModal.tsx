@@ -30,7 +30,7 @@ export interface AddressModalProps {
  * Address" and `AddressCard`'s "Edit" — one modal shell + submit flow
  * instead of two. Focus-trap/Escape/backdrop-click handling mirrors the
  * established full-screen dialog pattern already used elsewhere
- * (`ProductLightbox`, `GuidedSelectorQuiz`), just as a centered card instead
+ * (`ProductLightbox`), just as a centered card instead
  * of a full-bleed overlay — an address form is much shorter.
  *
  * Validation and persistence are unchanged: `addressSchema` and whichever

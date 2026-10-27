@@ -64,7 +64,20 @@ import { isOccasion } from "@/constants/occasions";
 import { filterImagesForColor } from "@/lib/utils/variant-images";
 import { channelsForPaymentSourceFilter } from "@/features/payments/lib/payment-source";
 import type { CartItem } from "@/features/cart/types/cart.types";
-import { matchCandidates, type MatchOption } from "@/features/assistant/lib/guided-match";
+import {
+  matchCandidates,
+  type MatchCandidate,
+  type MatchOption,
+  type MatchQuery,
+} from "@/features/assistant/lib/guided-match";
+import {
+  budgetPresets,
+  countAttributeValues,
+  countOccasions,
+  isPurchasable,
+  lowestPriceCents,
+  type BudgetPreset,
+} from "@/features/assistant/lib/guided-overview";
 import {
   ACTIVE_ORDER_STATUSES,
   CANCELLABLE_ORDER_STATUSES,
@@ -2444,14 +2457,15 @@ async function buyerOrderSearchFilter(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
   search: string,
 ): Promise<string | null> {
-  const term = search.replace(/[,()*%\\]/g, " ").trim();
+  const term = search.replace(/[,()*%\\"]/g, " ").trim();
   if (!term) return null;
 
   const { data, error } = await supabase
     .from(DATABASE_TABLES.ORDER_ITEMS)
     .select("order_id")
     .ilike("product_title", `%${term}%`)
-    .limit(200);
+    // Kept well under the length a long `id.in.(…)` filter can reach before the API gateway rejects the URL.
+    .limit(100);
   if (error) {
     throw queryError("Failed to search orders", error);
   }
@@ -9587,17 +9601,15 @@ export interface GuidedSelectionMatchInput {
 }
 
 /**
- * Ranks active, in-stock products against the buyer's answers. The matching
- * rules live in `features/assistant/lib/guided-match.ts` (pure, unit-tested);
- * this function only gathers the live data they need: products, their active
- * options, and per-option stock (`get_variant_stock` — `inventory` is not
- * publicly readable). Products of deactivated shops are hidden, as in the
- * catalog.
+ * Loads the Guided Selection candidate pool: active products of active shops (newest first,
+ * up to `GUIDED_SELECTION_CANDIDATE_LIMIT`), their active options, and per-option stock
+ * (`get_variant_stock` — `inventory` is not publicly readable). The matching and counting
+ * rules live in `features/assistant/lib/guided-match.ts` and `guided-overview.ts` (pure,
+ * unit-tested); this only gathers the live data they need.
  */
-export async function listGuidedSelectionMatches(
-  input: GuidedSelectionMatchInput,
-  limit = 24,
-): Promise<GuidedSelectionMatch[]> {
+async function loadGuidedSelectionPool(
+  categoryId?: string,
+): Promise<{ products: ProductRowWithImages[]; candidates: MatchCandidate[] }> {
   const supabase = await createSupabaseServerClient();
 
   const { data: inactiveShopRows } = await supabase
@@ -9613,8 +9625,8 @@ export async function listGuidedSelectionMatches(
   if (inactiveShopIds.length > 0) {
     productQuery = productQuery.or(`shop_id.is.null,shop_id.not.in.(${inactiveShopIds.join(",")})`);
   }
-  if (input.categoryId) {
-    productQuery = productQuery.eq("category_id", input.categoryId);
+  if (categoryId) {
+    productQuery = productQuery.eq("category_id", categoryId);
   }
   const { data: productRows, error: productError } = await productQuery
     .order("created_at", { ascending: false })
@@ -9624,7 +9636,7 @@ export async function listGuidedSelectionMatches(
     throw queryError("Failed to load Guided Selection matches", productError);
   }
   const products = (productRows ?? []) as unknown as ProductRowWithImages[];
-  if (products.length === 0) return [];
+  if (products.length === 0) return { products, candidates: [] };
 
   // Batched: a single `.in()` over hundreds of uuids makes a URL long enough for the API gateway to reject.
   const variantRows: GuidedVariantRow[] = [];
@@ -9660,28 +9672,34 @@ export async function listGuidedSelectionMatches(
     optionsByProduct.set(variant.product_id, options);
   }
 
-  const results = matchCandidates(
-    products.map((product) => ({
-      id: product.id,
-      priceCents: product.price_cents,
-      quantity: product.quantity,
-      material: product.material,
-      dimensions: product.dimensions,
-      tags: product.tags ?? [],
-      options: optionsByProduct.get(product.id) ?? [],
-    })),
-    {
-      occasion: input.occasion,
-      size: input.size,
-      color: input.color,
-      material: input.material,
-      dimensions: input.dimensions,
-      minPriceCents: input.minPrice !== undefined ? toCents(input.minPrice) : null,
-      maxPriceCents: input.maxPrice !== undefined ? toCents(input.maxPrice) : null,
-    },
-    limit,
-  );
+  const candidates: MatchCandidate[] = products.map((product) => ({
+    id: product.id,
+    priceCents: product.price_cents,
+    quantity: product.quantity,
+    material: product.material,
+    dimensions: product.dimensions,
+    tags: product.tags ?? [],
+    options: optionsByProduct.get(product.id) ?? [],
+  }));
+  return { products, candidates };
+}
 
+function toMatchQuery(input: GuidedSelectionMatchInput): MatchQuery {
+  return {
+    occasion: input.occasion,
+    size: input.size,
+    color: input.color,
+    material: input.material,
+    dimensions: input.dimensions,
+    minPriceCents: input.minPrice !== undefined ? toCents(input.minPrice) : null,
+    maxPriceCents: input.maxPrice !== undefined ? toCents(input.maxPrice) : null,
+  };
+}
+
+function toGuidedMatches(
+  products: ProductRowWithImages[],
+  results: ReturnType<typeof matchCandidates>,
+): GuidedSelectionMatch[] {
   const productById = new Map(products.map((product) => [product.id, product]));
   return results.flatMap((result) => {
     const row = productById.get(result.candidateId);
@@ -9694,9 +9712,108 @@ export async function listGuidedSelectionMatches(
         matchedPriceCents: result.matchedPriceCents,
         fit: result.fit,
         note: result.note,
+        reasons: result.reasons,
       },
     ];
   });
+}
+
+/** One answer the buyer could drop, and how many results that would give. Category is never offered: dropping it means a different pool, so the page links to the catalog instead. */
+export interface GuidedSelectionRelaxOption {
+  key: "occasion" | "size" | "color" | "material" | "dimensions" | "budget";
+  count: number;
+}
+
+export interface GuidedSelectionResults {
+  matches: GuidedSelectionMatch[];
+  /** True when more products matched than `matches` holds. */
+  capped: boolean;
+  /** Only filled when there are no matches: single answers whose removal would give results. */
+  relax: GuidedSelectionRelaxOption[];
+}
+
+/** Results for the `/assistant` page. Loads the pool once, so the "drop one answer" counts cost no extra reads. */
+export async function getGuidedSelectionResults(
+  input: GuidedSelectionMatchInput,
+  limit = 48,
+): Promise<GuidedSelectionResults> {
+  const { products, candidates } = await loadGuidedSelectionPool(input.categoryId);
+  const query = toMatchQuery(input);
+  const ranked = matchCandidates(candidates, query, limit + 1);
+  const matches = toGuidedMatches(products, ranked.slice(0, limit));
+  if (matches.length > 0) return { matches, capped: ranked.length > limit, relax: [] };
+
+  const drops: { key: GuidedSelectionRelaxOption["key"]; query: MatchQuery }[] = [];
+  for (const key of ["occasion", "size", "color", "material", "dimensions"] as const) {
+    if (query[key]) drops.push({ key, query: { ...query, [key]: undefined } });
+  }
+  if (query.minPriceCents !== null || query.maxPriceCents !== null) {
+    drops.push({ key: "budget", query: { ...query, minPriceCents: null, maxPriceCents: null } });
+  }
+  const relax = drops
+    // Counted without the display limit, so "Any budget · 120 matches" is the real number.
+    .map(({ key, query: relaxed }) => ({ key, count: matchCandidates(candidates, relaxed, candidates.length).length }))
+    .filter((option) => option.count > 0);
+  return { matches, capped: false, relax };
+}
+
+/** One value of a Details question with how many purchasable products offer it. */
+export interface GuidedSelectionAttributeQuestion {
+  attributeKey: ProductAttributeKey;
+  label: string;
+  values: { value: string; count: number }[];
+}
+
+/** What the steps need for one category (or "any category" when omitted): counts that hide dead-end choices, and budget ranges from real prices. */
+export interface GuidedSelectionOverview {
+  /** Purchasable products in scope. */
+  inStock: number;
+  /** Purchasable products per category; only filled for "any category". */
+  categoryCounts: Record<string, number>;
+  /** Purchasable products tagged with each occasion. */
+  occasionCounts: Record<string, number>;
+  /** Details questions for the category, values with no purchasable product removed. Empty for "any category". */
+  questions: GuidedSelectionAttributeQuestion[];
+  budgetPresets: BudgetPreset[];
+}
+
+export async function getGuidedSelectionOverview(
+  categoryId: string | undefined,
+  occasions: readonly string[],
+): Promise<GuidedSelectionOverview> {
+  const [{ products, candidates }, attributeOptions] = await Promise.all([
+    loadGuidedSelectionPool(categoryId),
+    categoryId ? resolveFilterableAttributes(categoryId) : Promise.resolve([] as ProductFilterOption[]),
+  ]);
+  const purchasable = candidates.filter(isPurchasable);
+
+  const categoryCounts: Record<string, number> = {};
+  if (!categoryId) {
+    const categoryById = new Map(products.map((product) => [product.id, product.category_id]));
+    for (const candidate of purchasable) {
+      const category = categoryById.get(candidate.id);
+      if (category) categoryCounts[category] = (categoryCounts[category] ?? 0) + 1;
+    }
+  }
+
+  const questions = attributeOptions
+    .map((option) => {
+      const counts = countAttributeValues(purchasable, option.attributeKey, option.values);
+      return {
+        attributeKey: option.attributeKey,
+        label: option.label,
+        values: option.values.map((value) => ({ value, count: counts[value] ?? 0 })).filter((entry) => entry.count > 0),
+      };
+    })
+    .filter((question) => question.values.length > 0);
+
+  return {
+    inStock: purchasable.length,
+    categoryCounts,
+    occasionCounts: countOccasions(purchasable, occasions),
+    questions,
+    budgetPresets: budgetPresets(purchasable.map(lowestPriceCents)),
+  };
 }
 
 /** One active category's id/name/slug plus whether Guided Selection should ask Occasion for it — see `categories.supports_occasion_matching`. */

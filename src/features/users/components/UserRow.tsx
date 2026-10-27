@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useRef, useState, useTransition } from "react";
 
@@ -18,9 +17,9 @@ import {
 } from "@/features/users/actions/user.actions";
 import type { AdminUser } from "@/features/users/types/user.types";
 import type { Shop } from "@/features/shops/types/shop.types";
+import { Avatar } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils/cn";
 import { formatDate } from "@/lib/utils/date";
-import { getInitials } from "@/lib/utils/format";
 
 const ROLE_TONE: Record<UserRole, "neutral" | "info" | "success"> = {
   buyer: "neutral",
@@ -60,7 +59,6 @@ export function UserRow({ user, shops, hasActiveOrders = false }: UserRowProps) 
   const [isDemotePending, startDemoteTransition] = useTransition();
   const demoteTriggerRef = useRef<HTMLButtonElement>(null);
 
-  const [avatarFailed, setAvatarFailed] = useState(false);
 
   // A deactivated admin account is a lockout risk the RPC itself refuses
   // (admin_set_user_active rejects any role='admin' target) — hide the
@@ -75,7 +73,6 @@ export function UserRow({ user, shops, hasActiveOrders = false }: UserRowProps) 
   // M2: advisory only — the RPC still allows the promotion either way.
   const showActiveOrdersWarning = isPromotingBuyer && hasActiveOrders;
   const selectedShop = shops.find((shop) => shop.id === selectedShopId);
-  const avatarUrl = !avatarFailed ? user.avatarUrl : null;
 
   function handleConfirm() {
     if (!selectedShopId) return;
@@ -121,21 +118,12 @@ export function UserRow({ user, shops, hasActiveOrders = false }: UserRowProps) 
       <CardContent className="flex flex-col gap-3 p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-xs font-bold text-foreground">
-              {avatarUrl ? (
-                <Image
-                  src={avatarUrl}
-                  alt=""
-                  width={40}
-                  height={40}
-                  unoptimized
-                  className="h-full w-full object-cover"
-                  onError={() => setAvatarFailed(true)}
-                />
-              ) : (
-                getInitials(user.fullName ?? user.email ?? "?")
-              )}
-            </div>
+            <Avatar
+              src={user.avatarUrl}
+              name={user.fullName ?? user.email ?? "?"}
+              size={40}
+              className="h-10 w-10 bg-muted text-xs text-foreground"
+            />
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <Link

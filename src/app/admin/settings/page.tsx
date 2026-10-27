@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Avatar } from "@/components/ui/avatar";
 import type { Metadata } from "next";
 
 import { ErrorState } from "@/components/feedback/ErrorState";
@@ -17,7 +18,6 @@ import {
   PLATFORM_POLICIES,
   RecentSettingsChanges,
 } from "@/features/settings";
-import { getInitials } from "@/lib/utils/format";
 import {
   getMyProfile,
   getPlatformSettings,
@@ -106,21 +106,12 @@ export default async function AdminSettingsPage() {
 
       <Card className="border-border">
         <CardContent className="flex flex-wrap items-center gap-4 p-5">
-          <span
-            aria-hidden="true"
-            className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary text-lg font-semibold text-primary-foreground"
-          >
-            {profile.avatarUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element -- small Storage avatar; no layout shift
-              <img
-                src={profile.avatarUrl}
-                alt=""
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              getInitials(displayName)
-            )}
-          </span>
+          <Avatar
+            src={profile.avatarUrl}
+            name={displayName}
+            size={56}
+            className="h-14 w-14 bg-primary text-lg text-primary-foreground"
+          />
           <div className="min-w-0 flex-1">
             <p className="truncate text-base font-semibold text-foreground">
               {displayName}

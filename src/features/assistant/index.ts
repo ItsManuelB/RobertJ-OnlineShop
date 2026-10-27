@@ -1,5 +1,5 @@
-export { GuidedSelectorQuiz } from "./components/GuidedSelectorQuiz";
-export { getGuidedSelectionMatchesAction } from "./actions/quiz.actions";
+export { GuidedSelectionPromo } from "./components/GuidedSelectionPromo";
+export { getGuidedSelectionStepDataAction } from "./actions/quiz.actions";
 export {
   OCCASIONS,
   occasionSchema,
@@ -12,7 +12,7 @@ export type {
   UpdateRecommendationRuleInput,
   DeleteRecommendationRuleInput,
 } from "./schemas/rule.schema";
-export { guidedSelectionQuerySchema } from "./schemas/quiz.schema";
+export { guidedSelectionPageParamsSchema, guidedSelectionQuerySchema } from "./schemas/quiz.schema";
 export type { GuidedSelectionQueryInput } from "./schemas/quiz.schema";
 export { OCCASION_LABELS } from "./constants/assistant.constants";
 export type {

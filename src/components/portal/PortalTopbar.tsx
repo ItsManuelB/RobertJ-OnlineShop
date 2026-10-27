@@ -7,8 +7,8 @@ import { Bell, ChevronDown, ExternalLink, Plus, Search } from "lucide-react";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { ROLE_LABELS, type UserRole } from "@/constants/roles";
 import { SignOutButton } from "@/features/auth/components/SignOutButton";
+import { Avatar } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils/cn";
-import { getInitials } from "@/lib/utils/format";
 import type { SessionUser } from "@/types/common.types";
 
 import { buildBreadcrumb, formatBadgeCount, sumNotificationItems } from "./portal-nav";
@@ -208,9 +208,12 @@ export function PortalTopbar({ config, user, pathname, notifications, shop, onOp
             aria-controls="portal-profile-panel"
             className="flex h-11 items-center gap-2.5 rounded-lg pl-1 pr-2 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 lg:h-auto lg:py-1.5"
           >
-            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-primary/30 bg-primary/10 text-xs font-semibold text-primary lg:h-7 lg:w-7">
-              {getInitials(user.fullName ?? user.email)}
-            </div>
+            <Avatar
+              src={user.avatarUrl}
+              name={user.fullName ?? user.email}
+              size={32}
+              className="h-8 w-8 border border-primary/30 bg-primary/10 text-xs font-semibold text-primary lg:h-7 lg:w-7"
+            />
             <div className="hidden text-left sm:block">
               <p className="max-w-40 truncate text-xs font-semibold leading-tight text-foreground">
                 {user.fullName ?? user.email}

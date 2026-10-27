@@ -18,12 +18,12 @@ const PIPELINE_STATUSES = [
 
 /**
  * Orders by status right now (never date filtered), so a growing bar shows a backlog at
- * that step. Each row opens the Orders list on that status.
+ * that step. Each row opens the Orders list on that status. `shopId` narrows it to one shop.
  */
-export async function AdminOrderPipeline() {
+export async function AdminOrderPipeline({ shopId = null }: { shopId?: string | null } = {}) {
   let counts: Awaited<ReturnType<typeof getDashboardOrderStatusCounts>>;
   try {
-    counts = await getDashboardOrderStatusCounts(null, null);
+    counts = await getDashboardOrderStatusCounts(null, shopId);
   } catch {
     return <ErrorState message="We couldn't load the order pipeline right now." />;
   }
@@ -41,7 +41,7 @@ export async function AdminOrderPipeline() {
           {PIPELINE_STATUSES.map((status) => (
             <li key={status}>
               <Link
-                href={`${ROUTES.adminOrders}?status=${status}`}
+                href={`${ROUTES.adminOrders}?status=${status}${shopId ? `&shopId=${encodeURIComponent(shopId)}` : ""}`}
                 aria-label={`${getOrderStatusLabel(status)}: ${counts[status]} order${counts[status] === 1 ? "" : "s"}. Open these orders.`}
                 className="grid grid-cols-[5.5rem_minmax(0,1fr)_2rem] items-center gap-3 rounded-lg px-1 py-1.5 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
               >

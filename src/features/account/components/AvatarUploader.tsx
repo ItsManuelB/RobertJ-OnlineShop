@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useRef, useState, useTransition, type ChangeEvent } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -8,8 +7,8 @@ import {
   removeAvatarAction,
   uploadAvatarAction,
 } from "@/features/account/actions/account.actions";
+import { Avatar } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils/cn";
-import { getInitials } from "@/lib/utils/format";
 
 const IMAGE_INPUT_ACCEPT = "image/jpeg,image/png";
 /** Mirrors `uploadAvatarSchema` (1MB, JPEG/PNG) so a too-large photo is shrunk here instead of being rejected by the server. */
@@ -105,25 +104,15 @@ export function AvatarUploader({ currentUrl, name, themed = false }: AvatarUploa
 
   return (
     <div className="flex flex-col items-center gap-3 text-center">
-      <div
+      <Avatar
+        src={url}
+        name={name}
+        size={96}
         className={cn(
-          "flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full text-xl font-bold",
+          "h-24 w-24 text-xl",
           themed ? "bg-primary text-primary-foreground" : "bg-rj-black text-rj-white",
         )}
-      >
-        {url ? (
-          <Image
-            src={url}
-            alt={name}
-            width={96}
-            height={96}
-            unoptimized
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <span aria-hidden="true">{getInitials(name) || "?"}</span>
-        )}
-      </div>
+      />
 
       <div className="flex flex-wrap justify-center gap-2">
         <Button

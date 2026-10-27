@@ -7,6 +7,22 @@ All notable changes to RoberJ Online Shop are documented here, newest first. For
 
 ## [Unreleased]
 
+### Changed (Guided Product Selection)
+
+- **A real page at `/assistant`** replaces the landing-page dialog. One question per step (category, occasion, details, budget) with progress, Back and Skip; single-choice steps move on after a tap. The answers live in the address, so Back works, results can be shared, and opening a product no longer loses them.
+- **Only useful questions:** every choice shows how many products it leads to; occasions nothing in stock is tagged for, and detail values with no stock, are not offered. Budget ranges are worked out from the category's live prices, plus a custom range.
+- **Results that explain themselves:** grouped into Best matches, Close to your budget and Check with the seller, on the store's own product tile (shop, wishlist, quick add) with reason chips such as "Good for Casual" or "₱15.00 over your budget". Answers show as chips you can change or remove. An empty result offers one-tap "Any budget · 48 matches"-style ways out; skipping every question says so instead of listing the newest products.
+- **Easier to find:** "Find my match" in the header, a card on the catalog when a search or filter finds nothing, and the homepage showcase: the full-width dark band near the bottom keeps its structure (title, benefits and button on the left, a preview of the four steps on the right), now linking to `/assistant` and the original colours, with corrected copy (matches come from the live catalog, not from seller rules).
+- Removed the `GuidedSelectorQuiz` dialog and its three actions; the matcher now also returns the reasons for each match.
+
+### Fixed (Profile photo)
+
+- **Blank black circle instead of a photo.** 15 of the 16 accounts with a photo use their Google profile picture, which often refuses to load when linked from another site. A failed photo left an empty circle because the initials only showed when there was no photo address at all. A shared `Avatar` component now asks for the photo without a referrer and falls back to the initials when it still fails. It is used on the profile page, the account menu and sidebar, the Seller and Admin portal top bar and sidebar (which showed initials only and never the photo), the Seller and Admin settings, the old `/dashboard` sidebar and the admin Users list.
+
+### Changed (Admin shop dashboard)
+
+- **Shops > View Dashboard** now uses the same layout as the Seller and Admin dashboards, scoped to the one shop: a "Needs attention" list (orders to confirm, late to ship, low stock, each opening that shop's filtered list), performance with comparison to the previous period, sales trend, top products, recent orders, an order pipeline and low stock. A refresh button shows when the figures were read. The older stat row and date filter were removed.
+
 ### Changed (Buyer My Account: Addresses, Notifications, Profile, Change Password, Privacy & Settings)
 
 - **Addresses:** a card grid with the default pinned first and outlined, a saved count, "Set as default" on the other cards, and an "Add address" button on the empty state.
