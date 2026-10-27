@@ -1512,6 +1512,44 @@ export type Database = {
           },
         ]
       }
+      seller_preferences: {
+        Row: {
+          alert_low_stock: boolean
+          alert_orders: boolean
+          alert_payments: boolean
+          alert_returns: boolean
+          created_at: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          alert_low_stock?: boolean
+          alert_orders?: boolean
+          alert_payments?: boolean
+          alert_returns?: boolean
+          created_at?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          alert_low_stock?: boolean
+          alert_orders?: boolean
+          alert_payments?: boolean
+          alert_returns?: boolean
+          created_at?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "seller_preferences_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shop_users: {
         Row: {
           created_at: string

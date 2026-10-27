@@ -38,6 +38,7 @@ export const DATABASE_TABLES = {
   CART_ITEMS: "cart_items",
   RECOMMENDATION_RULES: "recommendation_rules",
   BUYER_PREFERENCES: "buyer_preferences",
+  SELLER_PREFERENCES: "seller_preferences",
   XENDIT_REFUNDS: "xendit_refunds",
   CANCELLATION_REQUESTS: "cancellation_requests",
   /** View, not a table — computed lifecycle bucket per order for the buyer `/orders` tabs. See its migration for the precedence rules. */

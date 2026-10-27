@@ -148,3 +148,36 @@ export function summarizeSellerTasks(tasks: readonly SellerTask[]): string {
     .join(" · ");
   return tasks.length > 3 ? `${lead} · +${tasks.length - 3} more` : lead;
 }
+
+/** Which kinds of task the seller wants surfaced on the dashboard and the bell. */
+export interface SellerAlertPreferences {
+  orders: boolean;
+  returns: boolean;
+  payments: boolean;
+  lowStock: boolean;
+}
+
+export const DEFAULT_SELLER_ALERT_PREFERENCES: SellerAlertPreferences = {
+  orders: true,
+  returns: true,
+  payments: true,
+  lowStock: true,
+};
+
+const TASK_ALERT_KIND: Record<string, keyof SellerAlertPreferences> = {
+  "confirm-orders": "orders",
+  "fulfil-orders": "orders",
+  "return-requests": "returns",
+  "returned-parcels": "returns",
+  "return-condition": "returns",
+  "cod-collection": "payments",
+  restock: "lowStock",
+};
+
+/** Drops the tasks whose alert kind the seller turned off. Unknown ids stay visible. */
+export function filterSellerTasks(tasks: SellerTask[], preferences: SellerAlertPreferences): SellerTask[] {
+  return tasks.filter((task) => {
+    const kind = TASK_ALERT_KIND[task.id];
+    return kind === undefined || preferences[kind];
+  });
+}

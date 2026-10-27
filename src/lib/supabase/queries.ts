@@ -86,6 +86,10 @@ import type {
 import type { UpdateProfileInput } from "@/features/account/schemas/account.schema";
 import type { OAuthProvider } from "@/features/auth/schemas/auth.schema";
 import type { BuyerPreferences, Profile } from "@/features/account/types/account.types";
+import {
+  DEFAULT_SELLER_ALERT_PREFERENCES,
+  type SellerAlertPreferences,
+} from "@/features/seller/utils/seller-tasks";
 import type {
   DashboardPaymentListParams,
   Payment,
@@ -4475,6 +4479,70 @@ export async function updateMyBuyerPreferences(
     throw queryError("Failed to save your preferences", error);
   }
   return toBuyerPreferences(data as BuyerPreferencesRow);
+}
+
+// ============================================================================
+// Seller alert preferences (Seller Portal > Settings > Alerts)
+// ============================================================================
+
+const SELLER_PREFERENCES_COLUMNS = "alert_orders, alert_returns, alert_payments, alert_low_stock";
+
+function toSellerPreferences(
+  row: Pick<
+    Database["public"]["Tables"]["seller_preferences"]["Row"],
+    "alert_orders" | "alert_returns" | "alert_payments" | "alert_low_stock"
+  >,
+): SellerAlertPreferences {
+  return {
+    orders: row.alert_orders,
+    returns: row.alert_returns,
+    payments: row.alert_payments,
+    lowStock: row.alert_low_stock,
+  };
+}
+
+/**
+ * The signed-in seller's alert preferences. A seller who never saved any has no
+ * row — that means "everything on". A failed read also falls back to all-on:
+ * hiding a task because a preference could not be read would be worse than
+ * showing one the seller muted.
+ */
+export const getMySellerPreferences = cache(async function getMySellerPreferences(
+  userId: string,
+): Promise<SellerAlertPreferences> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from(DATABASE_TABLES.SELLER_PREFERENCES)
+    .select(SELLER_PREFERENCES_COLUMNS)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error || !data) return DEFAULT_SELLER_ALERT_PREFERENCES;
+  return toSellerPreferences(data);
+});
+
+/** Saves one or more alert switches; omitted switches keep their stored value (see `updateMyBuyerPreferences`). */
+export async function updateMySellerPreferences(
+  userId: string,
+  input: Partial<SellerAlertPreferences>,
+): Promise<SellerAlertPreferences> {
+  const supabase = await createSupabaseServerClient();
+  const payload: Database["public"]["Tables"]["seller_preferences"]["Insert"] = { user_id: userId };
+  if (input.orders !== undefined) payload.alert_orders = input.orders;
+  if (input.returns !== undefined) payload.alert_returns = input.returns;
+  if (input.payments !== undefined) payload.alert_payments = input.payments;
+  if (input.lowStock !== undefined) payload.alert_low_stock = input.lowStock;
+
+  const { data, error } = await supabase
+    .from(DATABASE_TABLES.SELLER_PREFERENCES)
+    .upsert(payload, { onConflict: "user_id" })
+    .select(SELLER_PREFERENCES_COLUMNS)
+    .single();
+
+  if (error) {
+    throw queryError("Failed to save your alert settings", error);
+  }
+  return toSellerPreferences(data);
 }
 
 /**

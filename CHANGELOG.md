@@ -7,6 +7,12 @@ All notable changes to RoberJ Online Shop are documented here, newest first. For
 
 ## [Unreleased]
 
+### Changed (Seller Portal: Dashboard, Reports and Settings)
+
+- **Dashboard** shows "Needs your attention" as one collapsed line that opens into task cards (count, detail, button), or a single all-caught-up line when nothing is waiting. Welcome line, wrapping quick actions, and the trend and top products sit side by side beneath the performance numbers.
+- **Reports** is titled "Reports" with a one-sentence summary of net sales against the previous period, one Export menu (CSV or PDF), sticky section links, real group headings, and the definitions folded into "How these numbers are worked out".
+- **Settings** gets a profile header (photo, name, email, Shop Owner and shop badges), a section nav, "Sign out of other devices" under Security, and a shop card with a public-page link and a three-step profile checklist. New **Alerts** switches (orders, returns, payments, low stock) decide which reminders appear on the Dashboard cards and the topbar bell, and **Your data** downloads the seller's account, shop and alert settings as JSON. Alerts are stored in a new `seller_preferences` table (migration `20261027010000_seller_preferences.sql`); until it is applied every alert stays on.
+
 ### Changed (Seller Portal: Returns and Payments)
 - **Returns & Refunds** opens with a heading and a "N requests need your response" banner. Each request is now one card: order and buyer header, a respond-by badge while it waits for the seller (from the existing response window; information only, nothing is decided automatically), the existing status card, a five-stage progress strip showing who acts next, and the action panels inside the same card. Tab counts are pills. The Admin Returns queue gets the same cards; its decisions are unchanged.
 - **Payments** opens with a heading and a "N COD payments ready to record" banner. Sellers get status chips with counts (new read-only `getPaymentStatusCounts`, unaffected by the search and method filters), and the summary shrinks to paid amount and attempts. The table, bulk collect and Export are unchanged (Export stays above the table). The Admin Payments page keeps its five tiles.

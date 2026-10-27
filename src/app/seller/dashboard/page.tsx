@@ -41,10 +41,13 @@ export default async function SellerDashboardPage({ searchParams }: SellerDashbo
   const firstName = user.fullName?.split(" ")[0];
 
   const header = (
-    <div className="flex flex-wrap items-end justify-between gap-4">
-      <h2 className="text-lg font-semibold text-foreground">
-        Welcome back{firstName ? `, ${firstName}` : ""}
-      </h2>
+    <div className="flex flex-col gap-3">
+      <div>
+        <h1 className="text-2xl font-semibold text-foreground">Dashboard</h1>
+        <p className="text-sm text-muted-foreground">
+          Welcome back{firstName ? `, ${firstName}` : ""}. Here is what needs you today and how your shop is doing.
+        </p>
+      </div>
       {owner.shopId ? <SellerQuickActions reportsQuery={rangeQuery} /> : null}
     </div>
   );
@@ -74,8 +77,8 @@ export default async function SellerDashboardPage({ searchParams }: SellerDashbo
         <SellerAttentionPanel />
       </Suspense>
 
-      <section aria-labelledby="performance-heading" className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-5">
-        <div className="flex items-start justify-between gap-4">
+      <section aria-labelledby="performance-heading" className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h2 id="performance-heading" className="text-base font-semibold text-foreground">Shop performance</h2>
             <p className="text-xs text-muted-foreground">Orders placed in the selected dates, compared with the previous equal period.</p>
@@ -87,13 +90,18 @@ export default async function SellerDashboardPage({ searchParams }: SellerDashbo
           <SellerPerformanceSection from={from} to={to} />
         </Suspense>
 
-        <Suspense key={`trend:${from}:${to}`} fallback={<SellerSalesTrendSkeleton />}>
-          <SellerSalesTrend from={from} to={to} />
-        </Suspense>
-
-        <Suspense key={`top:${from}:${to}`} fallback={<SellerTopProductsSkeleton />}>
-          <SellerTopProducts from={from} to={to} />
-        </Suspense>
+        <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-5">
+          <div className="min-w-0 xl:col-span-3">
+            <Suspense key={`trend:${from}:${to}`} fallback={<SellerSalesTrendSkeleton />}>
+              <SellerSalesTrend from={from} to={to} />
+            </Suspense>
+          </div>
+          <div className="min-w-0 xl:col-span-2">
+            <Suspense key={`top:${from}:${to}`} fallback={<SellerTopProductsSkeleton />}>
+              <SellerTopProducts from={from} to={to} />
+            </Suspense>
+          </div>
+        </div>
       </section>
 
       <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-5">
