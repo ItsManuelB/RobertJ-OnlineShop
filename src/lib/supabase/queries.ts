@@ -116,7 +116,6 @@ import type {
   SalesTrendPoint,
   PaymentSourceSummaryRow,
   ShopSalesRow,
-  ShopTrendPoint,
   TopProduct,
 } from "@/features/reports/types/report.types";
 import type {
@@ -7975,31 +7974,6 @@ export const getSalesByShop = cache(async function getSalesByShop(
     .sort((a, b) =>
       a.shopId === null ? 1 : b.shopId === null ? -1 : compareNatural(a.shopName, b.shopName),
     );
-});
-
-/** Admin only: net-sales trend per shop (non-empty buckets only), for the by-shop trend cards. */
-export const getSalesTimeseriesByShop = cache(async function getSalesTimeseriesByShop(
-  from: string,
-  to: string,
-  granularity: ReportGranularity,
-): Promise<ShopTrendPoint[]> {
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.rpc("report_sales_timeseries_by_shop", {
-    p_from: from,
-    p_to: to,
-    p_granularity: granularity,
-  });
-
-  if (error) {
-    throw queryError("Failed to load sales trend by shop", error);
-  }
-
-  return (data ?? []).map((row) => ({
-    shopId: row.shop_id,
-    bucket: row.bucket,
-    orderCount: Number(row.order_count),
-    revenueCents: Number(row.revenue_cents),
-  }));
 });
 
 /** Order counts grouped by fulfilment status within the range. */

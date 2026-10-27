@@ -72,11 +72,6 @@ export interface ShopSalesRow {
   refundedOrders: number;
 }
 
-/** A net-sales trend point for one shop (`shopId` null = Unassigned). */
-export interface ShopTrendPoint extends SalesTrendPoint {
-  shopId: string | null;
-}
-
 /** Count of orders in a given fulfilment status within the range. */
 export interface OrderStatusCount {
   status: OrderStatus;

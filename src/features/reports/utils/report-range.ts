@@ -206,15 +206,6 @@ export function fillTrendGaps(
   );
 }
 
-/** Short axis label for a trend bucket date, tuned to the granularity. */
-export function formatBucketLabel(bucket: string, granularity: ReportGranularity): string {
-  const d = new Date(`${bucket}T00:00:00Z`);
-  if (granularity === "month") {
-    return d.toLocaleDateString("en-US", { month: "short", year: "2-digit", timeZone: "UTC" });
-  }
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
-}
-
 function csvCell(value: string | number): string {
   // Free text (product and category names) must not be read as a spreadsheet formula.
   const s = typeof value === "string" && /^[=+\-@\t\r]/.test(value) ? `'${value}` : String(value);

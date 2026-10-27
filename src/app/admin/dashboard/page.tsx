@@ -6,11 +6,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { DashboardDateFilter } from "@/features/dashboard/components/DashboardDateFilter";
 import { RecentOrdersCard, RecentOrdersCardSkeleton } from "@/features/dashboard/components/RecentOrdersCard";
 import { LowStockCard, LowStockCardSkeleton } from "@/features/dashboard/components/LowStockCard";
+import { SellerSalesTrend, SellerSalesTrendSkeleton } from "@/features/seller/components/SellerSalesTrend";
 import { ActionCenterCard, ActionCenterCardSkeleton } from "@/features/seller/components/ActionCenterCard";
 import { AdminKpiRow, AdminKpiRowSkeleton } from "@/features/admin/components/AdminKpiRow";
 import { AdminQuickAccess, AdminQuickAccessSkeleton } from "@/features/admin/components/AdminQuickAccess";
 import { OrderStatusPanel } from "@/features/reports/components/OrderStatusPanel";
-import { SalesTrendPanel } from "@/features/reports/components/SalesTrendPanel";
 import { DEFAULT_GRANULARITY } from "@/features/reports/constants/report.constants";
 import type { ReportFilters } from "@/features/reports/types/report.types";
 import { parseDashboardDateRange } from "@/features/reports/utils/report-range";
@@ -67,8 +67,8 @@ export default async function AdminDashboardPage({ searchParams }: AdminDashboar
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <Suspense key={`trend:${from}:${to}`} fallback={<ChartCardSkeleton />}>
-            <SalesTrendPanel filters={filters} />
+          <Suspense key={`trend:${from}:${to}`} fallback={<SellerSalesTrendSkeleton />}>
+            <SellerSalesTrend from={from} to={to} />
           </Suspense>
         </div>
         <Suspense key={`status:${from}:${to}`} fallback={<ChartCardSkeleton />}>

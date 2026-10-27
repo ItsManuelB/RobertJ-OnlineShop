@@ -11,11 +11,10 @@ import {
   SalesByShopPanel,
   SalesSummaryPanel,
   SalesSummarySkeleton,
-  SalesTrendPanel,
-  ShopTrendPanel,
   TopProductsPanel,
   type ReportShopOption,
 } from "@/features/reports";
+import { SellerSalesTrend, SellerSalesTrendSkeleton } from "@/features/seller/components/SellerSalesTrend";
 import { listShops } from "@/lib/supabase/queries";
 
 export const metadata: Metadata = { title: "Reports — Admin Portal" };
@@ -65,15 +64,15 @@ export default async function AdminReportsPage({ searchParams }: AdminReportsPag
           <SalesSummaryPanel filters={filters} />
         </Suspense>
 
-        <Suspense fallback={<ReportCardSkeleton />}>
-          <SalesTrendPanel filters={filters} />
+        {/* The filter bar's Trend select drives the interval, so no extra switch here. */}
+        <Suspense fallback={<SellerSalesTrendSkeleton />}>
+          <SellerSalesTrend
+            from={filters.from}
+            to={filters.to}
+            interval={filters.granularity}
+            shopId={filters.shopId}
+          />
         </Suspense>
-
-        {filters.shopId === null ? (
-          <Suspense fallback={<ReportCardSkeleton />}>
-            <ShopTrendPanel filters={filters} />
-          </Suspense>
-        ) : null}
 
         <div className="grid gap-6 lg:grid-cols-2">
           <Suspense fallback={<ReportCardSkeleton />}>

@@ -41,15 +41,19 @@ const INTERVAL_CHOICES: Array<{ id: TrendIntervalChoice; label: string }> = [
  * refunds, from `report_sales_timeseries`) or orders placed, switchable.
  * The Reports page passes `interval` and `intervalHrefs` to add an
  * Auto/Daily/Weekly/Monthly switch (links, so the choice lives in the URL).
+ * Admin pages reuse it: `shopId` narrows to one shop (null = all shops; sellers
+ * are always scoped to their own shop by the RPC).
  */
 export async function SellerSalesTrend({
   from,
   to,
   interval = "auto",
   intervalHrefs,
+  shopId = null,
 }: {
   from: string;
   to: string;
+  shopId?: string | null;
   interval?: TrendIntervalChoice;
   intervalHrefs?: Record<TrendIntervalChoice, string>;
 }) {
@@ -57,12 +61,12 @@ export async function SellerSalesTrend({
 
   let series: SalesTrendPoint[];
   try {
-    series = await getSalesTimeseries(from, to, granularity, null);
+    series = await getSalesTimeseries(from, to, granularity, shopId);
   } catch {
     return <ErrorState message="We couldn't load the sales trend right now." />;
   }
 
-  const buckets: SellerTrendBucket[] = fillTrendGaps(series, { from, to, granularity, shopId: null }).map((p) => ({
+  const buckets: SellerTrendBucket[] = fillTrendGaps(series, { from, to, granularity, shopId }).map((p) => ({
     label: granularity === "week" ? `Week of ${shortDate(p.bucket, granularity)}` : shortDate(p.bucket, granularity),
     tick: shortDate(p.bucket, granularity),
     netCents: p.revenueCents,
