@@ -27,6 +27,8 @@ export interface PaymentsListProps {
    * stays visually unchanged from before.
    */
   showAdminTools?: boolean;
+  /** Seller layout: the slimmer two-tile summary (status counts live in the page's tabs). */
+  compactSummary?: boolean;
 }
 
 /**
@@ -35,7 +37,7 @@ export interface PaymentsListProps {
  * via webhook; there's nothing else left to manually decide here, unlike
  * the retired QR verification queue.
  */
-export async function PaymentsList({ searchParams, showAdminTools = false }: PaymentsListProps) {
+export async function PaymentsList({ searchParams, showAdminTools = false, compactSummary = false }: PaymentsListProps) {
   const parsed = dashboardPaymentListParamsSchema.safeParse(searchParams);
   if (!parsed.success) {
     return <ErrorState message="Those filters aren't valid. Try clearing your search." />;
@@ -91,7 +93,7 @@ export async function PaymentsList({ searchParams, showAdminTools = false }: Pay
   return (
     <div className="flex flex-col gap-6">
       {showAdminTools ? <PaymentAttentionStrip staleCount={staleCount} /> : null}
-      <PaymentSummaryCards summary={summary} paymentSource={params.paymentSource} />
+      <PaymentSummaryCards summary={summary} paymentSource={params.paymentSource} compact={compactSummary} />
 
       {items.length === 0 ? (
         filtering ? (

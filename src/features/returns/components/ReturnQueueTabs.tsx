@@ -24,7 +24,8 @@ export function ReturnQueueTabs({ active, counts }: ReturnQueueTabsProps) {
           aria-current={active === tab ? "page" : undefined}
           className={active === tab ? FILTER_CHIP_ACTIVE_THEMED : FILTER_CHIP_IDLE_THEMED}
         >
-          {SELLER_RETURN_TAB_LABELS[tab]} ({counts[tab]})
+          {SELLER_RETURN_TAB_LABELS[tab]}
+          <span className="ml-1.5 tabular-nums opacity-80">{counts[tab]}</span>
         </Link>
       ))}
     </nav>

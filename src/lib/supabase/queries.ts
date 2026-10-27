@@ -5300,6 +5300,30 @@ export async function getPaymentHistorySummary(
 }
 
 /**
+ * Per-status payment totals for the Payments page's status tabs — one
+ * `head: true` probe per status, deliberately ignoring the search/method
+ * filters so the tab numbers stay put while the list narrows. RLS scopes the
+ * rows to the caller's shop (or everything for an admin).
+ */
+export async function getPaymentStatusCounts(): Promise<Record<PaymentStatus, number>> {
+  const supabase = await createSupabaseServerClient();
+  const statuses = Object.values(PAYMENT_STATUS) as PaymentStatus[];
+
+  const counts = await Promise.all(
+    statuses.map(async (status) => {
+      const { count, error } = await supabase
+        .from(DATABASE_TABLES.PAYMENTS)
+        .select("id", { count: "exact", head: true })
+        .eq("status", status);
+      if (error) throw queryError("Failed to count payments", error);
+      return [status, count ?? 0] as const;
+    }),
+  );
+
+  return Object.fromEntries(counts) as Record<PaymentStatus, number>;
+}
+
+/**
  * Exact count for the Admin Payments dashboard's "Needs reconciliation"
  * summary strip — same conservative 30-minute proxy `listPaymentHistory`'s
  * `staleOnly` filter uses, see its doc comment.

@@ -7,6 +7,10 @@ All notable changes to RoberJ Online Shop are documented here, newest first. For
 
 ## [Unreleased]
 
+### Changed (Seller Portal: Returns and Payments)
+- **Returns & Refunds** opens with a heading and a "N requests need your response" banner. Each request is now one card: order and buyer header, a respond-by badge while it waits for the seller (from the existing response window; information only, nothing is decided automatically), the existing status card, a five-stage progress strip showing who acts next, and the action panels inside the same card. Tab counts are pills. The Admin Returns queue gets the same cards; its decisions are unchanged.
+- **Payments** opens with a heading and a "N COD payments ready to record" banner. Sellers get status chips with counts (new read-only `getPaymentStatusCounts`, unaffected by the search and method filters), and the summary shrinks to paid amount and attempts. The table, bulk collect and Export are unchanged (Export stays above the table). The Admin Payments page keeps its five tiles.
+
 ### Changed (Seller Portal: Inventory and Orders)
 - **Inventory** opens with a heading, a "N items need restocking" banner (with Show only these), and stock chips that show row counts (new read-only `getInventoryStatusCounts`). Each quantity now has a small bar against its low-stock threshold.
 - **Orders** opens with a heading and Scan barcode in the header. Status chips show order counts, with a dot on stages that have work waiting (new read-only `getDashboardOrderStatusCounts`). The single warning strip is replaced by **Next steps** cards: need confirmation, ready to pack, COD cash to collect, returns to restock, each linking to where that work happens. The cards also appear on the Admin Orders list; the Admin page's filter row is unchanged.
