@@ -6953,6 +6953,8 @@ export async function getProductCount(
  */
 export async function getProductStatusCounts(
   owner: { sellerId: string; shopId: string | null } | null,
+  /** Admin only: narrow every count to one shop (ignored when `owner` is set). */
+  shopId?: string | null,
 ): Promise<Record<ProductStatus, number>> {
   const supabase = await createSupabaseServerClient();
   const statuses = Object.values(PRODUCT_STATUS) as ProductStatus[];
@@ -6968,6 +6970,8 @@ export async function getProductStatusCounts(
         query = query.or(
           owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`,
         );
+      } else if (shopId) {
+        query = query.eq("shop_id", shopId);
       }
 
       const { count, error } = await query;
@@ -7018,6 +7022,9 @@ export async function listDashboardProductsPage(
   }
   if (params.categoryId) {
     query = query.eq("category_id", params.categoryId);
+  }
+  if (params.shopId) {
+    query = query.eq("shop_id", params.shopId);
   }
 
   query = query.order("created_at", { ascending: false });
@@ -7365,16 +7372,21 @@ export async function listDashboardInventoryPage(
  * `head: true` probe per `stock_status` (RLS scopes the rows to the caller's
  * shop, or every shop for an admin), same column the list's filter uses.
  */
-export async function getInventoryStatusCounts(): Promise<Record<StockStatus, number>> {
+export async function getInventoryStatusCounts(
+  /** Admin only: narrow every count to one shop (sellers are scoped by RLS). */
+  shopId?: string | null,
+): Promise<Record<StockStatus, number>> {
   const supabase = await createSupabaseServerClient();
   const statuses: StockStatus[] = ["in_stock", "low_stock", "out_of_stock"];
 
   const counts = await Promise.all(
     statuses.map(async (status) => {
-      const { count, error } = await supabase
+      let query = supabase
         .from(DATABASE_TABLES.INVENTORY)
         .select("id", { count: "exact", head: true })
         .eq("stock_status", status);
+      if (shopId) query = query.eq("shop_id", shopId);
+      const { count, error } = await query;
       if (error) {
         throw queryError("Failed to count inventory", error);
       }

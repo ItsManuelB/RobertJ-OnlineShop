@@ -7,6 +7,13 @@ All notable changes to RoberJ Online Shop are documented here, newest first. For
 
 ## [Unreleased]
 
+### Changed (Admin Portal: Catalog)
+
+- **Products:** page heading, status chips with counts, and a shop filter placed first in the toolbar. The list and the chip counts both follow the selected shop.
+- **Inventory:** page heading, a restock banner (low and out-of-stock totals, for all shops or the selected one, with "Show only these"), and stock chips with counts that follow the shop filter.
+- **Categories:** page heading, four summary cards (total, active, inactive, no products), search, active / inactive chips with counts, and spec chips on each row ("Color required", "Size option"). Filtering is local; helpers live in `category-admin.ts` with unit tests.
+- Reads: `listDashboardProductsPage` accepts an optional `shopId`; `getProductStatusCounts` and `getInventoryStatusCounts` accept an optional shop. With no shop, behaviour is unchanged.
+
 ### Changed (Admin Portal: Orders, Returns & Refunds, Payments)
 
 - **Orders:** page heading, next-step cards (needs confirmation, overdue to ship, ready to pack, COD cash, returns to restock) and status chips with counts. The shop filter now comes first, and both the cards and the chip counts follow the selected shop. The order detail page uses the Seller layout (actions and timeline left, summary, shop and buyer right).

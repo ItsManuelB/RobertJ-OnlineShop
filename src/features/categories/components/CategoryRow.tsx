@@ -10,6 +10,7 @@ import { toggleCategoryActiveAction } from "@/features/categories/actions/catego
 import { CategoryAttributesPanel } from "@/features/categories/components/CategoryAttributesPanel";
 import { CategoryForm } from "@/features/categories/components/CategoryForm";
 import type { AdminCategory, CategoryAttribute } from "@/features/categories/types/category.types";
+import { describeCategorySpecs } from "@/features/categories/utils/category-admin";
 
 export interface CategoryRowProps {
   category: AdminCategory;
@@ -36,6 +37,8 @@ export function CategoryRow({ category, attributes }: CategoryRowProps) {
     );
   }
 
+  const specs = describeCategorySpecs(attributes);
+
   function handleToggleActive() {
     setError(null);
     startTransition(async () => {
@@ -58,6 +61,18 @@ export function CategoryRow({ category, attributes }: CategoryRowProps) {
             <p className="mt-1 text-xs text-muted-foreground">
               /{category.slug} · {category.productCount} product{category.productCount === 1 ? "" : "s"}
             </p>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {specs.length > 0 ? (
+                specs.map((spec) => (
+                  <Badge key={spec} tone="neutral">
+                    {spec}
+                  </Badge>
+                ))
+              ) : (
+                <span className="text-xs text-muted-foreground">No attribute rules</span>
+              )}
+              {category.productCount === 0 ? <Badge tone="warning">No products</Badge> : null}
+            </div>
             {error ? (
               <div className="mt-2">
                 <ErrorState title="Something went wrong" message={error} />
