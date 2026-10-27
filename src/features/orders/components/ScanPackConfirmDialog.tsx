@@ -13,6 +13,7 @@ import {
 } from "@/features/orders/actions/order.actions";
 import { OrderItemThumbs } from "@/features/orders/components/OrderItemThumbs";
 import { cn } from "@/lib/utils/cn";
+import { useScrollLock } from "@/hooks/useScrollLock";
 
 export interface ScanPackConfirmDialogProps {
   orderId: string;
@@ -28,6 +29,7 @@ export interface ScanPackConfirmDialogProps {
  * order. Opening the order keeps the full item-verification checklist.
  */
 export function ScanPackConfirmDialog({ orderId, summary, onClose }: ScanPackConfirmDialogProps) {
+  useScrollLock(true); // mounted only while open
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);

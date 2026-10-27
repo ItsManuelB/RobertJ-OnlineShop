@@ -3,7 +3,8 @@ import type { ReactNode } from "react";
 import { ROUTES } from "@/constants/routes";
 import { ADMIN_ONLY_ROLES } from "@/constants/roles";
 import { RETURN_STATUS } from "@/constants/status";
-import { AdminLayout, type AdminNotification } from "@/features/admin";
+import type { PortalBadges, PortalNotification } from "@/components/portal/portal.types";
+import { AdminLayout } from "@/features/admin";
 import {
   getLowStockReport,
   getOrderAttentionCounts,
@@ -25,7 +26,7 @@ import {
  * overdue threshold, which is the one case admin previously had NO way to
  * even see, let alone act on (the RPC refused anything still `pending`).
  */
-async function getAdminNotifications(): Promise<AdminNotification[]> {
+async function getPortalNotifications(): Promise<PortalNotification[]> {
   const [attentionCounts, lowStock, pendingReturns, payoutReturns, receivedReturns, overdueReturns] = await Promise.all([
     getOrderAttentionCounts(),
     getLowStockReport(),
@@ -35,7 +36,7 @@ async function getAdminNotifications(): Promise<AdminNotification[]> {
     getOverduePendingReturnCount(),
   ]);
 
-  const notifications: AdminNotification[] = [];
+  const notifications: PortalNotification[] = [];
 
   if (attentionCounts.needsConfirmation > 0) {
     notifications.push({
@@ -44,6 +45,7 @@ async function getAdminNotifications(): Promise<AdminNotification[]> {
       description: `${attentionCounts.needsConfirmation} order${attentionCounts.needsConfirmation === 1 ? "" : "s"} awaiting confirmation`,
       href: ROUTES.adminOrders,
       tone: "warning",
+      count: attentionCounts.needsConfirmation,
     });
   }
   if (lowStock.length > 0) {
@@ -53,6 +55,7 @@ async function getAdminNotifications(): Promise<AdminNotification[]> {
       description: `${lowStock.length} product${lowStock.length === 1 ? "" : "s"} running low or out of stock`,
       href: ROUTES.adminInventory,
       tone: "danger",
+      count: lowStock.length,
     });
   }
   if (pendingReturns.length > 0) {
@@ -62,6 +65,7 @@ async function getAdminNotifications(): Promise<AdminNotification[]> {
       description: `${pendingReturns.length} return request${pendingReturns.length === 1 ? "" : "s"} need your review`,
       href: ROUTES.adminReturns,
       tone: "warning",
+      count: pendingReturns.length,
     });
   }
   if (payoutReturns.length > 0) {
@@ -71,6 +75,7 @@ async function getAdminNotifications(): Promise<AdminNotification[]> {
       description: `${payoutReturns.length} approved COD refund${payoutReturns.length === 1 ? "" : "s"} waiting for the payout to be recorded`,
       href: ROUTES.adminReturns,
       tone: "warning",
+      count: payoutReturns.length,
     });
   }
   if (receivedReturns.length > 0) {
@@ -80,6 +85,7 @@ async function getAdminNotifications(): Promise<AdminNotification[]> {
       description: `${receivedReturns.length} returned item${receivedReturns.length === 1 ? "" : "s"} received by the seller — confirm the refund`,
       href: ROUTES.adminReturns,
       tone: "warning",
+      count: receivedReturns.length,
     });
   }
   if (overdueReturns > 0) {
@@ -89,18 +95,32 @@ async function getAdminNotifications(): Promise<AdminNotification[]> {
       description: `${overdueReturns} return request${overdueReturns === 1 ? "" : "s"} unanswered by the seller — you can decide ${overdueReturns === 1 ? "it" : "them"} directly`,
       href: ROUTES.adminReturns,
       tone: "danger",
+      count: overdueReturns,
     });
   }
 
   return notifications;
 }
 
+/** Menu badges from the same entries as the bell: items waiting per destination, red only when something is overdue. */
+function getAdminNavBadges(notifications: readonly PortalNotification[]): PortalBadges {
+  const badges: Record<string, { count: number; urgent?: boolean }> = {};
+  for (const entry of notifications) {
+    const current = badges[entry.href] ?? { count: 0 };
+    badges[entry.href] = {
+      count: current.count + (entry.count ?? 1),
+      urgent: current.urgent || entry.id === "overdue-returns",
+    };
+  }
+  return badges;
+}
+
 export default async function AdminRootLayout({ children }: { children: ReactNode }) {
   const user = await requireRole(ADMIN_ONLY_ROLES);
-  const notifications = await getAdminNotifications();
+  const notifications = await getPortalNotifications();
 
   return (
-    <AdminLayout user={user} notifications={notifications}>
+    <AdminLayout user={user} notifications={notifications} badges={getAdminNavBadges(notifications)}>
       {children}
     </AdminLayout>
   );

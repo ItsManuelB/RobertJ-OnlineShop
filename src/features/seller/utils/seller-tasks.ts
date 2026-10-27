@@ -181,3 +181,33 @@ export function filterSellerTasks(tasks: SellerTask[], preferences: SellerAlertP
     return kind === undefined || preferences[kind];
   });
 }
+
+const TASK_DESTINATION: Record<string, keyof SellerTaskRoutes | "payments"> = {
+  "confirm-orders": "orders",
+  "fulfil-orders": "orders",
+  "cod-collection": "payments",
+  "return-requests": "returns",
+  "returned-parcels": "returns",
+  "return-condition": "returns",
+  restock: "inventory",
+};
+
+/**
+ * Menu badges from the same task list the bell and dashboard use: the number
+ * is items waiting, summed per destination. A badge is urgent when any task
+ * feeding it carries an overdue line.
+ */
+export function buildSellerNavBadges(
+  tasks: readonly SellerTask[],
+  routes: SellerTaskRoutes & { payments: string },
+): Record<string, { count: number; urgent?: boolean }> {
+  const badges: Record<string, { count: number; urgent?: boolean }> = {};
+  for (const task of tasks) {
+    const destination = TASK_DESTINATION[task.id];
+    if (!destination) continue;
+    const href = routes[destination];
+    const current = badges[href] ?? { count: 0 };
+    badges[href] = { count: current.count + task.count, urgent: current.urgent || task.urgent !== null };
+  }
+  return badges;
+}

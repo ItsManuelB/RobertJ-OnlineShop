@@ -5,6 +5,7 @@ import { ImageUp, X } from "lucide-react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils/cn";
+import { useScrollLock } from "@/hooks/useScrollLock";
 
 /** Minimal shape of ZXing's IScannerControls we use — kept inline so the
  * `@zxing/browser` module is never statically imported (it loads on demand). */
@@ -83,6 +84,7 @@ export function BarcodeScannerModal({
   resolvingLabel = "Looking up the order…",
   fallbackLabel = "Use manual search",
 }: BarcodeScannerModalProps) {
+  useScrollLock(true); // mounted only while open
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const controlsRef = useRef<ScannerControls | null>(null);
   const hasScannedRef = useRef(false);

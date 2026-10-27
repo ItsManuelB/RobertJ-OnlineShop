@@ -1,58 +1,67 @@
-import { BarChart3, Boxes, CreditCard, LayoutGrid, Package, ShoppingBag, Store, Undo2, type LucideIcon } from "lucide-react";
+import {
+  BarChart3,
+  Boxes,
+  CreditCard,
+  LayoutGrid,
+  Package,
+  Plus,
+  Settings,
+  ShoppingBag,
+  Store,
+  Undo2,
+} from "lucide-react";
 
+import type { PortalNavGroup, PortalNavItem, PortalShellConfig } from "@/components/portal/portal.types";
 import { ROUTES } from "@/constants/routes";
 
-export interface SellerNavItem {
-  href: string;
-  label: string;
-  icon: LucideIcon;
-}
-
-export interface SellerNavGroup {
-  label: string;
-  items: readonly SellerNavItem[];
-}
-
-/** Mirrors ADMIN_NAV_GROUPS's shape — Main + Analytics only, no Management/System (no Users/Shops/Audit Log/Settings for sellers). */
-export const SELLER_NAV_GROUPS: readonly SellerNavGroup[] = [
+/** Grouped by how a seller works: daily orders first, catalog upkeep next, reports last. */
+export const SELLER_NAV_GROUPS: readonly PortalNavGroup[] = [
   {
-    label: "Main",
+    label: "Overview",
+    items: [{ href: ROUTES.sellerDashboard, label: "Dashboard", icon: LayoutGrid }],
+  },
+  {
+    label: "Sell",
     items: [
-      { href: ROUTES.sellerDashboard, label: "Dashboard", icon: LayoutGrid },
-      { href: ROUTES.sellerShop, label: "My Shop", icon: Store },
-      { href: ROUTES.sellerProducts, label: "Products", icon: Package },
-      { href: ROUTES.sellerInventory, label: "Inventory", icon: Boxes },
       { href: ROUTES.sellerOrders, label: "Orders", icon: ShoppingBag },
       { href: ROUTES.sellerReturns, label: "Returns", icon: Undo2 },
       { href: ROUTES.sellerPayments, label: "Payments", icon: CreditCard },
     ],
   },
   {
-    label: "Analytics",
+    label: "Catalog",
+    items: [
+      { href: ROUTES.sellerProducts, label: "Products", icon: Package },
+      { href: ROUTES.sellerInventory, label: "Inventory", icon: Boxes },
+      { href: ROUTES.sellerShop, label: "My Shop", icon: Store },
+    ],
+  },
+  {
+    label: "Insights",
     items: [{ href: ROUTES.sellerReports, label: "Reports", icon: BarChart3 }],
   },
-] as const;
+];
 
-/** Page title/subtitle per seller route, keyed by the exact `ROUTES.seller*` path — mirrors `getAdminPageMeta`. */
-export const SELLER_PAGE_META: Record<string, { title: string; subtitle: string }> = {
-  [ROUTES.sellerDashboard]: { title: "Dashboard", subtitle: "Overview of your shop's performance" },
-  [ROUTES.sellerShop]: { title: "My Shop", subtitle: "Manage your shop's public branding" },
-  [ROUTES.sellerSettings]: { title: "Settings", subtitle: "Manage your account and sign-in" },
-  [ROUTES.sellerProducts]: { title: "Products", subtitle: "Manage your product catalog" },
-  [ROUTES.sellerInventory]: { title: "Inventory", subtitle: "Track your shop's stock levels" },
-  [ROUTES.sellerOrders]: { title: "Orders", subtitle: "Fulfil and track your shop's orders" },
-  [ROUTES.sellerReturns]: { title: "Returns & Refunds", subtitle: "Respond to your shop's return and refund requests" },
-  [ROUTES.sellerPayments]: { title: "Payments", subtitle: "Monitor your shop's transactions" },
-  [ROUTES.sellerReports]: { title: "Reports", subtitle: "Analytics and performance for your shop" },
+export const SELLER_SETTINGS_ITEM: PortalNavItem = {
+  href: ROUTES.sellerSettings,
+  label: "Settings",
+  icon: Settings,
 };
 
-const DEFAULT_PAGE_META = { title: "Seller Portal", subtitle: "" };
-
-/** Falls back to the closest matching prefix (e.g. `/seller/orders/123` → Orders) since detail routes aren't listed individually. */
-export function getSellerPageMeta(pathname: string): { title: string; subtitle: string } {
-  if (SELLER_PAGE_META[pathname]) return SELLER_PAGE_META[pathname];
-  const match = Object.keys(SELLER_PAGE_META)
-    .filter((route) => pathname.startsWith(`${route}/`))
-    .sort((a, b) => b.length - a.length)[0];
-  return match ? SELLER_PAGE_META[match] : DEFAULT_PAGE_META;
-}
+/** Seller Portal's slice of the shared shell. */
+export const SELLER_SHELL_CONFIG: PortalShellConfig = {
+  portalLabel: "Seller Portal",
+  breadcrumbRoot: "Seller",
+  themeScope: "seller",
+  homeHref: ROUTES.sellerDashboard,
+  groups: SELLER_NAV_GROUPS,
+  settings: SELLER_SETTINGS_ITEM,
+  tabs: [
+    { href: ROUTES.sellerDashboard, label: "Dashboard", icon: LayoutGrid },
+    { href: ROUTES.sellerOrders, label: "Orders", icon: ShoppingBag },
+    { href: ROUTES.sellerProducts, label: "Products", icon: Package },
+  ],
+  createAction: { label: "Add product", href: ROUTES.sellerProductNew, icon: Plus },
+  searchRoutes: { orders: ROUTES.sellerOrders, products: ROUTES.sellerProducts },
+  searchHint: "Search orders, products, pages…",
+};

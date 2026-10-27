@@ -10,6 +10,7 @@ import { AddressForm } from "@/features/addresses/components/AddressForm";
 import { addressSchema, type AddressInput } from "@/features/addresses/schemas/address.schema";
 import type { Address } from "@/features/addresses/types/address.types";
 import type { ActionResult } from "@/types/action.types";
+import { useScrollLock } from "@/hooks/useScrollLock";
 
 type FieldErrors = Record<string, string[] | undefined>;
 
@@ -52,6 +53,7 @@ export function AddressModal({
   onCancel,
   onSubmit,
 }: AddressModalProps) {
+  useScrollLock(true); // mounted only while open
   const [values, setValues] = useState<AddressInput>(initialValues);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);

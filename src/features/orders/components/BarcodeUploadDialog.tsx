@@ -15,6 +15,7 @@ import { getOrderStatusLabel } from "@/features/orders/constants/order.constants
 import { MAX_SCAN_BATCH, scanOrderNumberSchema } from "@/features/orders/schemas/order.schema";
 import { decodeBarcodeFromFile } from "@/features/orders/utils/decode-barcode-image";
 import { cn } from "@/lib/utils/cn";
+import { useScrollLock } from "@/hooks/useScrollLock";
 
 const MAX_FILE_BYTES = 15 * 1024 * 1024;
 
@@ -55,6 +56,7 @@ const STATE_TEXT: Record<RowState, string> = {
  * the seller reviews, and a To Pack order still asks for confirmation first.
  */
 export function BarcodeUploadDialog({ onClose, onResolved, onReviewPack }: BarcodeUploadDialogProps) {
+  useScrollLock(true); // mounted only while open
   const [rows, setRows] = useState<Row[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);

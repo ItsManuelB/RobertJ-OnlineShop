@@ -7,6 +7,14 @@ All notable changes to RoberJ Online Shop are documented here, newest first. For
 
 ## [Unreleased]
 
+### Changed (Seller and Admin Portals: sidebar and top bar)
+
+- **One shared shell** (`src/components/portal/*`) now drives both portals. The old `SellerSidebar`, `SellerTopbar`, `AdminSidebar` and `AdminTopbar` are removed; each portal supplies only its menu config and data.
+- **Sidebar:** compact brand, grouped menu (Seller: Overview, Sell, Catalog, Insights; Admin: Overview, Operations, Catalog, Insights, Management), count badges (items waiting, "99+" cap, red only when overdue), Settings and the signed-in user pinned at the bottom, and an optional icon-only mode that is remembered per browser. Sellers also get a shop card with status, "View shop" and a setup checklist.
+- **Top bar:** a breadcrumb with links replaces the title (a hidden heading stands in only on pages without their own `<h1>`), a `Ctrl K` / `/` command palette (pages, "Add product", and order and product searches that use the list pages' own filters), a "+ Add product" button for sellers, a bell with a total count and "View all on Dashboard", and a profile menu with the shop and the only Sign Out.
+- **Phone:** a bottom tab bar (Dashboard, Orders, Products, More) replaces the hamburger; the menu drawer closes on Escape and keeps focus inside. Skip-to-content link, 44px touch targets, focus returns to the button that opened a menu.
+- Bell and menu badges come from the same task list (seller) or notification list (admin), so they always agree and follow the Alerts switches.
+
 ### Changed (Seller Portal: Dashboard, Reports and Settings)
 
 - **Dashboard** shows "Needs your attention" as one collapsed line that opens into task cards (count, detail, button), or a single all-caught-up line when nothing is waiting. Welcome line, wrapping quick actions, and the trend and top products sit side by side beneath the performance numbers.
