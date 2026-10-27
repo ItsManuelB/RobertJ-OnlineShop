@@ -10,16 +10,16 @@ import type { ReportFilters } from "../types/report.types";
  * Sales per category for the range: the same ever-paid orders as Gross sales,
  * before refunds. Item subtotals by category plus a "Shipping & fees" row make
  * the list add up to Gross sales, and the footer says whether it does.
- * Seller Reports only.
+ * Seller and Admin Reports.
  */
-export async function RevenueByCategoryPanel({ filters }: { filters: Pick<ReportFilters, "from" | "to"> }) {
+export async function RevenueByCategoryPanel({ filters }: { filters: Pick<ReportFilters, "from" | "to"> & { shopId?: string | null } }) {
   let rows: Awaited<ReturnType<typeof getRevenueByCategory>>;
   let grossCents: number;
   try {
     // `getSalesSummary` is request-cached, so the overview and this panel share one read.
     const [categories, summary] = await Promise.all([
-      getRevenueByCategory(filters.from, filters.to),
-      getSalesSummary(filters.from, filters.to, null),
+      getRevenueByCategory(filters.from, filters.to, filters.shopId ?? null),
+      getSalesSummary(filters.from, filters.to, filters.shopId ?? null),
     ]);
     rows = categories;
     grossCents = summary.grossRevenueCents;

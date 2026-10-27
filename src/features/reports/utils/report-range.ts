@@ -16,6 +16,7 @@ import type {
   ReportGranularity,
   SalesSummary,
   SalesTrendPoint,
+  ShopSalesRow,
   TopProduct,
 } from "../types/report.types";
 
@@ -219,6 +220,10 @@ export interface ReportCsvExtras {
   categoryRemainderCents?: number;
   topProducts?: TopProduct[];
   refundsInProgress?: { count: number; cents: number };
+  /** Name of the shop the figures are limited to; omitted = all shops. */
+  shopName?: string;
+  /** Admin only: one line per shop (plus Unassigned) so shops can be compared in the file. */
+  byShop?: ShopSalesRow[];
 }
 
 /** Build a CSV export of the KPI summary plus the (gap-filled) trend series. */
@@ -232,7 +237,46 @@ export function buildReportCsv(
   const lines: string[] = [];
   lines.push(csvCell("RoberJ Sales Report"));
   lines.push([csvCell("Range"), csvCell(`${filters.from} to ${filters.to} (${TIME_ZONE})`)].join(","));
+  if (extras.shopName !== undefined) {
+    lines.push([csvCell("Shop"), csvCell(extras.shopName)].join(","));
+  }
   lines.push("");
+
+  if (extras.byShop) {
+    lines.push(csvCell("Sales by shop (all shops, regardless of the shop filter)"));
+    lines.push(
+      ["Shop", "Orders", "Paid orders", "Cancelled orders", "Refunded orders", "Gross sales (PHP)", "Confirmed refunds (PHP)", "Net sales (PHP)", "Average order value (PHP)", "Units sold (paid orders)"]
+        .map(csvCell)
+        .join(","),
+    );
+    for (const row of extras.byShop) {
+      lines.push([
+        csvCell(row.shopName),
+        csvCell(row.totalOrders),
+        csvCell(row.paidOrders),
+        csvCell(row.cancelledOrders),
+        csvCell(row.refundedOrders),
+        csvCell(fromCents(row.grossRevenueCents)),
+        csvCell(fromCents(row.refundsCents)),
+        csvCell(fromCents(row.revenueCents)),
+        csvCell(fromCents(row.avgOrderValueCents)),
+        csvCell(row.unitsSold),
+      ].join(","));
+    }
+    lines.push([
+      csvCell("All shops"),
+      csvCell(extras.byShop.reduce((t, r) => t + r.totalOrders, 0)),
+      csvCell(extras.byShop.reduce((t, r) => t + r.paidOrders, 0)),
+      csvCell(extras.byShop.reduce((t, r) => t + r.cancelledOrders, 0)),
+      csvCell(extras.byShop.reduce((t, r) => t + r.refundedOrders, 0)),
+      csvCell(fromCents(extras.byShop.reduce((t, r) => t + r.grossRevenueCents, 0))),
+      csvCell(fromCents(extras.byShop.reduce((t, r) => t + r.refundsCents, 0))),
+      csvCell(fromCents(extras.byShop.reduce((t, r) => t + r.revenueCents, 0))),
+      csvCell(""),
+      csvCell(extras.byShop.reduce((t, r) => t + r.unitsSold, 0)),
+    ].join(","));
+    lines.push("");
+  }
 
   lines.push(csvCell("Summary"));
   const summaryRows: Array<[string, number]> = [

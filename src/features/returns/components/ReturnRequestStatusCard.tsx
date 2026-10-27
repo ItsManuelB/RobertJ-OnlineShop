@@ -45,6 +45,8 @@ export interface ReturnRequestStatusCardProps {
   evidenceUrl: string | null;
   /** Renders through the Admin/Seller portal's tokens instead of the fixed rj-* palette. See OrderHeader. */
   themed?: boolean;
+  /** Drops the card's own border and padding, for use inside a parent card (the seller/admin queue). */
+  embedded?: boolean;
 }
 
 /**
@@ -64,6 +66,7 @@ export async function ReturnRequestStatusCard({
   request,
   evidenceUrl,
   themed = false,
+  embedded = false,
 }: ReturnRequestStatusCardProps) {
   const pendingRefund =
     request.status === "seller_accepted" ||
@@ -78,7 +81,7 @@ export async function ReturnRequestStatusCard({
   const ring = themed ? "focus-visible:ring-ring/30" : "focus-visible:ring-rj-red/30";
 
   return (
-    <section aria-label="Return/refund request" className={cn(themed ? THEMED_CARD : RJ_CARD, "p-5")}>
+    <section aria-label="Return/refund request" className={embedded ? undefined : cn(themed ? THEMED_CARD : RJ_CARD, "p-5")}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className={cn("text-[10px] font-bold uppercase tracking-[0.3em]", muted)}>
           {request.orderItemTitle ? `Return: ${request.orderItemTitle}` : "Return request"}

@@ -5,11 +5,21 @@ import { getCurrentSellerOwner, getRepeatCustomerRate } from "@/lib/supabase/que
 
 import type { ReportFilters } from "../types/report.types";
 
-/** Returning- vs. new-buyer split for the range, scoped to the signed-in seller's shop. Seller Reports only. */
-export async function RepeatCustomersPanel({ filters }: { filters: Pick<ReportFilters, "from" | "to"> }) {
+/**
+ * Returning- vs. new-buyer split for the range. A seller sees their own shop; an admin sees the
+ * whole marketplace, or one shop when `filters.shopId` is set.
+ */
+export async function RepeatCustomersPanel({
+  filters,
+  audience = "seller",
+}: {
+  filters: Pick<ReportFilters, "from" | "to"> & { shopId?: string | null };
+  audience?: "seller" | "admin";
+}) {
+  const isAdmin = audience === "admin";
   let stats: Awaited<ReturnType<typeof getRepeatCustomerRate>>;
   try {
-    stats = await getRepeatCustomerRate(filters.from, filters.to, await getCurrentSellerOwner());
+    stats = await getRepeatCustomerRate(filters.from, filters.to, isAdmin ? (filters.shopId ? { sellerId: "", shopId: filters.shopId } : null) : await getCurrentSellerOwner());
   } catch {
     return <ErrorState message="We couldn't load repeat customer stats right now." />;
   }
@@ -37,7 +47,7 @@ export async function RepeatCustomersPanel({ filters }: { filters: Pick<ReportFi
               <span>{stats.newOrders} new</span>
             </div>
             <p className="mt-2 text-xs text-muted-foreground">
-              Counts every order placed in these dates. A buyer is &quot;returning&quot; if they have ordered from your shop more than once, ever.
+              Counts every order placed in these dates. A buyer is &quot;returning&quot; if they have ordered from {isAdmin ? (filters.shopId ? "this shop" : "the marketplace") : "your shop"} more than once, ever.
             </p>
           </>
         )}

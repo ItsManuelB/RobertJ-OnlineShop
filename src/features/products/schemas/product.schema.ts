@@ -86,6 +86,8 @@ export const dashboardProductListParamsSchema = z.object({
   search: z.string().trim().max(120).optional(),
   status: productStatusSchema.optional(),
   categoryId: z.uuid().optional(),
+  /** Admin-only shop narrowing; sellers are already scoped to their own shop by `owner`. */
+  shopId: z.uuid().optional(),
 });
 
 /** Shared id-list shape for the dashboard's bulk product actions. */

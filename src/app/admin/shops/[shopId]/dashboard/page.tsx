@@ -14,12 +14,12 @@ import {
   LowStockPanel,
   OrderStatusPanel,
   ReportCardSkeleton,
-  SalesTrendPanel,
   TopProductsPanel,
 } from "@/features/reports";
 import { DEFAULT_GRANULARITY } from "@/features/reports/constants/report.constants";
 import type { ReportFilters } from "@/features/reports/types/report.types";
 import { parseDashboardDateRange } from "@/features/reports/utils/report-range";
+import { SellerSalesTrend, SellerSalesTrendSkeleton } from "@/features/seller/components/SellerSalesTrend";
 import { ShopDashboardKpiRow, ShopDashboardKpiRowSkeleton } from "@/features/shops/components/ShopDashboardKpiRow";
 import { getShopById } from "@/lib/supabase/queries";
 
@@ -88,8 +88,8 @@ export default async function AdminShopDashboardPage({
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <Suspense key={`shop-trend:${shop.id}:${from}:${to}`} fallback={<ChartCardSkeleton />}>
-            <SalesTrendPanel filters={filters} />
+          <Suspense key={`shop-trend:${shop.id}:${from}:${to}`} fallback={<SellerSalesTrendSkeleton />}>
+            <SellerSalesTrend from={from} to={to} shopId={shop.id} />
           </Suspense>
         </div>
         <Suspense key={`shop-status:${shop.id}:${from}:${to}`} fallback={<ChartCardSkeleton />}>

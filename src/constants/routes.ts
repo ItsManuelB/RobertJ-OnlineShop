@@ -3,6 +3,8 @@ export const ROUTES = {
   ourStory: "/our-story",
   products: "/products",
   productDetail: (slug: string) => `/products/${slug}`,
+  /** The catalog filtered to one shop — where that shop's public branding header renders. */
+  shopCatalog: (shopId: string) => `/products?shopId=${shopId}`,
   categories: "/categories",
   categoryDetail: (slug: string) => `/categories/${slug}`,
   cart: "/cart",
@@ -48,6 +50,7 @@ export const ROUTES = {
   /** Admin-only: sellers see their own return requests inline on their own orders, not this queue. */
   adminReturns: "/admin/returns-refunds",
   adminReports: "/admin/reports",
+  adminReportsPrint: "/admin/reports/print",
   /** Admin-only sections — distinct from the (nonexistent) `shops` table. */
   adminUsers: "/admin/users",
   adminUserDetail: (id: string) => `/admin/users/${id}`,

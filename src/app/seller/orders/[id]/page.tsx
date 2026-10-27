@@ -75,70 +75,70 @@ export default async function SellerOrderDetailPage({ params, searchParams }: Se
   return (
     <article className="flex flex-col gap-8 p-5 lg:p-7">
       <OrderHeader order={order} themed />
-      <OrderTimeline
-        status={order.status}
-        themed
-        placedAt={order.placedAt}
-        confirmedAt={order.confirmedAt}
-        processingAt={order.processingAt}
-        shippedAt={order.shippedAt}
-        deliveredAt={order.deliveredAt}
-      />
-      <OrderStatusControl
-        // Forces a remount per order — otherwise a client-side navigation
-        // between two different "processing" orders (both via the barcode
-        // scanner's `?scan=ship`) could reuse the same component instance,
-        // and autoOpenShipment's lazy useState initializer would never
-        // re-run for the second scan in the same session.
-        key={order.id}
-        orderId={order.id}
-        orderNumber={order.orderNumber}
-        status={order.status}
-        items={order.items}
-        themed
-        paymentRequired={paymentRequired}
-        autoOpenShipment={autoOpenShipment}
-        extraActions={
-          isShippingLabelEligible(order) ? (
-            <Link
-              href={ROUTES.sellerOrderLabel(order.id)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={cn(buttonVariants({ variant: "outline", size: "rjSm" }))}
-            >
-              Print shipping label
-            </Link>
-          ) : null
-        }
-      />
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="flex min-w-0 flex-col gap-6">
+        <OrderStatusControl
+          // Forces a remount per order — otherwise a client-side navigation
+          // between two different "processing" orders (both via the barcode
+          // scanner's `?scan=ship`) could reuse the same component instance,
+          // and autoOpenShipment's lazy useState initializer would never
+          // re-run for the second scan in the same session.
+          key={order.id}
+          orderId={order.id}
+          orderNumber={order.orderNumber}
+          status={order.status}
+          items={order.items}
+          themed
+          paymentRequired={paymentRequired}
+          autoOpenShipment={autoOpenShipment}
+          extraActions={
+            isShippingLabelEligible(order) ? (
+              <Link
+                href={ROUTES.sellerOrderLabel(order.id)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={cn(buttonVariants({ variant: "outline", size: "rjSm" }))}
+              >
+                Print shipping label
+              </Link>
+            ) : null
+          }
+        />
 
-      <OrderCancellationSection
-        orderId={order.id}
-        viewer="dashboard"
-        paidOnline={order.paymentMethod === "xendit"}
-      />
+        <OrderTimeline
+          status={order.status}
+          themed
+          placedAt={order.placedAt}
+          confirmedAt={order.confirmedAt}
+          processingAt={order.processingAt}
+          shippedAt={order.shippedAt}
+          deliveredAt={order.deliveredAt}
+        />
+        <OrderCancellationSection
+          orderId={order.id}
+          viewer="dashboard"
+          paidOnline={order.paymentMethod === "xendit"}
+        />
 
-      {returnRequest ? (
-        <div className="flex flex-col gap-3">
-          <ReturnRequestStatusCard request={returnRequest} evidenceUrl={returnEvidenceUrl} themed />
-          {returnRequest.status === RETURN_STATUS.pending ? (
-            <RespondToReturnPanel returnId={returnRequest.id} />
-          ) : null}
-          <ReturnShippingActions request={returnRequest} viewer="seller" />
-          {returnRequest.status === RETURN_STATUS.refunded &&
-          !returnRequest.restockedAt &&
-          !returnRequest.markedUnsellableAt ? (
-            <RecordReturnConditionPanel returnId={returnRequest.id} />
-          ) : null}
+        {returnRequest ? (
+          <div className="flex flex-col gap-3">
+            <ReturnRequestStatusCard request={returnRequest} evidenceUrl={returnEvidenceUrl} themed />
+            {returnRequest.status === RETURN_STATUS.pending ? (
+              <RespondToReturnPanel returnId={returnRequest.id} />
+            ) : null}
+            <ReturnShippingActions request={returnRequest} viewer="seller" />
+            {returnRequest.status === RETURN_STATUS.refunded &&
+            !returnRequest.restockedAt &&
+            !returnRequest.markedUnsellableAt ? (
+              <RecordReturnConditionPanel returnId={returnRequest.id} />
+            ) : null}
+          </div>
+        ) : null}
+
+        <OrderItemsList items={order.items} currency={order.currency} themed />
+        <ShippingAddressCard address={order.shippingAddress} themed />
         </div>
-      ) : null}
-
-      <div className="grid gap-8 lg:grid-cols-3">
-        <div className="flex flex-col gap-8 lg:col-span-2">
-          <OrderItemsList items={order.items} currency={order.currency} themed />
-          <ShippingAddressCard address={order.shippingAddress} themed />
-        </div>
-        <div className="flex flex-col gap-6">
+        <div className="flex min-w-0 flex-col gap-6 lg:sticky lg:top-4">
           <OrderSummary order={order} themed />
           <section aria-label="Buyer and payment" className={cn(THEMED_CARD, "p-5")}>
             <h2 className="text-[10px] font-bold uppercase tracking-[0.3em] text-muted-foreground">Buyer</h2>

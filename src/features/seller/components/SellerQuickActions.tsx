@@ -15,7 +15,7 @@ const ACTIONS = [
 /** Header shortcuts into established Seller workflows. Plain links, no data. */
 export function SellerQuickActions({ reportsQuery }: { reportsQuery?: string }) {
   return (
-    <nav aria-label="Quick actions" className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:grid-cols-4">
+    <nav aria-label="Quick actions" className="flex flex-wrap gap-2">
       {ACTIONS.map((action) => {
         const Icon = action.icon;
         const href =
@@ -25,8 +25,8 @@ export function SellerQuickActions({ reportsQuery }: { reportsQuery?: string }) 
             key={action.label}
             href={href}
             className={cn(
-              buttonVariants({ variant: action.primary ? "primary" : "outline", size: "md" }),
-              "min-h-11 justify-center gap-2 whitespace-nowrap",
+              buttonVariants({ variant: action.primary ? "primary" : "outline", size: "sm" }),
+              "min-h-10 justify-center gap-2 whitespace-nowrap",
             )}
           >
             <Icon className="h-4 w-4" aria-hidden="true" />

@@ -91,6 +91,8 @@ export interface DashboardProductListParams {
   search?: string;
   status?: ProductStatus;
   categoryId?: string;
+  /** Admin-only shop narrowing. */
+  shopId?: string;
 }
 
 /** Convenience accessor — the cover image, or null when a product has none. */

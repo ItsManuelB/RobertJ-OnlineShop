@@ -5,6 +5,7 @@ import { ErrorState } from "@/components/feedback/ErrorState";
 import { buttonVariants } from "@/components/ui/button";
 import { USER_ROLES } from "@/constants/roles";
 import { ROUTES } from "@/constants/routes";
+import { BUYER_PLACED_LABELS } from "@/features/orders/constants/buyer-placed.constants";
 import { PaginationControls } from "@/features/products/components/PaginationControls";
 import { buyerOrderListParamsSchema } from "@/features/orders/schemas/order.schema";
 import type { Order, OrderListParams } from "@/features/orders/types/order.types";
@@ -52,13 +53,15 @@ export async function OrderListSection({
   const { items, page, totalPages, total } = result;
 
   if (items.length === 0) {
-    const filtering = Boolean(params.search || params.status || params.lifecycleTab);
+    const filtering = Boolean(
+      params.search || params.status || params.lifecycleTab || params.placed,
+    );
     return (
       <EmptyState
         title={filtering ? "No matching orders" : "No orders yet"}
         description={
           filtering
-            ? "Try a different order ID or status filter."
+            ? "Try a different order number, product name, status or date."
             : "Orders you place will appear here."
         }
         action={
@@ -110,6 +113,7 @@ export async function OrderListSection({
         aria-live="polite"
       >
         {total} order{total === 1 ? "" : "s"}
+        {params.placed ? ` · ${BUYER_PLACED_LABELS[params.placed]}` : ""}
       </p>
       <ul className="flex flex-col gap-4">
         {items.map((order) => (

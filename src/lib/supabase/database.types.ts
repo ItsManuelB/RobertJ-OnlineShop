@@ -1512,6 +1512,44 @@ export type Database = {
           },
         ]
       }
+      seller_preferences: {
+        Row: {
+          alert_low_stock: boolean
+          alert_orders: boolean
+          alert_payments: boolean
+          alert_returns: boolean
+          created_at: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          alert_low_stock?: boolean
+          alert_orders?: boolean
+          alert_payments?: boolean
+          alert_returns?: boolean
+          created_at?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          alert_low_stock?: boolean
+          alert_orders?: boolean
+          alert_payments?: boolean
+          alert_returns?: boolean
+          created_at?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "seller_preferences_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shop_users: {
         Row: {
           created_at: string
@@ -2882,6 +2920,31 @@ export type Database = {
           units_sold: number
         }[]
       }
+      report_sales_by_shop: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          avg_order_value_cents: number
+          cancelled_orders: number
+          gross_revenue_cents: number
+          paid_orders: number
+          refunded_orders: number
+          refunds_cents: number
+          revenue_cents: number
+          shop_id: string | null
+          shop_name: string
+          total_orders: number
+          units_sold: number
+        }[]
+      }
+      report_service_speed: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          avg_return_decision_seconds: number | null
+          avg_ship_seconds: number | null
+          decided_returns: number
+          shipped_orders: number
+        }[]
+      }
       report_sales_summary: {
         Args: { p_from: string; p_shop_id?: string; p_to: string }
         Returns: {
@@ -2911,6 +2974,15 @@ export type Database = {
           bucket: string
           order_count: number
           revenue_cents: number
+        }[]
+      }
+      report_sales_timeseries_by_shop: {
+        Args: { p_from: string; p_granularity?: string; p_to: string }
+        Returns: {
+          bucket: string
+          order_count: number
+          revenue_cents: number
+          shop_id: string | null
         }[]
       }
       report_top_products: {

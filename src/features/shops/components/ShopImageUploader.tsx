@@ -21,6 +21,8 @@ export interface ShopImageUploaderProps {
   currentUrl: string | null;
   /** Used only for the image's alt text (e.g. "Shop One logo"). */
   shopName: string;
+  /** Lets a parent mirror the persisted URL (e.g. a live buyer preview). */
+  onUrlChange?: (url: string | null) => void;
 }
 
 /**
@@ -36,7 +38,7 @@ export interface ShopImageUploaderProps {
  * unchanged (uploads immediately) — a circular avatar has no comparable
  * "wrong part got cropped" failure mode.
  */
-export function ShopImageUploader({ kind, label, currentUrl, shopName }: ShopImageUploaderProps) {
+export function ShopImageUploader({ kind, label, currentUrl, shopName, onUrlChange }: ShopImageUploaderProps) {
   const [url, setUrl] = useState(currentUrl);
   const [error, setError] = useState<string | null>(null);
   const [justSaved, setJustSaved] = useState(false);
@@ -54,7 +56,9 @@ export function ShopImageUploader({ kind, label, currentUrl, shopName }: ShopIma
       formData.append("image", file);
       const result = await uploadShopImageAction(kind, formData);
       if (result.success) {
-        setUrl(kind === "logo" ? result.data.logoUrl : result.data.bannerUrl);
+        const nextUrl = kind === "logo" ? result.data.logoUrl : result.data.bannerUrl;
+        setUrl(nextUrl);
+        onUrlChange?.(nextUrl);
         setJustSaved(true);
       } else {
         setError(result.error);
@@ -90,6 +94,7 @@ export function ShopImageUploader({ kind, label, currentUrl, shopName }: ShopIma
       const result = await removeShopImageAction(kind);
       if (result.success) {
         setUrl(null);
+        onUrlChange?.(null);
       } else {
         setError(result.error);
       }

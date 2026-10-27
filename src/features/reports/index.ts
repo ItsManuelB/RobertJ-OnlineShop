@@ -1,8 +1,9 @@
 export { ReportsFilters } from "./components/ReportsFilters";
 export type { ReportShopOption } from "./components/ReportsFilters";
 export { ExportReportButton } from "./components/ExportReportButton";
+export { ReportShopFilter } from "./components/ReportShopFilter";
 export { SalesSummaryPanel } from "./components/SalesSummaryPanel";
-export { SalesTrendPanel } from "./components/SalesTrendPanel";
+export { SalesByShopPanel } from "./components/SalesByShopPanel";
 export { OrderStatusPanel } from "./components/OrderStatusPanel";
 export { TopProductsPanel } from "./components/TopProductsPanel";
 export { LowStockPanel } from "./components/LowStockPanel";
@@ -20,6 +21,7 @@ export type {
   ReportGranularity,
   SalesSummary,
   SalesTrendPoint,
+  ShopSalesRow,
   OrderStatusCount,
   TopProduct,
   RestockPriorityItem,

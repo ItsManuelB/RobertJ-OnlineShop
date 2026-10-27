@@ -22,7 +22,7 @@ export default async function ProfilePage() {
         description="Keep your account details up to date."
       />
       {profile ? (
-        <div className="flex max-w-3xl flex-col gap-3">
+        <div className="flex max-w-5xl flex-col gap-3">
           <ProfileForm profile={profile} email={user.email} />
           {/* Small secondary shortcut — Addresses management lives on its own page. */}
           <Link

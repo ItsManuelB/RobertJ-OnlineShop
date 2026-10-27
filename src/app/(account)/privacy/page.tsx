@@ -10,6 +10,7 @@ import { DownloadMyDataPanel } from "@/features/account/components/DownloadMyDat
 import { DefaultAddressPicker } from "@/features/account/components/DefaultAddressPicker";
 import { DefaultPaymentMethodPicker } from "@/features/account/components/DefaultPaymentMethodPicker";
 import { NotificationPreferencesPanel } from "@/features/account/components/NotificationPreferencesPanel";
+import { SecuritySummary } from "@/features/account/components/SecuritySummary";
 import { SignOutOtherDevicesPanel } from "@/features/account/components/SignOutOtherDevicesPanel";
 import { CatalogHeader } from "@/features/products/components/CatalogHeader";
 import { mapOAuthCallbackError } from "@/features/auth";
@@ -26,7 +27,16 @@ interface PrivacyPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-const SECTION_CLASS = "flex flex-col gap-4 rounded-2xl border border-rj-gray-100 p-5";
+const SECTION_CLASS = "flex scroll-mt-24 flex-col gap-4 rounded-2xl border border-rj-gray-100 p-5";
+
+/** Jump chips under the summary; each id matches a section below. */
+const SECTION_LINKS = [
+  { id: "account", label: "Account" },
+  { id: "notifications", label: "Notifications" },
+  { id: "orders", label: "Orders" },
+  { id: "security", label: "Security" },
+  { id: "your-data", label: "Your data" },
+] as const;
 
 /**
  * Buyer settings hub, organized Shopee-style into essential sections only —
@@ -54,26 +64,41 @@ export default async function PrivacyPage({ searchParams }: PrivacyPageProps) {
         title="Privacy & Settings"
         description="Manage your account, notifications, and order preferences."
       />
-      <div className="flex max-w-xl flex-col gap-6">
+      <div className="flex max-w-5xl flex-col gap-6">
         {linkError ? (
           <ErrorState title="Couldn't connect that account" message={linkError} />
         ) : null}
 
-        <section className={SECTION_CLASS} aria-label="Account">
+        <SecuritySummary identities={identities} isActive={user.isActive} />
+
+        <nav aria-label="Jump to a section" className="flex flex-wrap gap-2">
+          {SECTION_LINKS.map((link) => (
+            <a
+              key={link.id}
+              href={`#${link.id}`}
+              className="inline-flex min-h-9 items-center rounded-full border-[1.5px] border-rj-gray-200 px-4 text-xs font-semibold text-rj-gray-600 transition-colors hover:border-rj-black hover:text-rj-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rj-red/30"
+            >
+              {link.label}
+            </a>
+          ))}
+        </nav>
+
+        <div className="grid items-start gap-6 lg:grid-cols-2">
+        <section id="account" className={SECTION_CLASS} aria-label="Account">
           <h2 className="text-[10px] font-bold uppercase tracking-[0.3em] text-rj-gray-500">
             Account
           </h2>
           <ConnectedAccounts identities={identities} />
         </section>
 
-        <section className={SECTION_CLASS} aria-label="Notifications">
+        <section id="notifications" className={SECTION_CLASS} aria-label="Notifications">
           <h2 className="text-[10px] font-bold uppercase tracking-[0.3em] text-rj-gray-500">
             Notifications
           </h2>
           <NotificationPreferencesPanel initialPreferences={preferences} />
         </section>
 
-        <section className={SECTION_CLASS} aria-label="Orders">
+        <section id="orders" className={SECTION_CLASS} aria-label="Orders">
           <h2 className="text-[10px] font-bold uppercase tracking-[0.3em] text-rj-gray-500">
             Orders
           </h2>
@@ -90,7 +115,7 @@ export default async function PrivacyPage({ searchParams }: PrivacyPageProps) {
           </p>
         </section>
 
-        <section className={SECTION_CLASS} aria-label="Security">
+        <section id="security" className={SECTION_CLASS} aria-label="Security">
           <h2 className="text-[10px] font-bold uppercase tracking-[0.3em] text-rj-gray-500">
             Security
           </h2>
@@ -104,17 +129,25 @@ export default async function PrivacyPage({ searchParams }: PrivacyPageProps) {
           <SignOutOtherDevicesPanel />
         </section>
 
-        <section className={SECTION_CLASS} aria-label="Your data">
+        <section id="your-data" className={SECTION_CLASS} aria-label="Your data">
           <h2 className="text-[10px] font-bold uppercase tracking-[0.3em] text-rj-gray-500">
             Your data
           </h2>
           <DownloadMyDataPanel />
         </section>
 
-        <section className={SECTION_CLASS} aria-label="Account Status">
-          <h2 className="text-[10px] font-bold uppercase tracking-[0.3em] text-rj-gray-500">
-            Account Status
-          </h2>
+        </div>
+
+        <section
+          className="flex flex-col gap-4 rounded-2xl border border-danger/30 bg-danger/5 p-5"
+          aria-label="Danger zone"
+        >
+          <h2 className="text-[10px] font-bold uppercase tracking-[0.3em] text-danger">Danger zone</h2>
+          <ul className="list-disc pl-5 text-xs text-rj-gray-600">
+            <li>You are signed out right away.</li>
+            <li>Your order and payment history is kept.</li>
+            <li>An administrator can reactivate the account.</li>
+          </ul>
           <AccountStatusPanel isActive={user.isActive} />
         </section>
       </div>

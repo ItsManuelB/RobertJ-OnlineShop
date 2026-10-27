@@ -62,58 +62,62 @@ export default async function AdminOrderDetailPage({ params }: AdminOrderDetailP
   return (
     <article className="flex flex-col gap-8 p-5 lg:p-7">
       <OrderHeader order={order} themed />
-      <OrderTimeline
-        status={order.status}
-        themed
-        placedAt={order.placedAt}
-        confirmedAt={order.confirmedAt}
-        processingAt={order.processingAt}
-        shippedAt={order.shippedAt}
-        deliveredAt={order.deliveredAt}
-      />
-      <OrderStatusControl
-        orderId={order.id}
-        orderNumber={order.orderNumber}
-        status={order.status}
-        items={order.items}
-        themed
-        paymentRequired={paymentRequired}
-      />
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="flex min-w-0 flex-col gap-6">
+          <OrderStatusControl
+            orderId={order.id}
+            orderNumber={order.orderNumber}
+            status={order.status}
+            items={order.items}
+            themed
+            paymentRequired={paymentRequired}
+          />
 
-      <OrderCancellationSection
-        orderId={order.id}
-        viewer="dashboard"
-        paidOnline={order.paymentMethod === "xendit"}
-      />
+          <OrderTimeline
+            status={order.status}
+            themed
+            placedAt={order.placedAt}
+            confirmedAt={order.confirmedAt}
+            processingAt={order.processingAt}
+            shippedAt={order.shippedAt}
+            deliveredAt={order.deliveredAt}
+          />
+          <OrderCancellationSection
+            orderId={order.id}
+            viewer="dashboard"
+            paidOnline={order.paymentMethod === "xendit"}
+          />
 
-      {returnRequest ? (
-        <div className="flex flex-col gap-3">
-          <ReturnRequestStatusCard request={returnRequest} evidenceUrl={returnEvidenceUrl} themed />
-          {returnRequest.status === RETURN_STATUS.pending ? (
-            <RespondToReturnPanel returnId={returnRequest.id} />
+          {returnRequest ? (
+            <div className="flex flex-col gap-3">
+              <ReturnRequestStatusCard request={returnRequest} evidenceUrl={returnEvidenceUrl} themed />
+              {returnRequest.status === RETURN_STATUS.pending ? (
+                <RespondToReturnPanel returnId={returnRequest.id} />
+              ) : null}
+              <ReturnShippingActions request={returnRequest} viewer="admin" />
+              {returnRequest.status === RETURN_STATUS.refundDue ? (
+                <RecordCodRefundPayoutPanel
+                  returnId={returnRequest.id}
+                  amountCents={returnRequest.refundAmountCents}
+                  currency={returnRequest.currency}
+                />
+              ) : null}
+              {returnRequest.status === RETURN_STATUS.refunded &&
+              !returnRequest.restockedAt &&
+              !returnRequest.markedUnsellableAt ? (
+                <RecordReturnConditionPanel returnId={returnRequest.id} />
+              ) : null}
+            </div>
           ) : null}
-          <ReturnShippingActions request={returnRequest} viewer="admin" />
-          {returnRequest.status === RETURN_STATUS.refundDue ? (
-            <RecordCodRefundPayoutPanel
-              returnId={returnRequest.id}
-              amountCents={returnRequest.refundAmountCents}
-              currency={returnRequest.currency}
-            />
-          ) : null}
-          {returnRequest.status === RETURN_STATUS.refunded &&
-          !returnRequest.restockedAt &&
-          !returnRequest.markedUnsellableAt ? (
-            <RecordReturnConditionPanel returnId={returnRequest.id} />
-          ) : null}
+
+              <OrderItemsList items={order.items} currency={order.currency} themed />
+              <ShippingAddressCard address={order.shippingAddress} themed />
         </div>
-      ) : null}
-
-      <div className="grid gap-8 lg:grid-cols-3">
-        <div className="flex flex-col gap-8 lg:col-span-2">
-          <OrderItemsList items={order.items} currency={order.currency} themed />
-          <ShippingAddressCard address={order.shippingAddress} themed />
-        </div>
-        <div className="flex flex-col gap-6">
+        <div className="flex min-w-0 flex-col gap-6 lg:sticky lg:top-4">
+          <section aria-label="Shop" className={cn(THEMED_CARD, "p-5")}>
+            <h2 className="text-[10px] font-bold uppercase tracking-[0.3em] text-muted-foreground">Shop</h2>
+            <p className="mt-2 text-sm font-semibold text-foreground">{order.shopName ?? "Unassigned"}</p>
+          </section>
           <OrderSummary order={order} themed />
           <section aria-label="Buyer and payment" className={cn(THEMED_CARD, "p-5")}>
             <h2 className="text-[10px] font-bold uppercase tracking-[0.3em] text-muted-foreground">Buyer</h2>

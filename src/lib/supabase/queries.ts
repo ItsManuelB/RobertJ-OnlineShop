@@ -86,6 +86,10 @@ import type {
 import type { UpdateProfileInput } from "@/features/account/schemas/account.schema";
 import type { OAuthProvider } from "@/features/auth/schemas/auth.schema";
 import type { BuyerPreferences, Profile } from "@/features/account/types/account.types";
+import {
+  DEFAULT_SELLER_ALERT_PREFERENCES,
+  type SellerAlertPreferences,
+} from "@/features/seller/utils/seller-tasks";
 import type {
   DashboardPaymentListParams,
   Payment,
@@ -102,6 +106,7 @@ import {
   type DashboardInventoryListParams,
   type InventoryItem,
   type StockAdjustment,
+  type StockStatus,
 } from "@/features/inventory/types/inventory.types";
 import { RETURN_SELLER_RESPONSE_SLA_DAYS } from "@/features/returns/constants/return.constants";
 import { SHIP_OVERDUE_DAYS } from "@/features/seller/constants/fulfilment";
@@ -115,6 +120,7 @@ import type {
   SalesSummary,
   SalesTrendPoint,
   PaymentSourceSummaryRow,
+  ShopSalesRow,
   TopProduct,
 } from "@/features/reports/types/report.types";
 import type {
@@ -2418,6 +2424,42 @@ function toOrder(row: OrderRowWithItems): Order {
   };
 }
 
+/** Start of the buyer's "placed" window (Asia/Manila days; "year" = since 1 January there). */
+function buyerPlacedSince(within: "30d" | "90d" | "year"): string {
+  const MANILA_OFFSET_MS = 8 * 60 * 60 * 1000;
+  const now = Date.now();
+  if (within === "year") {
+    const manilaYear = new Date(now + MANILA_OFFSET_MS).getUTCFullYear();
+    return new Date(Date.UTC(manilaYear, 0, 1) - MANILA_OFFSET_MS).toISOString();
+  }
+  return new Date(now - (within === "30d" ? 30 : 90) * 24 * 60 * 60 * 1000).toISOString();
+}
+
+/**
+ * PostgREST `.or()` filter for the buyer's order search: the order number OR any item title in
+ * the order. Returns null when the text has nothing searchable left after removing characters
+ * that would break the filter string. RLS already limits both reads to the buyer's own rows.
+ */
+async function buyerOrderSearchFilter(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  search: string,
+): Promise<string | null> {
+  const term = search.replace(/[,()*%\\]/g, " ").trim();
+  if (!term) return null;
+
+  const { data, error } = await supabase
+    .from(DATABASE_TABLES.ORDER_ITEMS)
+    .select("order_id")
+    .ilike("product_title", `%${term}%`)
+    .limit(200);
+  if (error) {
+    throw queryError("Failed to search orders", error);
+  }
+
+  const ids = Array.from(new Set((data ?? []).map((row) => row.order_id)));
+  return [`order_number.ilike.%${term}%`, ...(ids.length > 0 ? [`id.in.(${ids.join(",")})`] : [])].join(",");
+}
+
 /**
  * The signed-in buyer's order history: newest first, with an optional Order-ID
  * search (the proposal storyboard's "manually enter an Order ID") and an
@@ -2439,10 +2481,14 @@ export async function listBuyerOrders(
     .eq("buyer_id", buyerId);
 
   if (params.search) {
-    query = query.ilike("order_number", `%${params.search}%`);
+    const filter = await buyerOrderSearchFilter(supabase, params.search);
+    if (filter) query = query.or(filter);
   }
   if (params.status) {
     query = query.eq("order_status", params.status);
+  }
+  if (params.placed) {
+    query = query.gte("placed_at", buyerPlacedSince(params.placed));
   }
   query = query.order("placed_at", { ascending: false });
 
@@ -2546,7 +2592,11 @@ async function listBuyerOrdersByLifecycleTab(
     .in("id", orderIds);
 
   if (params.search) {
-    query = query.ilike("order_number", `%${params.search}%`);
+    const filter = await buyerOrderSearchFilter(supabase, params.search);
+    if (filter) query = query.or(filter);
+  }
+  if (params.placed) {
+    query = query.gte("placed_at", buyerPlacedSince(params.placed));
   }
 
   query = query.order("placed_at", { ascending: false });
@@ -3131,6 +3181,39 @@ export async function getRefundPipeline(
  * boundary behind either query.
  */
 export type DashboardOrderOwner = { sellerId: string; shopId: string | null };
+
+/**
+ * Per-status order totals for the Orders page's tabs and next-step cards —
+ * one `head: true` probe per status with the same owner scope as
+ * `listDashboardOrders` (`sellerId`/`shopId` both null = admin, no filter).
+ * Primitive arguments so React `cache()` shares one result between the page
+ * and the list panel within a request.
+ */
+export const getDashboardOrderStatusCounts = cache(async function getDashboardOrderStatusCounts(
+  sellerId: string | null,
+  shopId: string | null,
+): Promise<Record<OrderStatus, number>> {
+  const supabase = await createSupabaseServerClient();
+  const statuses = Object.values(ORDER_STATUS) as OrderStatus[];
+
+  const counts = await Promise.all(
+    statuses.map(async (status) => {
+      let query = supabase
+        .from(DATABASE_TABLES.ORDERS)
+        .select("id", { count: "exact", head: true })
+        .eq("order_status", status);
+      if (sellerId) query = query.or(orderOwnerFilter({ sellerId, shopId }));
+      else if (shopId) query = query.eq("shop_id", shopId);
+      const { count, error } = await query;
+      if (error) {
+        throw queryError("Failed to count orders", error);
+      }
+      return [status, count ?? 0] as const;
+    }),
+  );
+
+  return Object.fromEntries(counts) as Record<OrderStatus, number>;
+});
 
 /** PostgREST `.or()` filter for a seller's own orders: their shop, or legacy shop-less rows they sold. */
 function orderOwnerFilter(owner: DashboardOrderOwner): string {
@@ -4443,6 +4526,70 @@ export async function updateMyBuyerPreferences(
   return toBuyerPreferences(data as BuyerPreferencesRow);
 }
 
+// ============================================================================
+// Seller alert preferences (Seller Portal > Settings > Alerts)
+// ============================================================================
+
+const SELLER_PREFERENCES_COLUMNS = "alert_orders, alert_returns, alert_payments, alert_low_stock";
+
+function toSellerPreferences(
+  row: Pick<
+    Database["public"]["Tables"]["seller_preferences"]["Row"],
+    "alert_orders" | "alert_returns" | "alert_payments" | "alert_low_stock"
+  >,
+): SellerAlertPreferences {
+  return {
+    orders: row.alert_orders,
+    returns: row.alert_returns,
+    payments: row.alert_payments,
+    lowStock: row.alert_low_stock,
+  };
+}
+
+/**
+ * The signed-in seller's alert preferences. A seller who never saved any has no
+ * row — that means "everything on". A failed read also falls back to all-on:
+ * hiding a task because a preference could not be read would be worse than
+ * showing one the seller muted.
+ */
+export const getMySellerPreferences = cache(async function getMySellerPreferences(
+  userId: string,
+): Promise<SellerAlertPreferences> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from(DATABASE_TABLES.SELLER_PREFERENCES)
+    .select(SELLER_PREFERENCES_COLUMNS)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error || !data) return DEFAULT_SELLER_ALERT_PREFERENCES;
+  return toSellerPreferences(data);
+});
+
+/** Saves one or more alert switches; omitted switches keep their stored value (see `updateMyBuyerPreferences`). */
+export async function updateMySellerPreferences(
+  userId: string,
+  input: Partial<SellerAlertPreferences>,
+): Promise<SellerAlertPreferences> {
+  const supabase = await createSupabaseServerClient();
+  const payload: Database["public"]["Tables"]["seller_preferences"]["Insert"] = { user_id: userId };
+  if (input.orders !== undefined) payload.alert_orders = input.orders;
+  if (input.returns !== undefined) payload.alert_returns = input.returns;
+  if (input.payments !== undefined) payload.alert_payments = input.payments;
+  if (input.lowStock !== undefined) payload.alert_low_stock = input.lowStock;
+
+  const { data, error } = await supabase
+    .from(DATABASE_TABLES.SELLER_PREFERENCES)
+    .upsert(payload, { onConflict: "user_id" })
+    .select(SELLER_PREFERENCES_COLUMNS)
+    .single();
+
+  if (error) {
+    throw queryError("Failed to save your alert settings", error);
+  }
+  return toSellerPreferences(data);
+}
+
 /**
  * Deactivates the signed-in buyer's own account via the
  * `self_deactivate_account` RPC (the sole write path; see that function's
@@ -5266,6 +5413,30 @@ export async function getPaymentHistorySummary(
 }
 
 /**
+ * Per-status payment totals for the Payments page's status tabs — one
+ * `head: true` probe per status, deliberately ignoring the search/method
+ * filters so the tab numbers stay put while the list narrows. RLS scopes the
+ * rows to the caller's shop (or everything for an admin).
+ */
+export async function getPaymentStatusCounts(): Promise<Record<PaymentStatus, number>> {
+  const supabase = await createSupabaseServerClient();
+  const statuses = Object.values(PAYMENT_STATUS) as PaymentStatus[];
+
+  const counts = await Promise.all(
+    statuses.map(async (status) => {
+      const { count, error } = await supabase
+        .from(DATABASE_TABLES.PAYMENTS)
+        .select("id", { count: "exact", head: true })
+        .eq("status", status);
+      if (error) throw queryError("Failed to count payments", error);
+      return [status, count ?? 0] as const;
+    }),
+  );
+
+  return Object.fromEntries(counts) as Record<PaymentStatus, number>;
+}
+
+/**
  * Exact count for the Admin Payments dashboard's "Needs reconciliation"
  * summary strip — same conservative 30-minute proxy `listPaymentHistory`'s
  * `staleOnly` filter uses, see its doc comment.
@@ -5311,7 +5482,7 @@ const RETURN_REQUEST_COLUMNS = `
   replacement_courier, replacement_tracking_number, replacement_shipped_at, replacement_completed_at, created_at, updated_at,
   cod_refund_method, cod_refund_reference, cod_refunded_at,
   return_deadline_at, return_courier, return_tracking_number, return_shipped_at, return_received_at, return_inspection,
-  order:orders!return_requests_order_id_fkey ( order_number, currency, payment_method, payment_status ),
+  order:orders!return_requests_order_id_fkey ( order_number, currency, payment_method, payment_status, shop:shops!orders_shop_id_fkey ( name ) ),
   buyer:profiles!return_requests_buyer_id_fkey ( full_name, username ),
   order_item:order_items!return_requests_order_item_id_fkey ( product_title )
 `;
@@ -5323,6 +5494,7 @@ type ReturnRequestRowWithJoins = ReturnRequestRow & {
     currency: string;
     payment_method: Database["public"]["Enums"]["order_payment_method"];
     payment_status: PaymentStatus;
+    shop: { name: string } | null;
   } | null;
   buyer: Pick<ProfileRow, "full_name" | "username"> | null;
   order_item: { product_title: string } | null;
@@ -5336,6 +5508,7 @@ function toReturnRequest(row: ReturnRequestRowWithJoins): ReturnRequest {
     currency: row.order?.currency ?? "PHP",
     orderPaymentMethod: row.order?.payment_method ?? null,
     orderPaymentStatus: row.order?.payment_status ?? null,
+    shopName: row.order?.shop?.name ?? null,
     orderItemId: row.order_item_id,
     orderItemTitle: row.order_item?.product_title ?? null,
     buyerId: row.buyer_id,
@@ -5916,7 +6089,11 @@ function toAdminActionLogEntry(row: AdminActionLogRowWithJoins): AdminActionLogE
  * only how much of the list is fetched at once.
  */
 export async function listAdminActionLog(
-  params: PaginationParams & { action?: string },
+  params: PaginationParams & {
+    action?: string;
+    /** ISO timestamp: only entries created at or after it. */
+    since?: string;
+  },
 ): Promise<PaginatedResult<AdminActionLogEntry>> {
   const supabase = await createSupabaseServerClient();
 
@@ -5926,6 +6103,9 @@ export async function listAdminActionLog(
 
   if (params.action) {
     query = query.eq("action", params.action);
+  }
+  if (params.since) {
+    query = query.gte("created_at", params.since);
   }
 
   query = query.order("created_at", { ascending: false });
@@ -5945,6 +6125,32 @@ export async function listAdminActionLog(
     pageSize: params.pageSize,
     totalPages: Math.max(1, Math.ceil(total / params.pageSize)),
   };
+}
+
+/**
+ * Entry counts for the Audit Log's action dropdown: one per known action plus
+ * the total, optionally limited to entries at or after `since`. Head-only
+ * count queries, same approach as `getInventoryStatusCounts`.
+ */
+export async function getAdminActionCounts(
+  actions: readonly string[],
+  since?: string,
+): Promise<{ total: number; byAction: Record<string, number> }> {
+  const supabase = await createSupabaseServerClient();
+
+  async function countFor(action?: string): Promise<number> {
+    let query = supabase
+      .from(DATABASE_TABLES.ADMIN_ACTION_LOG)
+      .select("id", { count: "exact", head: true });
+    if (action) query = query.eq("action", action);
+    if (since) query = query.gte("created_at", since);
+    const { count, error } = await query;
+    if (error) throw queryError("Failed to count audit log entries", error);
+    return count ?? 0;
+  }
+
+  const [total, ...perAction] = await Promise.all([countFor(), ...actions.map((action) => countFor(action))]);
+  return { total, byAction: Object.fromEntries(actions.map((action, index) => [action, perAction[index]])) };
 }
 
 // ============================================================================
@@ -6817,6 +7023,46 @@ export async function getProductCount(
 }
 
 /**
+ * Per-status product totals for the Products page's status tabs — same
+ * owner-filter shape as `getProductCount`, one `head: true` probe per status
+ * (a few cheap index counts instead of fetching rows). Search/category are
+ * deliberately not applied: the tabs show the seller's whole catalog.
+ */
+export async function getProductStatusCounts(
+  owner: { sellerId: string; shopId: string | null } | null,
+  /** Admin only: narrow every count to one shop (ignored when `owner` is set). */
+  shopId?: string | null,
+): Promise<Record<ProductStatus, number>> {
+  const supabase = await createSupabaseServerClient();
+  const statuses = Object.values(PRODUCT_STATUS) as ProductStatus[];
+
+  const counts = await Promise.all(
+    statuses.map(async (status) => {
+      let query = supabase
+        .from(DATABASE_TABLES.PRODUCTS)
+        .select("id", { count: "exact", head: true })
+        .eq("status", status);
+
+      if (owner) {
+        query = query.or(
+          owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`,
+        );
+      } else if (shopId) {
+        query = query.eq("shop_id", shopId);
+      }
+
+      const { count, error } = await query;
+      if (error) {
+        throw queryError("Failed to count products", error);
+      }
+      return [status, count ?? 0] as const;
+    }),
+  );
+
+  return Object.fromEntries(counts) as Record<ProductStatus, number>;
+}
+
+/**
  * Paginated/filtered counterpart to `listDashboardProducts` — powers the
  * Products table (search/status/category + page). Kept as a separate
  * function rather than changing `listDashboardProducts`'s signature: that
@@ -6853,6 +7099,9 @@ export async function listDashboardProductsPage(
   }
   if (params.categoryId) {
     query = query.eq("category_id", params.categoryId);
+  }
+  if (params.shopId) {
+    query = query.eq("shop_id", params.shopId);
   }
 
   query = query.order("created_at", { ascending: false });
@@ -7193,6 +7442,36 @@ export async function listDashboardInventoryPage(
     pageSize: params.pageSize,
     totalPages: Math.max(1, Math.ceil(total / params.pageSize)),
   };
+}
+
+/**
+ * Per-status inventory row totals for the Inventory page's tabs — one
+ * `head: true` probe per `stock_status` (RLS scopes the rows to the caller's
+ * shop, or every shop for an admin), same column the list's filter uses.
+ */
+export async function getInventoryStatusCounts(
+  /** Admin only: narrow every count to one shop (sellers are scoped by RLS). */
+  shopId?: string | null,
+): Promise<Record<StockStatus, number>> {
+  const supabase = await createSupabaseServerClient();
+  const statuses: StockStatus[] = ["in_stock", "low_stock", "out_of_stock"];
+
+  const counts = await Promise.all(
+    statuses.map(async (status) => {
+      let query = supabase
+        .from(DATABASE_TABLES.INVENTORY)
+        .select("id", { count: "exact", head: true })
+        .eq("stock_status", status);
+      if (shopId) query = query.eq("shop_id", shopId);
+      const { count, error } = await query;
+      if (error) {
+        throw queryError("Failed to count inventory", error);
+      }
+      return [status, count ?? 0] as const;
+    }),
+  );
+
+  return Object.fromEntries(counts) as Record<StockStatus, number>;
 }
 
 /**
@@ -7933,6 +8212,77 @@ export const getSalesTimeseries = cache(async function getSalesTimeseries(
     orderCount: row.order_count,
     revenueCents: row.revenue_cents,
   }));
+});
+
+/**
+ * Admin only: one row per shop (plus "Unassigned" when orders belong to no
+ * shop) for the range, so the rows add up to the All-shops summary. The RPC
+ * rejects non-admins.
+ */
+export const getSalesByShop = cache(async function getSalesByShop(
+  from: string,
+  to: string,
+): Promise<ShopSalesRow[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("report_sales_by_shop", {
+    p_from: from,
+    p_to: to,
+  });
+
+  if (error) {
+    throw queryError("Failed to load sales by shop", error);
+  }
+
+  // Name order (like every other shop list), not ranking order, so shops keep a fixed
+  // position when comparing; the synthetic Unassigned row goes last.
+  return (data ?? [])
+    .map((row) => ({
+      shopId: row.shop_id,
+      shopName: row.shop_name,
+      totalOrders: Number(row.total_orders),
+      paidOrders: Number(row.paid_orders),
+      cancelledOrders: Number(row.cancelled_orders),
+      grossRevenueCents: Number(row.gross_revenue_cents),
+      refundsCents: Number(row.refunds_cents),
+      revenueCents: Number(row.revenue_cents),
+      avgOrderValueCents: Number(row.avg_order_value_cents),
+      unitsSold: Number(row.units_sold),
+      refundedOrders: Number(row.refunded_orders),
+    }))
+    .sort((a, b) =>
+      a.shopId === null ? 1 : b.shopId === null ? -1 : compareNatural(a.shopName, b.shopName),
+    );
+});
+
+export interface ServiceSpeed {
+  shippedOrders: number;
+  /** Mean seconds from order placed to shipped; null when no order shipped. */
+  avgShipSeconds: number | null;
+  decidedReturns: number;
+  /** Mean seconds from a return being filed to its first decision; null when none was decided. */
+  avgReturnDecisionSeconds: number | null;
+}
+
+/** Admin only: how fast orders ship and returns get decided for work started in the range. The RPC rejects non-admins. */
+export const getServiceSpeed = cache(async function getServiceSpeed(
+  from: string,
+  to: string,
+): Promise<ServiceSpeed> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("report_service_speed", { p_from: from, p_to: to });
+
+  if (error) {
+    throw queryError("Failed to load service speed", error);
+  }
+
+  const row = data?.[0];
+  return {
+    shippedOrders: Number(row?.shipped_orders ?? 0),
+    avgShipSeconds: row?.avg_ship_seconds == null ? null : Number(row.avg_ship_seconds),
+    decidedReturns: Number(row?.decided_returns ?? 0),
+    avgReturnDecisionSeconds:
+      row?.avg_return_decision_seconds == null ? null : Number(row.avg_return_decision_seconds),
+  };
 });
 
 /** Order counts grouped by fulfilment status within the range. */

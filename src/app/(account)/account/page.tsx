@@ -1,16 +1,48 @@
 import type { Metadata } from "next";
 
-import { AccountQuickLinks } from "@/features/account/components/AccountQuickLinks";
-import { OverviewSummary } from "@/features/account/components/OverviewSummary";
+import { AccountAttentionPanel } from "@/features/account/components/AccountAttentionPanel";
+import { OrderGroupCounts } from "@/features/account/components/OrderGroupCounts";
 import { RecentOrdersList } from "@/features/account/components/RecentOrdersList";
+import { WishlistPreview } from "@/features/account/components/WishlistPreview";
+import { getHoldMinutesLeft } from "@/features/account/utils/account-attention";
+import { UNPAID_ORDER_EXPIRY_MINUTES } from "@/features/orders/constants/order-lifecycle.constants";
 import { CatalogHeader } from "@/features/products/components/CatalogHeader";
-import { getBuyerOrderSummary, requireSessionUser } from "@/lib/supabase/queries";
+import {
+  getBuyerOrderLifecycleCounts,
+  listBuyerOrders,
+  listWishlistProducts,
+  requireSessionUser,
+} from "@/lib/supabase/queries";
 
 export const metadata: Metadata = { title: "My Account" };
 
+const RECENT_ORDER_COUNT = 3;
+const WISHLIST_PREVIEW_COUNT = 3;
+/** Enough unpaid orders to find the oldest one; the hold only matters for the first few. */
+const UNPAID_LOOKUP_SIZE = 20;
+
 export default async function AccountPage() {
   const user = await requireSessionUser();
-  const summary = await getBuyerOrderSummary(user.id);
+  const [counts, recent, wishlist] = await Promise.all([
+    getBuyerOrderLifecycleCounts(user.id),
+    listBuyerOrders(user.id, { page: 1, pageSize: RECENT_ORDER_COUNT }),
+    // The wishlist is a nicety here; a failed read hides the preview instead of the page.
+    listWishlistProducts(user.id).catch(() => []),
+  ]);
+
+  const unpaid =
+    counts.to_pay > 0
+      ? await listBuyerOrders(user.id, {
+          page: 1,
+          pageSize: UNPAID_LOOKUP_SIZE,
+          lifecycleTab: "to_pay",
+        }).catch(() => null)
+      : null;
+  const holdMinutesLeft = getHoldMinutesLeft(
+    (unpaid?.items ?? []).map((order) => order.placedAt),
+    UNPAID_ORDER_EXPIRY_MINUTES,
+  );
+
   const firstName = user.fullName?.trim().split(" ")[0];
 
   return (
@@ -20,9 +52,18 @@ export default async function AccountPage() {
         title={firstName ? `Hi, ${firstName}` : "My Account"}
         description="Track your orders and keep your details up to date."
       />
-      <OverviewSummary statusCounts={summary.statusCounts} />
-      <RecentOrdersList orders={summary.recentOrders} />
-      <AccountQuickLinks />
+      <AccountAttentionPanel
+        toPayCount={counts.to_pay}
+        holdMinutesLeft={holdMinutesLeft}
+        toReceiveCount={counts.to_receive}
+        returnCount={counts.return_refund}
+      />
+      <OrderGroupCounts counts={counts} />
+      <RecentOrdersList orders={recent.items} />
+      <WishlistPreview
+        products={wishlist.slice(0, WISHLIST_PREVIEW_COUNT)}
+        total={wishlist.length}
+      />
     </div>
   );
 }

@@ -148,3 +148,66 @@ export function summarizeSellerTasks(tasks: readonly SellerTask[]): string {
     .join(" · ");
   return tasks.length > 3 ? `${lead} · +${tasks.length - 3} more` : lead;
 }
+
+/** Which kinds of task the seller wants surfaced on the dashboard and the bell. */
+export interface SellerAlertPreferences {
+  orders: boolean;
+  returns: boolean;
+  payments: boolean;
+  lowStock: boolean;
+}
+
+export const DEFAULT_SELLER_ALERT_PREFERENCES: SellerAlertPreferences = {
+  orders: true,
+  returns: true,
+  payments: true,
+  lowStock: true,
+};
+
+const TASK_ALERT_KIND: Record<string, keyof SellerAlertPreferences> = {
+  "confirm-orders": "orders",
+  "fulfil-orders": "orders",
+  "return-requests": "returns",
+  "returned-parcels": "returns",
+  "return-condition": "returns",
+  "cod-collection": "payments",
+  restock: "lowStock",
+};
+
+/** Drops the tasks whose alert kind the seller turned off. Unknown ids stay visible. */
+export function filterSellerTasks(tasks: SellerTask[], preferences: SellerAlertPreferences): SellerTask[] {
+  return tasks.filter((task) => {
+    const kind = TASK_ALERT_KIND[task.id];
+    return kind === undefined || preferences[kind];
+  });
+}
+
+const TASK_DESTINATION: Record<string, keyof SellerTaskRoutes | "payments"> = {
+  "confirm-orders": "orders",
+  "fulfil-orders": "orders",
+  "cod-collection": "payments",
+  "return-requests": "returns",
+  "returned-parcels": "returns",
+  "return-condition": "returns",
+  restock: "inventory",
+};
+
+/**
+ * Menu badges from the same task list the bell and dashboard use: the number
+ * is items waiting, summed per destination. A badge is urgent when any task
+ * feeding it carries an overdue line.
+ */
+export function buildSellerNavBadges(
+  tasks: readonly SellerTask[],
+  routes: SellerTaskRoutes & { payments: string },
+): Record<string, { count: number; urgent?: boolean }> {
+  const badges: Record<string, { count: number; urgent?: boolean }> = {};
+  for (const task of tasks) {
+    const destination = TASK_DESTINATION[task.id];
+    if (!destination) continue;
+    const href = routes[destination];
+    const current = badges[href] ?? { count: 0 };
+    badges[href] = { count: current.count + task.count, urgent: current.urgent || task.urgent !== null };
+  }
+  return badges;
+}

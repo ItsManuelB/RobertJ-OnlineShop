@@ -146,6 +146,7 @@ export function UserRow({ user, shops, hasActiveOrders = false }: UserRowProps) 
                 </Link>
                 <Badge tone={ROLE_TONE[user.role]}>{ROLE_LABELS[user.role]}</Badge>
                 {user.isActive ? null : <Badge tone="danger">Inactive</Badge>}
+                {user.role === USER_ROLES.seller && !user.shopId ? <Badge tone="warning">No shop</Badge> : null}
               </div>
               <p className="mt-0.5 truncate text-xs text-muted-foreground">
                 {user.email ?? "No email"} · {user.shopName ?? "Unassigned"} · Joined{" "}

@@ -13,7 +13,7 @@ import { getOrderStatusBreakdown, getSalesSummary } from "@/lib/supabase/queries
 export async function SellerReportPaymentSource({ filters }: { filters: ReportFilters }) {
   let grossCents: number | undefined;
   try {
-    grossCents = (await getSalesSummary(filters.from, filters.to, null)).grossRevenueCents;
+    grossCents = (await getSalesSummary(filters.from, filters.to, filters.shopId)).grossRevenueCents;
   } catch {
     grossCents = undefined; // the breakdown still renders; it just can't show the check line
   }
@@ -29,10 +29,16 @@ export async function SellerReportPaymentSource({ filters }: { filters: ReportFi
 }
 
 /** Order counts per fulfilment status; each row opens the Orders list for the same dates and status. */
-export async function SellerReportStatus({ filters }: { filters: ReportFilters }) {
+export async function SellerReportStatus({
+  filters,
+  audience = "seller",
+}: {
+  filters: ReportFilters;
+  audience?: "seller" | "admin";
+}) {
   let breakdown: Awaited<ReturnType<typeof getOrderStatusBreakdown>>;
   try {
-    breakdown = await getOrderStatusBreakdown(filters.from, filters.to, null);
+    breakdown = await getOrderStatusBreakdown(filters.from, filters.to, filters.shopId);
   } catch {
     return <ErrorState message="We couldn't load order statuses right now." />;
   }
@@ -55,7 +61,7 @@ export async function SellerReportStatus({ filters }: { filters: ReportFilters }
               return (
                 <li key={row.status}>
                   <Link
-                    href={`${ROUTES.sellerOrders}?status=${row.status}&from=${filters.from}&to=${filters.to}`}
+                    href={`${audience === "admin" ? ROUTES.adminOrders : ROUTES.sellerOrders}?status=${row.status}&from=${filters.from}&to=${filters.to}`}
                     aria-label={`${label}: ${row.orderCount} order${row.orderCount === 1 ? "" : "s"}. Open these orders.`}
                     className="grid grid-cols-[6rem_minmax(0,1fr)_2.5rem] items-center gap-3 rounded-lg px-1 py-1.5 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                   >

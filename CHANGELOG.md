@@ -7,6 +7,92 @@ All notable changes to RoberJ Online Shop are documented here, newest first. For
 
 ## [Unreleased]
 
+### Changed (Buyer My Account: Addresses, Notifications, Profile, Change Password, Privacy & Settings)
+
+- **Addresses:** a card grid with the default pinned first and outlined, a saved count, "Set as default" on the other cards, and an "Add address" button on the empty state.
+- **Notifications:** grouped by day (Manila time) with All / Orders / Payments / Returns chips and icons instead of emoji; the page now asks for 50 updates (the header bell keeps 20) and says when the list is full.
+- **Profile:** an identity card with the photo and a completeness bar beside the form; Save is enabled only when something changed.
+- **Change Password:** a live checklist (minimum length, matches confirmation) and, after success, a prompt to sign out other devices. Also shown on the Seller and Admin settings pages, which share the form.
+- **Privacy & Settings:** a security summary, jump chips, two-column sections, and Deactivate Account moved into its own danger zone listing what happens.
+
+### Changed (Buyer My Account: Overview, Orders, Wishlist)
+
+- **Overview:** a "Needs your attention" panel (unpaid orders with time left on the 60-minute hold, parcels to confirm, returns in progress, or an all-caught-up line); the six order groups now match the Orders tabs and link to them; a three-item wishlist preview replaces the quick links; latest orders drop from 5 to 3.
+- **Orders:** search also matches product names; new "placed" filter (any date, last 30 days, last 90 days, this year) kept in the URL; the All tab shows a count and the result line names the date range.
+- **Wishlist:** moved into the account layout (URL unchanged); sort (recently saved, price low to high, high to low) and availability chips (All, In stock, Low or out); sold-out items are dimmed; the empty state offers "Browse products".
+
+### Added (Admin Dashboard)
+
+- **Payments to reconcile** join the attention list, the bell and the Payments menu badge (online payments pending for over 30 minutes; the count already existed).
+- **Refunds in progress** (money owed back, not date bound) appears in the performance figures.
+- **Shop health:** one row per active shop with net sales, orders to confirm, orders late to ship and low stock, each count linking to that shop's filtered list.
+- **Order pipeline:** open orders right now by step (Pending, Confirmed, Processing, Shipped), each row opening Orders on that status.
+- **Recent admin activity:** the last five audit-log entries, linking to the Audit Log.
+- **Service speed:** average time from order placed to shipped and from return filed to decided, for work started in the selected dates. Uses the new read-only, admin-only `report_service_speed` function (migration `20261028000000_admin_service_speed.sql`); until it is applied the card says it is unavailable. "Order to confirmed" is not reported because orders keep no confirmation timestamp.
+- **Last updated** time with a Refresh button in the dashboard header.
+
+### Changed (Admin Portal: Dashboard, Reports, Settings)
+
+- **Dashboard:** now reuses the Seller layout. Heading, a collapsible "Needs your attention" list built from the same entries as the bell and menu badges (one shared, request-cached source), four performance numbers with change against the previous period, a "Marketplace at a glance" strip (active shops, products live, low or out of stock, online payments paid), the sales trend beside a new "Top shops by net sales" card, then recent orders and low stock. The seven tiles, Action Center and Quick Access (including the misleading "Add Product" tile) are removed.
+- **Reports:** heading with a period and comparison line, shop filter, date button, Export menu (CSV and a new print-ready PDF at `/admin/reports/print`), a summary sentence, sticky section links, Sales by shop kept first, the Seller panels reused at marketplace scope (payment source, status, category, repeat customers, top products with a units/sales switch, restock priority), and a "How these numbers are worked out" note. Picking a shop narrows every section. The Seller print page and the new Admin one share one view.
+- **Settings:** heading, an identity header (avatar, name, email, Administrator badge) and a section menu. The forms are unchanged.
+- Seller report components gained optional `audience` / `shopId` props; with them unset they behave as before.
+
+### Changed (Admin Portal: Management, and a polish pass)
+
+- **Users:** page heading, next-step cards (sellers with no shop, deactivated accounts, new this week) that filter the list through `?state=`, role chips with counts, a "No shop" flag on seller rows, and a result count. One read now serves the cards, counts and list. The user detail page is two columns: the management card on the left, account details and the seller's shop on the right.
+- **Shops:** page heading, summary cards (total, active, inactive, no seller), search by shop or seller, active / inactive chips with counts, and a "No seller" flag on rows. Filtering is local.
+- **Audit Log:** page heading, an action dropdown with per-action counts, date range chips (24 hours, 7 days, 30 days), entries grouped under Today, Yesterday and dates (Asia/Manila days), and an entry count. `listAdminActionLog` accepts an optional `since`; new `getAdminActionCounts`. Records are unchanged.
+- **Polish:** filter chips and small buttons are taller on phones (about 40px, up from 30-32px) and chip text is 12px; the light-mode success green is darker (`#166534`) so success badges meet the 4.5:1 text contrast; table headers now declare `scope="col"`.
+- Helpers `user-admin.ts`, `shop-admin.ts` and `audit-log-view.ts` have unit tests.
+
+### Changed (Admin Portal: Catalog)
+
+- **Products:** page heading, status chips with counts, and a shop filter placed first in the toolbar. The list and the chip counts both follow the selected shop.
+- **Inventory:** page heading, a restock banner (low and out-of-stock totals, for all shops or the selected one, with "Show only these"), and stock chips with counts that follow the shop filter.
+- **Categories:** page heading, four summary cards (total, active, inactive, no products), search, active / inactive chips with counts, and spec chips on each row ("Color required", "Size option"). Filtering is local; helpers live in `category-admin.ts` with unit tests.
+- Reads: `listDashboardProductsPage` accepts an optional `shopId`; `getProductStatusCounts` and `getInventoryStatusCounts` accept an optional shop. With no shop, behaviour is unchanged.
+
+### Changed (Admin Portal: Orders, Returns & Refunds, Payments)
+
+- **Orders:** page heading, next-step cards (needs confirmation, overdue to ship, ready to pack, COD cash, returns to restock) and status chips with counts. The shop filter now comes first, and both the cards and the chip counts follow the selected shop. The order detail page uses the Seller layout (actions and timeline left, summary, shop and buyer right).
+- **Returns & Refunds:** tabs (Needs my decision, COD payouts, In progress, Closed, All) with counts, 10 requests per page, a banner for requests waiting on a decision (with how many have an overdue seller reply), the shop name on each request, and the decision panel on requests the seller never answered. Evidence photos are signed only for the page on screen. Tab logic lives in `admin-return-queue.ts` with unit tests.
+- **Payments:** page heading, reconciliation banner above counted status chips, and the compact two-card summary. `PaymentsList` no longer fetches the stale-payment count; the page does.
+- `getDashboardOrderStatusCounts(null, shopId)` now counts one shop's orders; with no shop it is unchanged. `ReturnQueueTabs` takes its tabs as props so both portals share it.
+
+### Changed (Seller and Admin Portals: sidebar and top bar)
+
+- **One shared shell** (`src/components/portal/*`) now drives both portals. The old `SellerSidebar`, `SellerTopbar`, `AdminSidebar` and `AdminTopbar` are removed; each portal supplies only its menu config and data.
+- **Sidebar:** compact brand, grouped menu (Seller: Overview, Sell, Catalog, Insights; Admin: Overview, Operations, Catalog, Insights, Management), count badges (items waiting, "99+" cap, red only when overdue), Settings and the signed-in user pinned at the bottom, and an optional icon-only mode that is remembered per browser. Sellers also get a shop card with status, "View shop" and a setup checklist.
+- **Top bar:** a breadcrumb with links replaces the title (a hidden heading stands in only on pages without their own `<h1>`), a `Ctrl K` / `/` command palette (pages, "Add product", and order and product searches that use the list pages' own filters), a "+ Add product" button for sellers, a bell with a total count and "View all on Dashboard", and a profile menu with the shop and the only Sign Out.
+- **Phone:** a bottom tab bar (Dashboard, Orders, Products, More) replaces the hamburger; the menu drawer closes on Escape and keeps focus inside. Skip-to-content link, 44px touch targets, focus returns to the button that opened a menu.
+- Bell and menu badges come from the same task list (seller) or notification list (admin), so they always agree and follow the Alerts switches.
+
+### Changed (Seller Portal: Dashboard, Reports and Settings)
+
+- **Dashboard** shows "Needs your attention" as one collapsed line that opens into task cards (count, detail, button), or a single all-caught-up line when nothing is waiting. Welcome line, wrapping quick actions, and the trend and top products sit side by side beneath the performance numbers.
+- **Reports** is titled "Reports" with a one-sentence summary of net sales against the previous period, one Export menu (CSV or PDF), sticky section links, real group headings, and the definitions folded into "How these numbers are worked out".
+- **Settings** gets a profile header (photo, name, email, Shop Owner and shop badges), a section nav, "Sign out of other devices" under Security, and a shop card with a public-page link and a three-step profile checklist. New **Alerts** switches (orders, returns, payments, low stock) decide which reminders appear on the Dashboard cards and the topbar bell, and **Your data** downloads the seller's account, shop and alert settings as JSON. Alerts are stored in a new `seller_preferences` table (migration `20261027010000_seller_preferences.sql`); until it is applied every alert stays on.
+
+### Changed (Seller Portal: Returns and Payments)
+- **Returns & Refunds** opens with a heading and a "N requests need your response" banner. Each request is now one card: order and buyer header, a respond-by badge while it waits for the seller (from the existing response window; information only, nothing is decided automatically), the existing status card, a five-stage progress strip showing who acts next, and the action panels inside the same card. Tab counts are pills. The Admin Returns queue gets the same cards; its decisions are unchanged.
+- **Payments** opens with a heading and a "N COD payments ready to record" banner. Sellers get status chips with counts (new read-only `getPaymentStatusCounts`, unaffected by the search and method filters), and the summary shrinks to paid amount and attempts. The table, bulk collect and Export are unchanged (Export stays above the table). The Admin Payments page keeps its five tiles.
+
+### Changed (Seller Portal: Inventory and Orders)
+- **Inventory** opens with a heading, a "N items need restocking" banner (with Show only these), and stock chips that show row counts (new read-only `getInventoryStatusCounts`). Each quantity now has a small bar against its low-stock threshold.
+- **Orders** opens with a heading and Scan barcode in the header. Status chips show order counts, with a dot on stages that have work waiting (new read-only `getDashboardOrderStatusCounts`). The single warning strip is replaced by **Next steps** cards: need confirmation, ready to pack, COD cash to collect, returns to restock, each linking to where that work happens. The cards also appear on the Admin Orders list; the Admin page's filter row is unchanged.
+- **Order detail** is two columns on wide screens: the status control comes first, then the timeline, cancellation and returns, items and address on the left; summary, buyer and payment stay in view on the right. No schema, action or validation changes.
+
+### Changed (Seller Portal: My Shop and Products)
+- **My Shop** now has a page header with a **View public shop** link, a sticky **How buyers see it** preview that follows the banner, logo and description as you edit, a three-step **Shop profile** meter, and read-only **Shop details** (name, link, status; set by an administrator). Banner and logo still save on upload; the description now shows a save bar with **Discard** only while it has unsaved edits.
+- **Products** opens with a heading and the New product button; the status chips show product counts (new read-only `getProductStatusCounts`; All excludes archived, like the list).
+- **Product editor** shows a sections-ready meter above the section list, a **Ready to publish / N things left** banner at every width (also when editing), a done / needs attention / optional mark on each section card, and keeps Save and Publish pinned to the bottom on narrow screens. No schema, action or validation changes.
+
+### Added (Admin Reports: per-shop view)
+- **Sales by shop.** Admin Reports now opens with a table of every shop side by side (net sales with previous-period change, share of total, gross, refunds, orders, paid, average order, units, cancelled %, refunded %) and an **All shops** total that is the sum of the rows. Orders linked to no shop appear as **Unassigned** so the rows always add up. Choosing a shop row filters the whole page to it. The Admin Dashboard, Admin Reports and the admin shop dashboard now use the Seller Dashboard's sales trend chart (net sales / orders toggle), following the shop filter; the old Revenue/Orders chart cards are removed. On Admin Reports the filter bar's Trend select sets its interval.
+- **Summary KPIs** show previous-period change chips and cancellation / refund rates; the Payment source card now shows its "adds up to Gross sales" check. The CSV export adds the shop name, a by-shop section (admin) and the shop in the file name.
+- **Scoping fix** (`20261027000000_admin_report_shop_scope.sql`, **not yet applied** — paste into the Supabase SQL editor, then deploy): the admin shop filter now uses one rule (`report_order_shop`: the order's `shop_id`, falling back to its seller's shop) in all six report RPCs. Before, four used the order's seller and two used `shop_id`, so figures could disagree after a seller moved shops. Adds `report_sales_by_shop` and `report_sales_timeseries_by_shop` (admin only).
+
 ### Changed (Hosting)
 - **Hosting moved from Netlify to Vercel.** Netlify paused the site for hitting its usage limits, so `robertjshop.store` now points at Vercel (DNS stays at Spaceship). The Netlify setup (`netlify.toml`, `netlify/functions/xendit-reconciliation.mts`, `docs/deployment-netlify.md`) is removed and replaced by `docs/deployment-vercel.md`. `vercel.json` is kept. **Note:** the Vercel Hobby plan only runs the reconciliation cron daily, where Netlify ran it every 15 minutes; unpaid-order auto-cancel needs a tighter schedule, so `.github/workflows/xendit-reconciliation.yml` calls the same route every 15 minutes from GitHub Actions (needs the `CRON_SECRET` Actions secret). No application logic changed.
 

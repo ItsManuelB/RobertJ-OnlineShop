@@ -17,8 +17,28 @@ export interface EditorSection {
  * scrollable strip above it on narrow ones.
  */
 export function ProductEditorNav({ sections }: { sections: EditorSection[] }) {
+  const doneCount = sections.filter((section) => section.state === "done").length;
+
   return (
     <nav aria-label="Product sections" className="min-w-0 lg:sticky lg:top-4 lg:self-start">
+      <div className="mb-2 hidden flex-col gap-1.5 rounded-xl border border-border bg-background p-3 lg:flex">
+        <div className="flex items-center justify-between text-sm">
+          <span className="font-semibold text-foreground">
+            {doneCount} of {sections.length} sections ready
+          </span>
+          <span className="text-xs text-muted-foreground">{Math.round((doneCount / sections.length) * 100)}%</span>
+        </div>
+        <div
+          className="h-1.5 overflow-hidden rounded-full bg-muted"
+          role="progressbar"
+          aria-label="Sections ready"
+          aria-valuemin={0}
+          aria-valuemax={sections.length}
+          aria-valuenow={doneCount}
+        >
+          <div className="h-full rounded-full bg-primary" style={{ width: `${(doneCount / sections.length) * 100}%` }} />
+        </div>
+      </div>
       <ol className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:gap-1 lg:overflow-visible lg:rounded-xl lg:border lg:border-border lg:bg-background lg:p-2">
         {sections.map((section) => (
           <li key={section.id} className="shrink-0 lg:shrink">
