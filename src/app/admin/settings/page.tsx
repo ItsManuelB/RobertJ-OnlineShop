@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DemoContentPanel } from "@/features/reviews/components/DemoContentPanel";
 import { Avatar } from "@/components/ui/avatar";
 import type { Metadata } from "next";
 
@@ -20,6 +21,7 @@ import {
 } from "@/features/settings";
 import {
   getMyProfile,
+  getDemoContentStatus,
   getPlatformSettings,
   listAdminActionLog,
   listUserIdentities,
@@ -36,6 +38,7 @@ const SECTION_LINKS = [
   { href: "#security", label: "Security" },
   { href: "#contact", label: "Store contact" },
   { href: "#policies", label: "Platform policies" },
+  { href: "#demo", label: "Demo content" },
   { href: "#changes", label: "Recent changes" },
 ];
 
@@ -73,7 +76,7 @@ function Section({
  */
 export default async function AdminSettingsPage() {
   const user = await requireSessionUser();
-  const [profile, identities, settings, recentChanges] = await Promise.all([
+  const [profile, identities, settings, recentChanges, demoStatus] = await Promise.all([
     getMyProfile(),
     listUserIdentities(),
     getPlatformSettings().catch(() => null),
@@ -82,6 +85,7 @@ export default async function AdminSettingsPage() {
       pageSize: 5,
       action: SETTINGS_AUDIT_ACTION,
     }).catch(() => null),
+    getDemoContentStatus().catch(() => null),
   ]);
 
   if (!profile) {
@@ -204,6 +208,18 @@ export default async function AdminSettingsPage() {
               <DefaultLowStockThresholdForm settings={settings} />
             ) : (
               <ErrorState message="The low-stock threshold couldn't be loaded. Make sure the latest database migration has been applied." />
+            )}
+          </Section>
+
+          <Section
+            id="demo"
+            title="Demo content"
+            description="Sample reviews for presentations, kept apart from real ones."
+          >
+            {demoStatus ? (
+              <DemoContentPanel enabled={demoStatus.enabled} count={demoStatus.count} products={demoStatus.products} />
+            ) : (
+              <ErrorState message="Demo content couldn't be loaded. Make sure the latest database migration has been applied." />
             )}
           </Section>
 

@@ -35,7 +35,7 @@
 |---|---|
 | **Purpose** | The unified storefront experience across all three shops: the landing page and category browsing that make three shops feel like one marketplace. |
 | **Responsibilities** | First-impression storefront (hero, featured products/shops, marketplace value props); category-based discovery; entry point into Products. |
-| **Features** | Landing hero, featured products/shops, marketplace features section, animated stats, category grid, guided-selection preview teaser. |
+| **Features** | Landing hero, featured products/shops (tiles show ratings), "What buyers are saying" reviews section, marketplace features section, animated stats, category grid, guided-selection showcase. |
 | **Pages** | `src/app/(marketing)/page.tsx` (home); `src/app/(shop)/categories/page.tsx`, `categories/[slug]/page.tsx`. |
 | **Components** | `features/landing/components/*` (Hero, FeaturedProducts, FeaturedProductsGrid, FeaturedShops, MarketplaceFeatures, SmartAssistantPreview, LandingNavbar, LandingFooter, AboutSection, AnimatedCounter, AnnouncementBar, BackToTop, EditorialBanner, MarqueeBand, ProductCategories, Reveal); `features/categories/components/{CategoryCard,CategoryGrid}`. |
 | **Server Actions** | None (read-only, presentational). |
@@ -239,6 +239,7 @@
 | **Responsibilities** | Present the authenticated shopper's identity and history; let them update their profile; surface recent orders. |
 | **Features** | Account overview, profile edit, recent-orders summary, navigation to full order history (owned by the Orders module), Connected Accounts (manual Google/Facebook identity linking). |
 | **Pages** | `src/app/(account)/account/page.tsx`, `profile/page.tsx` (plus `orders/*`, owned by the Orders module and linked from here). |
+| **Reviews** | `features/reviews`: verified-purchase reviews (`submit_review`, ADR-018) shown on the product page (summary, breakdown, filters, sort), on tiles and on the homepage; buyers are prompted from Overview and completed orders and can edit for 30 days (`update_review`). Shops reply from `/seller/reviews` (`reply_to_review`); admins hide/show from `/admin/reviews` (`admin_set_review_hidden`). Demo reviews (`is_demo`) are presentation-only, tagged "Sample", shown only while Admin › Settings › Demo content is on, and removable in one call; the set lives in `supabase/seed/demo-reviews.sql`. |
 | **Components** | `features/account/components/{AccountMenu,AccountShell,AccountSidebar,OverviewSummary,ProfileForm,RecentOrdersList,ConnectedAccounts,UnlinkIdentityButton}`. |
 | **Server Actions** | `features/account/actions/account.actions.ts` — `updateProfileAction`, `linkIdentityAction`, `unlinkIdentityAction`. |
 | **Services** | `lib/supabase/queries.ts` — `getMyProfile` (via `get_my_profile()` RPC, the only path to `phone`), `toProfile` mapper, `listUserIdentities`/`linkOAuthIdentity`/`unlinkOAuthIdentity` (owned by Authentication, consumed here). |

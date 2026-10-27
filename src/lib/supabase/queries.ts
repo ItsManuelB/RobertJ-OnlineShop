@@ -35,12 +35,13 @@ import type {
   CreateProductInput,
   UpdateProductInput,
 } from "@/features/products/schemas/product.schema";
-import type {
-  DashboardProductListParams,
-  Product,
-  ProductImage,
-  ProductListParams,
-  ProductVariant,
+import {
+  getCoverImage,
+  type DashboardProductListParams,
+  type Product,
+  type ProductImage,
+  type ProductListParams,
+  type ProductVariant,
 } from "@/features/products/types/product.types";
 import type {
   AdminCategory,
@@ -137,9 +138,14 @@ import type {
   TopProduct,
 } from "@/features/reports/types/report.types";
 import type {
+  FeaturedReview,
+  ItemToReview,
+  ManagedReview,
   ProductReviewSummary,
+  RatingSummary,
   Review,
 } from "@/features/reviews/types/review.types";
+import { maskReviewerName, summarizeRatings } from "@/features/reviews/utils/review-format";
 import type { BuyerActivityEvent } from "@/features/notifications/types/notification.types";
 import {
   NO_CANCELLATION_REFUND,
@@ -1695,48 +1701,211 @@ export async function removeWishlistItem(
 // Reviews
 // ============================================================================
 
+/**
+ * Real reviews come from a delivered purchase (`submit_review`, ADR-018). Demo reviews
+ * (`is_demo`) are presentation-only samples with no order behind them; they never count as
+ * verified, are tagged "Sample" wherever they show, and appear only while Admin › Settings ›
+ * Demo content is on. Hidden reviews are removed from the storefront by an admin. Signed-in
+ * admins and shops can read more through RLS, so storefront reads filter explicitly and look
+ * the same for everyone.
+ */
+const REVIEW_COLUMNS =
+  "id, order_item_id, product_id, buyer_id, reviewer_display_name, rating, comment, created_at, updated_at, is_demo, variant_label, seller_reply, seller_replied_at, hidden_at, hidden_reason";
+
 type ReviewRow = Database["public"]["Tables"]["reviews"]["Row"];
+
+const REVIEW_LIST_LIMIT = 500;
+const REVIEW_ID_BATCH = 40;
 
 function toReview(row: ReviewRow): Review {
   return {
     id: row.id,
     orderItemId: row.order_item_id,
     productId: row.product_id,
-    reviewerDisplayName: row.reviewer_display_name,
+    reviewerName: maskReviewerName(row.reviewer_display_name),
     rating: row.rating,
     comment: row.comment,
     createdAt: row.created_at,
+    editedAt: row.updated_at,
+    variantLabel: row.variant_label,
+    isDemo: row.is_demo,
+    isVerified: !row.is_demo && row.order_item_id !== null,
+    sellerReply: row.seller_reply,
+    sellerRepliedAt: row.seller_replied_at,
+    hiddenAt: row.hidden_at,
+    hiddenReason: row.hidden_reason,
   };
 }
 
-/**
- * Public reviews for one product, newest first, with a live-computed
- * average — never denormalized onto `products` (see DECISIONS.md ADR-018).
- */
-export async function listProductReviews(
-  productId: string,
-): Promise<ProductReviewSummary> {
+/** Whether demo content is switched on in Admin › Settings. One read per request; off when it can't be read. */
+export const isDemoContentEnabled = cache(async (): Promise<boolean> => {
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from(DATABASE_TABLES.REVIEWS)
-    .select(
-      "id, order_item_id, product_id, buyer_id, reviewer_display_name, rating, comment, created_at",
-    )
-    .eq("product_id", productId)
-    .order("created_at", { ascending: false });
+  const { data, error } = await supabase.rpc("demo_content_enabled");
+  return !error && data === true;
+});
+
+/**
+ * Demo reviews (all products, or the given ones) while demo content is on; empty when it is
+ * off. A failed read shows the store without them rather than an error.
+ */
+async function listVisibleDemoReviews(productIds: readonly string[] | null, limit = 2000): Promise<Review[]> {
+  if (!(await isDemoContentEnabled())) return [];
+  const supabase = await createSupabaseServerClient();
+  const batches = productIds ? chunk(productIds, REVIEW_ID_BATCH) : [null];
+  const reviews: Review[] = [];
+  for (const batch of batches) {
+    let query = supabase.from(DATABASE_TABLES.REVIEWS).select(REVIEW_COLUMNS).eq("is_demo", true).is("hidden_at", null);
+    if (batch) query = query.in("product_id", batch);
+    const { data, error } = await query.order("created_at", { ascending: false }).limit(limit);
+    if (error) return [];
+    reviews.push(...(data ?? []).map((row) => toReview(row as ReviewRow)));
+  }
+  return reviews;
+}
+
+function chunk<T>(items: readonly T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+/**
+ * A product's storefront reviews, newest first, with a live summary — never denormalized
+ * onto `products` (ADR-018). `verified` covers real reviews only, for search-engine data.
+ */
+export async function listProductReviews(productId: string): Promise<ProductReviewSummary> {
+  const supabase = await createSupabaseServerClient();
+  const [{ data, error }, demoReviews] = await Promise.all([
+    supabase
+      .from(DATABASE_TABLES.REVIEWS)
+      .select(REVIEW_COLUMNS)
+      .eq("product_id", productId)
+      .eq("is_demo", false)
+      .is("hidden_at", null)
+      .order("created_at", { ascending: false })
+      .limit(REVIEW_LIST_LIMIT),
+    listVisibleDemoReviews([productId], REVIEW_LIST_LIMIT),
+  ]);
 
   if (error) {
     throw queryError("Failed to load reviews", error);
   }
 
-  const reviews = (data ?? []).map((row) => toReview(row as ReviewRow));
-  const reviewCount = reviews.length;
-  const averageRating =
-    reviewCount === 0
-      ? null
-      : reviews.reduce((sum, review) => sum + review.rating, 0) / reviewCount;
+  const reviews = [...(data ?? []).map((row) => toReview(row as ReviewRow)), ...demoReviews].sort((a, b) =>
+    b.createdAt.localeCompare(a.createdAt),
+  );
+  const summary = summarizeRatings(reviews.map((review) => review.rating));
+  const verified = summarizeRatings(reviews.filter((review) => review.isVerified).map((review) => review.rating));
+  return {
+    ...summary,
+    reviews,
+    withComments: reviews.filter((review) => review.comment).length,
+    verified: { average: verified.average, count: verified.count },
+  };
+}
 
-  return { reviews, averageRating, reviewCount };
+/** Average and count per product for tiles, in batched reads. Products without visible reviews are absent. */
+export async function getProductRatingSummaries(productIds: readonly string[]): Promise<Map<string, RatingSummary>> {
+  const ids = Array.from(new Set(productIds));
+  const result = new Map<string, RatingSummary>();
+  if (ids.length === 0) return result;
+  const supabase = await createSupabaseServerClient();
+
+  const ratingsByProduct = new Map<string, number[]>();
+  const add = (productId: string, rating: number) => {
+    const list = ratingsByProduct.get(productId) ?? [];
+    list.push(rating);
+    ratingsByProduct.set(productId, list);
+  };
+  for (let i = 0; i < ids.length; i += REVIEW_ID_BATCH) {
+    const { data, error } = await supabase
+      .from(DATABASE_TABLES.REVIEWS)
+      .select("product_id, rating")
+      .in("product_id", ids.slice(i, i + REVIEW_ID_BATCH))
+      .eq("is_demo", false)
+      .is("hidden_at", null);
+    if (error) {
+      throw queryError("Failed to load ratings", error);
+    }
+    for (const row of data ?? []) add(row.product_id, row.rating);
+  }
+  for (const review of await listVisibleDemoReviews(ids)) add(review.productId, review.rating);
+
+  for (const [productId, ratings] of ratingsByProduct) {
+    const summary = summarizeRatings(ratings);
+    if (summary.average !== null) result.set(productId, { average: summary.average, count: summary.count });
+  }
+  return result;
+}
+
+/** Recent, well-rated reviews with a real comment for the homepage, one per product. */
+export async function listFeaturedReviews(limit = 3): Promise<FeaturedReview[]> {
+  const supabase = await createSupabaseServerClient();
+  const [{ data, error }, demoReviews] = await Promise.all([
+    supabase
+      .from(DATABASE_TABLES.REVIEWS)
+      .select(REVIEW_COLUMNS)
+      .eq("is_demo", false)
+      .is("hidden_at", null)
+      .gte("rating", 4)
+      .not("comment", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(60),
+    listVisibleDemoReviews(null, 300),
+  ]);
+  if (error) {
+    throw queryError("Failed to load reviews", error);
+  }
+
+  const candidates = [
+    ...(data ?? []).map((row) => toReview(row as ReviewRow)),
+    ...demoReviews.filter((review) => review.rating >= 4 && review.comment),
+  ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+  // One review per product, and only comments long enough to say something.
+  const picked: Review[] = [];
+  const seen = new Set<string>();
+  for (const review of candidates) {
+    if (seen.has(review.productId) || (review.comment ?? "").length < 30) continue;
+    seen.add(review.productId);
+    picked.push(review);
+    if (picked.length === limit * 3) break;
+  }
+  if (picked.length === 0) return [];
+
+  const { data: productRows, error: productError } = await supabase
+    .from(DATABASE_TABLES.PRODUCTS)
+    .select(PRODUCT_COLUMNS)
+    .in("id", picked.map((review) => review.productId))
+    .eq("status", PRODUCT_STATUS.active);
+  if (productError) {
+    throw queryError("Failed to load reviewed products", productError);
+  }
+  const products = new Map(
+    ((productRows ?? []) as unknown as ProductRowWithImages[]).map((row) => {
+      const product = toProduct(row);
+      return [product.id, product] as const;
+    }),
+  );
+  const shopNames = await getShopNamesByIds(
+    Array.from(products.values()).flatMap((product) => (product.shopId ? [product.shopId] : [])),
+  ).catch(() => new Map<string, string>());
+
+  return picked
+    .flatMap((review) => {
+      const product = products.get(review.productId);
+      if (!product) return [];
+      return [
+        {
+          ...review,
+          productTitle: product.title,
+          productSlug: product.slug,
+          productImageUrl: getCoverImage(product)?.url ?? null,
+          shopName: product.shopId ? shopNames.get(product.shopId) ?? null : null,
+        },
+      ];
+    })
+    .slice(0, limit);
 }
 
 /**
@@ -1766,6 +1935,20 @@ export async function submitReview(
   return toReview(data as ReviewRow);
 }
 
+/** Edits the caller's own review (rating and comment), within 30 days — enforced by `update_review`. */
+export async function updateReview(reviewId: string, rating: number, comment: string | null): Promise<Review> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("update_review", {
+    p_review_id: reviewId,
+    p_rating: rating,
+    p_comment: comment ?? "",
+  });
+  if (error) {
+    throw new Error(mapPostgresError(error, "Could not update your review."));
+  }
+  return toReview(data as ReviewRow);
+}
+
 /**
  * Which of the given order items already have a review — used to hide
  * "Write a Review" for items the buyer has already covered.
@@ -1773,17 +1956,228 @@ export async function submitReview(
 export async function listReviewedOrderItemIds(
   orderItemIds: string[],
 ): Promise<Set<string>> {
-  if (orderItemIds.length === 0) return new Set();
+  return new Set((await listMyReviewsByOrderItem(orderItemIds)).keys());
+}
+
+/** The caller's own reviews for the given order items, keyed by order item — for showing and editing them on an order. */
+export async function listMyReviewsByOrderItem(orderItemIds: string[]): Promise<Map<string, Review>> {
+  const result = new Map<string, Review>();
+  if (orderItemIds.length === 0) return result;
+  const supabase = await createSupabaseServerClient();
+  for (let i = 0; i < orderItemIds.length; i += REVIEW_ID_BATCH) {
+    const { data, error } = await supabase
+      .from(DATABASE_TABLES.REVIEWS)
+      .select(REVIEW_COLUMNS)
+      .in("order_item_id", orderItemIds.slice(i, i + REVIEW_ID_BATCH));
+    if (error) {
+      throw queryError("Failed to check existing reviews", error);
+    }
+    for (const row of data ?? []) {
+      if (row.order_item_id) result.set(row.order_item_id, toReview(row as ReviewRow));
+    }
+  }
+  return result;
+}
+
+/** Delivered items the buyer has not reviewed yet, newest delivery first. */
+export async function listItemsToReview(
+  buyerId: string,
+  limit = 5,
+): Promise<{ items: ItemToReview[]; total: number }> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
-    .from(DATABASE_TABLES.REVIEWS)
-    .select("order_item_id")
-    .in("order_item_id", orderItemIds);
-
+    .from(DATABASE_TABLES.ORDERS)
+    .select("id, order_number, delivered_at, order_items(id, product_id, product_title, variant_label)")
+    .eq("buyer_id", buyerId)
+    .eq("order_status", ORDER_STATUS.delivered)
+    .order("delivered_at", { ascending: false, nullsFirst: false })
+    .limit(100);
   if (error) {
-    throw queryError("Failed to check existing reviews", error);
+    throw queryError("Failed to load items to review", error);
   }
-  return new Set((data ?? []).map((row) => row.order_item_id));
+
+  const all: ItemToReview[] = (data ?? []).flatMap((order) =>
+    (order.order_items ?? []).map((item) => ({
+      orderId: order.id,
+      orderNumber: order.order_number,
+      orderItemId: item.id,
+      productId: item.product_id,
+      productTitle: item.product_title,
+      variantLabel: item.variant_label,
+      deliveredAt: order.delivered_at,
+    })),
+  );
+  const reviewed = await listReviewedOrderItemIds(all.map((item) => item.orderItemId));
+  const open = all.filter((item) => !reviewed.has(item.orderItemId));
+  return { items: open.slice(0, limit), total: open.length };
+}
+
+/** Posts or replaces the shop's one reply under a review — `reply_to_review` checks the caller belongs to the product's shop. */
+export async function replyToReview(reviewId: string, reply: string): Promise<Review> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("reply_to_review", { p_review_id: reviewId, p_reply: reply });
+  if (error) {
+    throw new Error(mapPostgresError(error, "Could not post your reply."));
+  }
+  return toReview(data as ReviewRow);
+}
+
+export type ShopReviewTab = "reply" | "all" | "low";
+
+type ReviewWithProductRow = ReviewRow & { products: { title: string; slug: string; shop_id: string | null } | null };
+
+function toManagedReview(row: ReviewWithProductRow, shopNames: ReadonlyMap<string, string>): ManagedReview {
+  const shopId = row.products?.shop_id ?? null;
+  return {
+    ...toReview(row),
+    productTitle: row.products?.title ?? "Product",
+    productSlug: row.products?.slug ?? "",
+    shopName: shopId ? shopNames.get(shopId) ?? null : null,
+  };
+}
+
+/** Low ratings (3 stars or fewer) on real reviews that the shop has not answered. */
+const NEEDS_REPLY_MAX_RATING = 3;
+
+/**
+ * The signed-in seller's shop's reviews for the Seller Portal. "reply" = real reviews of 3
+ * stars or fewer without a reply, oldest first so nothing waits forever; "low" = 1–2 stars.
+ */
+export async function listShopReviews(
+  params: PaginationParams & { tab: ShopReviewTab },
+): Promise<PaginatedResult<ManagedReview>> {
+  const owner = await getCurrentSellerOwner();
+  if (!owner.shopId) return { items: [], total: 0, page: params.page, pageSize: params.pageSize, totalPages: 1 };
+  const supabase = await createSupabaseServerClient();
+
+  let query = supabase
+    .from(DATABASE_TABLES.REVIEWS)
+    .select(`${REVIEW_COLUMNS}, products!inner(title, slug, shop_id)`, { count: "exact" })
+    .eq("products.shop_id", owner.shopId)
+    .eq("is_demo", false);
+  if (params.tab === "reply") {
+    query = query
+      .is("seller_reply", null)
+      .is("hidden_at", null)
+      .lte("rating", NEEDS_REPLY_MAX_RATING)
+      .order("created_at", { ascending: true });
+  } else {
+    if (params.tab === "low") query = query.lte("rating", 2);
+    query = query.order("created_at", { ascending: false });
+  }
+
+  const { from, to } = toRange(params);
+  const { data, error, count } = await query.range(from, to);
+  if (error) {
+    throw queryError("Failed to load reviews", error);
+  }
+  const total = count ?? 0;
+  return {
+    items: (data ?? []).map((row) => toManagedReview(row as unknown as ReviewWithProductRow, new Map())),
+    total,
+    page: params.page,
+    pageSize: params.pageSize,
+    totalPages: Math.max(1, Math.ceil(total / params.pageSize)),
+  };
+}
+
+/** How many real low ratings the shop has not answered — the Seller Portal menu badge. */
+export const countShopReviewsNeedingReply = cache(async (shopId: string): Promise<number> => {
+  const supabase = await createSupabaseServerClient();
+  const { count, error } = await supabase
+    .from(DATABASE_TABLES.REVIEWS)
+    .select("id, products!inner(shop_id)", { count: "exact", head: true })
+    .eq("products.shop_id", shopId)
+    .eq("is_demo", false)
+    .is("seller_reply", null)
+    .is("hidden_at", null)
+    .lte("rating", NEEDS_REPLY_MAX_RATING);
+  if (error) {
+    throw queryError("Failed to count reviews", error);
+  }
+  return count ?? 0;
+});
+
+export type AdminReviewTab = "all" | "low" | "hidden" | "demo";
+
+/** Every review for the Admin Portal, newest first. Admin RLS reads hidden and switched-off demo reviews too. */
+export async function listAdminReviews(
+  params: PaginationParams & { tab: AdminReviewTab },
+): Promise<PaginatedResult<ManagedReview>> {
+  const supabase = await createSupabaseServerClient();
+  let query = supabase
+    .from(DATABASE_TABLES.REVIEWS)
+    .select(`${REVIEW_COLUMNS}, products(title, slug, shop_id)`, { count: "exact" });
+  if (params.tab === "low") query = query.lte("rating", 2).eq("is_demo", false);
+  else if (params.tab === "hidden") query = query.not("hidden_at", "is", null);
+  else if (params.tab === "demo") query = query.eq("is_demo", true);
+  else query = query.eq("is_demo", false);
+
+  const { from, to } = toRange(params);
+  const { data, error, count } = await query.order("created_at", { ascending: false }).range(from, to);
+  if (error) {
+    throw queryError("Failed to load reviews", error);
+  }
+  const rows = (data ?? []) as unknown as ReviewWithProductRow[];
+  const shopNames = await getShopNamesByIds(
+    rows.flatMap((row) => (row.products?.shop_id ? [row.products.shop_id] : [])),
+  ).catch(() => new Map<string, string>());
+  const total = count ?? 0;
+  return {
+    items: rows.map((row) => toManagedReview(row, shopNames)),
+    total,
+    page: params.page,
+    pageSize: params.pageSize,
+    totalPages: Math.max(1, Math.ceil(total / params.pageSize)),
+  };
+}
+
+/** Admin: hide a review (with a reason) or show it again. Logged to the audit log by the RPC. */
+export async function setReviewHidden(reviewId: string, hidden: boolean, reason: string | null): Promise<Review> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("admin_set_review_hidden", {
+    p_review_id: reviewId,
+    p_hidden: hidden,
+    p_reason: reason ?? "",
+  });
+  if (error) {
+    throw new Error(mapPostgresError(error, "Could not update this review."));
+  }
+  return toReview(data as ReviewRow);
+}
+
+/** Admin view of the demo set: whether it is showing and how many demo reviews exist. */
+export async function getDemoContentStatus(): Promise<{ enabled: boolean; count: number; products: number }> {
+  const supabase = await createSupabaseServerClient();
+  const [enabled, { data, error }] = await Promise.all([
+    isDemoContentEnabled(),
+    supabase.from(DATABASE_TABLES.REVIEWS).select("product_id").eq("is_demo", true).limit(5000),
+  ]);
+  if (error) {
+    throw queryError("Failed to load demo content", error);
+  }
+  const rows = data ?? [];
+  return { enabled, count: rows.length, products: new Set(rows.map((row) => row.product_id)).size };
+}
+
+/** Admin: show or hide every demo review. */
+export async function setDemoContent(enabled: boolean): Promise<boolean> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("admin_set_demo_content", { p_enabled: enabled });
+  if (error) {
+    throw new Error(mapPostgresError(error, "Could not change the demo content setting."));
+  }
+  return data === true;
+}
+
+/** Admin: delete every demo review for good (and switch demo content off). Returns how many were deleted. */
+export async function deleteDemoReviews(): Promise<number> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("admin_delete_demo_reviews");
+  if (error) {
+    throw new Error(mapPostgresError(error, "Could not remove the demo content."));
+  }
+  return data ?? 0;
 }
 
 // ============================================================================

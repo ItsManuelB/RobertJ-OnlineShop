@@ -8,6 +8,7 @@ import {
   RotateCcw,
   Settings,
   ShoppingBag,
+  Star,
   Store,
   Tags,
   Users,
@@ -36,6 +37,7 @@ export const ADMIN_NAV_GROUPS: readonly PortalNavGroup[] = [
       { href: ROUTES.adminProducts, label: "Products", icon: Package },
       { href: ROUTES.adminInventory, label: "Inventory", icon: Boxes },
       { href: ROUTES.adminCategories, label: "Categories", icon: Tags },
+      { href: ROUTES.adminReviews, label: "Reviews", icon: Star },
     ],
   },
   {

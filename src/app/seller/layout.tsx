@@ -7,6 +7,7 @@ import { SellerLayout } from "@/features/seller";
 import { buildSellerNavBadges, type SellerTask } from "@/features/seller/utils/seller-tasks";
 import { getSellerTaskList } from "@/features/seller/utils/seller-tasks.server";
 import {
+  countShopReviewsNeedingReply,
   getCurrentSellerOwner,
   getRecentlyConfirmedOrders,
   getShopById,
@@ -71,17 +72,23 @@ async function getSellerShopCard(): Promise<PortalShopCard> {
 
 export default async function SellerRootLayout({ children }: { children: ReactNode }) {
   const user = await requireRole([USER_ROLES.seller]);
-  const [tasks, shop] = await Promise.all([
+  const [tasks, shop, owner] = await Promise.all([
     getSellerTaskList().catch(() => [] as SellerTask[]),
     getSellerShopCard().catch(() => null),
+    getCurrentSellerOwner().catch(() => null),
   ]);
+  // Unanswered low ratings; a failed count just shows no badge.
+  const reviewsToAnswer = owner?.shopId ? await countShopReviewsNeedingReply(owner.shopId).catch(() => 0) : 0;
   const notifications = await getSellerNotifications(tasks);
-  const badges: PortalBadges = buildSellerNavBadges(tasks, {
-    orders: ROUTES.sellerOrders,
-    returns: ROUTES.sellerReturns,
-    payments: ROUTES.sellerPayments,
-    inventory: ROUTES.sellerInventory,
-  });
+  const badges: PortalBadges = {
+    ...buildSellerNavBadges(tasks, {
+      orders: ROUTES.sellerOrders,
+      returns: ROUTES.sellerReturns,
+      payments: ROUTES.sellerPayments,
+      inventory: ROUTES.sellerInventory,
+    }),
+    ...(reviewsToAnswer > 0 ? { [ROUTES.sellerReviews]: { count: reviewsToAnswer } } : {}),
+  };
 
   return (
     <SellerLayout user={user} notifications={notifications} badges={badges} shop={shop}>

@@ -30,6 +30,8 @@ import { ProductQuantityAndAddToCart } from "@/features/products/components/Prod
 import { RelatedProducts } from "@/features/products/components/RelatedProducts";
 import { ProductReviews } from "@/features/reviews/components/ProductReviews";
 import { StarRating } from "@/features/reviews/components/StarRating";
+import type { ProductReviewSummary } from "@/features/reviews/types/review.types";
+import { emptyReviewSummary, formatAverage } from "@/features/reviews/utils/review-format";
 
 interface ProductDetailPageProps {
   params: Promise<{ slug: string }>;
@@ -72,11 +74,7 @@ export default async function ProductDetailPage({
     (product.sellerId ? shopNames.get(product.sellerId) : null) ??
     (product.shopId ? shopNamesByShopId.get(product.shopId) : null) ??
     (product.sellerRole === USER_ROLES.seller ? product.sellerName : null);
-  const reviewSummary = await listProductReviews(product.id).catch(() => ({
-    reviews: [],
-    averageRating: null,
-    reviewCount: 0,
-  }));
+  const reviewSummary: ProductReviewSummary = await listProductReviews(product.id).catch(emptyReviewSummary);
   const variants = await listProductVariants(product.id).catch(() => []);
   const variantStockMap =
     variants.length > 0
@@ -134,17 +132,16 @@ export default async function ProductDetailPage({
             ) : null}
           </div>
 
-          {/* Ratings — real, verified-purchase reviews (see ProductReviews
-              below); jumps straight to that section rather than duplicating
-              the review list up here. */}
-          {reviewSummary.reviewCount > 0 && reviewSummary.averageRating !== null ? (
+          {/* Ratings: jumps straight to the reviews section rather than
+              duplicating the list up here. */}
+          {reviewSummary.count > 0 && reviewSummary.average !== null ? (
             <a href="#reviews" className="flex w-fit items-center gap-2">
-              <StarRating rating={reviewSummary.averageRating} size="md" />
+              <StarRating rating={reviewSummary.average} size="md" />
               <span className="text-sm font-semibold text-rj-black">
-                {reviewSummary.averageRating.toFixed(1)}
+                {formatAverage(reviewSummary.average)}
               </span>
-              <span className="text-sm text-rj-gray-400 underline-offset-2 hover:underline">
-                ({reviewSummary.reviewCount} review{reviewSummary.reviewCount === 1 ? "" : "s"})
+              <span className="text-sm text-rj-gray-600 underline-offset-2 hover:underline">
+                ({reviewSummary.count} review{reviewSummary.count === 1 ? "" : "s"})
               </span>
             </a>
           ) : (
@@ -263,7 +260,7 @@ export default async function ProductDetailPage({
       </ProductSelectionProvider>
 
       <div id="reviews">
-        <ProductReviews summary={reviewSummary} />
+        <ProductReviews summary={reviewSummary} shopName={shopName ?? null} />
       </div>
 
       <Suspense fallback={null}>

@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/feedback/EmptyState";
 import { canPurchase } from "@/lib/auth/permissions";
 import { formatCurrency } from "@/lib/utils/currency";
 import {
+  getProductRatingSummaries,
   getProductSoldCounts,
   listProductIdsWithVariants,
   getSessionUser,
@@ -20,6 +21,7 @@ import {
 import { ProductTile, type ProductTileItem } from "@/features/products/components/ProductTile";
 import { WishlistButton } from "@/features/wishlist/components/WishlistButton";
 import { GuidedSelectionPromo } from "@/features/assistant";
+import type { RatingSummary } from "@/features/reviews/types/review.types";
 import { getCoverImage, type Product } from "@/features/products/types/product.types";
 
 export interface ProductGridProps {
@@ -85,6 +87,7 @@ function toTileItem(
   canPurchase: boolean,
   hasOptions: boolean,
   override?: { priceCents?: number; footer?: ReactNode },
+  rating?: RatingSummary | null,
 ): ProductTileItem {
   // Real shop name when the seller belongs to one (see
   // `resolve_shop_membership`); next, the product's own `shop_id` directly
@@ -140,6 +143,7 @@ function toTileItem(
     hasOptions,
     canPurchase,
     footer: override?.footer,
+    rating,
   };
 }
 
@@ -208,7 +212,7 @@ export async function ProductGrid({
     ),
   ];
   const productIds = products.map((product) => product.id);
-  const [wishlistedIds, shopNames, shopNamesByShopId, soldCounts, optionProductIds] =
+  const [wishlistedIds, shopNames, shopNamesByShopId, soldCounts, optionProductIds, ratings] =
     await Promise.all([
       user
         ? listWishlistProductIds(user.id)
@@ -220,6 +224,8 @@ export async function ProductGrid({
       getProductSoldCounts(productIds).catch(() => new Map<string, number>()),
       // Degrades to "no options known" (quick-add as before) if this lookup fails.
       listProductIdsWithVariants(productIds).catch(() => new Set<string>()),
+      // A failed read simply shows no ratings, never a wrong one.
+      getProductRatingSummaries(productIds).catch(() => new Map<string, RatingSummary>()),
     ]);
 
   // Guests + buyers can transact; seller/admin browse read-only, so their
@@ -236,6 +242,7 @@ export async function ProductGrid({
       viewerCanPurchase,
       optionProductIds.has(product.id),
       overrides?.[product.id],
+      ratings.get(product.id) ?? null,
     ),
   );
 

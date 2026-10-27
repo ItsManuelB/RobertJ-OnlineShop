@@ -7,6 +7,7 @@ import {
   Plus,
   Settings,
   ShoppingBag,
+  Star,
   Store,
   Undo2,
 } from "lucide-react";
@@ -25,6 +26,7 @@ export const SELLER_NAV_GROUPS: readonly PortalNavGroup[] = [
     items: [
       { href: ROUTES.sellerOrders, label: "Orders", icon: ShoppingBag },
       { href: ROUTES.sellerReturns, label: "Returns", icon: Undo2 },
+      { href: ROUTES.sellerReviews, label: "Reviews", icon: Star },
       { href: ROUTES.sellerPayments, label: "Payments", icon: CreditCard },
     ],
   },

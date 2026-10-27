@@ -876,6 +876,7 @@ export type Database = {
           business_address: string | null
           business_hours: string | null
           default_low_stock_threshold: number
+          demo_content_enabled: boolean
           id: boolean
           support_email: string
           support_phone: string | null
@@ -886,6 +887,7 @@ export type Database = {
           business_address?: string | null
           business_hours?: string | null
           default_low_stock_threshold?: number
+          demo_content_enabled?: boolean
           id?: boolean
           support_email?: string
           support_phone?: string | null
@@ -896,6 +898,7 @@ export type Database = {
           business_address?: string | null
           business_hours?: string | null
           default_low_stock_threshold?: number
+          demo_content_enabled?: boolean
           id?: boolean
           support_email?: string
           support_phone?: string | null
@@ -1459,34 +1462,55 @@ export type Database = {
       }
       reviews: {
         Row: {
-          buyer_id: string
+          buyer_id: string | null
           comment: string | null
           created_at: string
+          variant_label: string | null
+          hidden_at: string | null
+          hidden_reason: string | null
           id: string
-          order_item_id: string
+          is_demo: boolean
+          order_item_id: string | null
           product_id: string
           rating: number
           reviewer_display_name: string | null
+          seller_replied_at: string | null
+          seller_reply: string | null
+          updated_at: string | null
         }
         Insert: {
-          buyer_id: string
+          buyer_id?: string | null
           comment?: string | null
           created_at?: string
+          variant_label?: string | null
+          hidden_at?: string | null
+          hidden_reason?: string | null
           id?: string
-          order_item_id: string
+          is_demo?: boolean
+          order_item_id?: string | null
           product_id: string
           rating: number
           reviewer_display_name?: string | null
+          seller_replied_at?: string | null
+          seller_reply?: string | null
+          updated_at?: string | null
         }
         Update: {
-          buyer_id?: string
+          buyer_id?: string | null
           comment?: string | null
           created_at?: string
+          variant_label?: string | null
+          hidden_at?: string | null
+          hidden_reason?: string | null
           id?: string
-          order_item_id?: string
+          is_demo?: boolean
+          order_item_id?: string | null
           product_id?: string
           rating?: number
           reviewer_display_name?: string | null
+          seller_replied_at?: string | null
+          seller_reply?: string | null
+          updated_at?: string | null
         }
         Relationships: [
           {
@@ -2062,6 +2086,34 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      admin_delete_demo_reviews: { Args: never; Returns: number }
+      admin_set_demo_content: { Args: { p_enabled: boolean }; Returns: boolean }
+      admin_set_review_hidden: {
+        Args: { p_hidden: boolean; p_reason: string; p_review_id: string }
+        Returns: {
+            buyer_id: string | null
+            comment: string | null
+            created_at: string
+            variant_label: string | null
+            hidden_at: string | null
+            hidden_reason: string | null
+            id: string
+            is_demo: boolean
+            order_item_id: string | null
+            product_id: string
+            rating: number
+            reviewer_display_name: string | null
+            seller_replied_at: string | null
+            seller_reply: string | null
+            updated_at: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "reviews"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       admin_update_platform_settings: {
         Args: {
           p_business_address: string
@@ -2087,6 +2139,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      demo_content_enabled: { Args: never; Returns: boolean }
       update_inventory_low_stock_threshold: {
         Args: { p_product_id: string; p_variant_id: string | null; p_threshold: number | null }
         Returns: Database["public"]["Tables"]["inventory"]["Row"]
@@ -3093,17 +3146,76 @@ export type Database = {
       }
       self_deactivate_account: { Args: never; Returns: undefined }
       slugify: { Args: { value: string }; Returns: string }
+      reply_to_review: {
+        Args: { p_reply: string; p_review_id: string }
+        Returns: {
+            buyer_id: string | null
+            comment: string | null
+            created_at: string
+            variant_label: string | null
+            hidden_at: string | null
+            hidden_reason: string | null
+            id: string
+            is_demo: boolean
+            order_item_id: string | null
+            product_id: string
+            rating: number
+            reviewer_display_name: string | null
+            seller_replied_at: string | null
+            seller_reply: string | null
+            updated_at: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "reviews"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       submit_review: {
         Args: { p_comment: string; p_order_item_id: string; p_rating: number }
         Returns: {
-          buyer_id: string
+          buyer_id: string | null
           comment: string | null
           created_at: string
+          variant_label: string | null
+          hidden_at: string | null
+          hidden_reason: string | null
           id: string
-          order_item_id: string
+          is_demo: boolean
+          order_item_id: string | null
           product_id: string
           rating: number
           reviewer_display_name: string | null
+          seller_replied_at: string | null
+          seller_reply: string | null
+          updated_at: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "reviews"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      update_review: {
+        Args: { p_comment: string; p_rating: number; p_review_id: string }
+        Returns: {
+            buyer_id: string | null
+            comment: string | null
+            created_at: string
+            variant_label: string | null
+            hidden_at: string | null
+            hidden_reason: string | null
+            id: string
+            is_demo: boolean
+            order_item_id: string | null
+            product_id: string
+            rating: number
+            reviewer_display_name: string | null
+            seller_replied_at: string | null
+            seller_reply: string | null
+            updated_at: string | null
         }
         SetofOptions: {
           from: "*"

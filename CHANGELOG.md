@@ -7,6 +7,15 @@ All notable changes to RoberJ Online Shop are documented here, newest first. For
 
 ## [Unreleased]
 
+### Added (Buyer reviews and ratings)
+
+- **Ratings where buyers decide:** "★ 4.6 (23)" on product tiles across the homepage, catalog, Guided Selection results and wishlist (hidden when a product has no reviews), and a homepage section, "What buyers are saying", with three recent 4–5 star reviews linked to their products.
+- **Product page reviews:** average with a 5-to-1 star breakdown, filters (each star, 1–2 stars, with comments), sort (newest, highest, lowest), five at a time with "Show more"; each review shows the date, what was bought, "Verified purchase" and the shop's reply. Reviewer names show as first name and last initial.
+- **Asking at the right moment:** "Items to review" in Overview's attention panel and a "Waiting for your rating" list that opens the review form on the order; a "Rate items" button on completed orders. Buyers can edit their review for 30 days.
+- **Care:** a Reviews page in the Seller Portal (unanswered 1–3 star reviews first, with a menu badge) where the shop posts one reply per review, and a Reviews page in the Admin Portal to hide a review with a reason (audit-logged) or show it again.
+- **Demo content:** sample reviews for presentations, kept apart from real ones. They have no order behind them, never count as verified, never change sales or stock, are never sent to search engines, carry a "Sample" tag, and show only while Admin › Settings › Demo content is on; "Remove demo content" deletes them. The demo set (`supabase/seed/demo-reviews.sql`, a deterministic generator) gives every active product 7–14 Tagalog reviews, about 800 in all, with seller replies on the complaints. Migration `20261029020000_demo_reviews_public_sample_tag.sql` keeps them public-with-tag after a short-lived presenter-only variant (`20261029010000`) was replaced.
+- Migration `20261029000000_reviews_replies_moderation_demo.sql` (additive): `reviews` gains `is_demo`, `variant_label`, `updated_at`, `seller_reply`, `seller_replied_at`, `hidden_at`, `hidden_reason`; `platform_settings` gains `demo_content_enabled`; new RPCs `update_review`, `reply_to_review`, `admin_set_review_hidden`, `admin_set_demo_content`, `admin_delete_demo_reviews`; `submit_review` now saves what was bought.
+
 ### Changed (Guided Product Selection)
 
 - **A real page at `/assistant`** replaces the landing-page dialog. One question per step (category, occasion, details, budget) with progress, Back and Skip; single-choice steps move on after a tap. The answers live in the address, so Back works, results can be shared, and opening a product no longer loses them.
