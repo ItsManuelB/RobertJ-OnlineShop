@@ -7,6 +7,14 @@ All notable changes to RoberJ Online Shop are documented here, newest first. For
 
 ## [Unreleased]
 
+### Changed (Buyer My Account: Addresses, Notifications, Profile, Change Password, Privacy & Settings)
+
+- **Addresses:** a card grid with the default pinned first and outlined, a saved count, "Set as default" on the other cards, and an "Add address" button on the empty state.
+- **Notifications:** grouped by day (Manila time) with All / Orders / Payments / Returns chips and icons instead of emoji; the page now asks for 50 updates (the header bell keeps 20) and says when the list is full.
+- **Profile:** an identity card with the photo and a completeness bar beside the form; Save is enabled only when something changed.
+- **Change Password:** a live checklist (minimum length, matches confirmation) and, after success, a prompt to sign out other devices. Also shown on the Seller and Admin settings pages, which share the form.
+- **Privacy & Settings:** a security summary, jump chips, two-column sections, and Deactivate Account moved into its own danger zone listing what happens.
+
 ### Changed (Buyer My Account: Overview, Orders, Wishlist)
 
 - **Overview:** a "Needs your attention" panel (unpaid orders with time left on the 60-minute hold, parcels to confirm, returns in progress, or an all-caught-up line); the six order groups now match the Orders tabs and link to them; a three-item wishlist preview replaces the quick links; latest orders drop from 5 to 3.

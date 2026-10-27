@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useId, type ReactNode } from "react";
+import { useActionState, useId, useState, type FormEvent, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/feedback/ErrorState";
@@ -9,6 +9,7 @@ import { ROUTES } from "@/constants/routes";
 import { AvatarUploader } from "@/features/account/components/AvatarUploader";
 import { updateProfileAction } from "@/features/account/actions/account.actions";
 import type { Profile } from "@/features/account/types/account.types";
+import { getProfileCompleteness } from "@/features/account/utils/profile-completeness";
 import type { ActionResult } from "@/types/action.types";
 
 const GENDER_OPTIONS = [
@@ -57,6 +58,31 @@ function ProfileRow({
   );
 }
 
+const EDITABLE_FIELDS = ["username", "fullName", "phone", "gender", "dateOfBirth"] as const;
+type FieldValues = Record<(typeof EDITABLE_FIELDS)[number], string>;
+
+function savedValues(profile: Profile): FieldValues {
+  return {
+    username: profile.username ?? "",
+    fullName: profile.fullName ?? "",
+    phone: profile.phone ?? "",
+    gender: profile.gender ?? "",
+    dateOfBirth: profile.dateOfBirth ?? "",
+  };
+}
+
+function readValues(form: HTMLFormElement): FieldValues {
+  const data = new FormData(form);
+  const read = (name: string) => String(data.get(name) ?? "");
+  return {
+    username: read("username"),
+    fullName: read("fullName"),
+    phone: read("phone"),
+    gender: read("gender"),
+    dateOfBirth: read("dateOfBirth"),
+  };
+}
+
 /**
  * `/profile` edit form — a compact, Shopee-style label|field list (not the
  * app's usual stacked, sectioned dashboard form), matched to the reference
@@ -99,11 +125,48 @@ export function ProfileForm({
   const formError = state && !state.success && !state.fieldErrors ? state.error : undefined;
   const displayName = profile.fullName ?? email;
   const usernameLocked = Boolean(profile.usernameChangedAt);
+  const completeness = getProfileCompleteness(profile);
+
+  // Latest values typed into the form. Compared with the saved profile on every render, so
+  // Save wakes up on a real change and goes back to sleep once the saved profile catches up.
+  const [typed, setTyped] = useState<FieldValues | null>(null);
+  const saved = savedValues(profile);
+  const isDirty = typed !== null && EDITABLE_FIELDS.some((field) => typed[field] !== saved[field]);
+
+  function handleChange(event: FormEvent<HTMLFormElement>) {
+    setTyped(readValues(event.currentTarget));
+  }
 
   return (
-    <div className="rounded-2xl border border-rj-gray-100 bg-rj-white p-6 sm:p-8">
-      <div className="flex flex-col lg:flex-row lg:gap-10">
-        <div className="min-w-0 flex-1">
+    <div className="grid items-start gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
+      <aside className="flex flex-col items-center gap-4 rounded-2xl border border-rj-gray-100 bg-rj-white p-6 text-center">
+        <AvatarUploader currentUrl={profile.avatarUrl} name={displayName} />
+        <div className="w-full min-w-0">
+          <p className="truncate text-sm font-semibold text-rj-black">{displayName}</p>
+          <p className="truncate text-xs text-rj-gray-600">{email}</p>
+        </div>
+        <div className="flex w-full flex-col gap-1.5 text-left">
+          <p className="text-xs font-semibold text-rj-black">Profile {completeness.percent}% complete</p>
+          <div
+            className="h-2 w-full overflow-hidden rounded-full bg-rj-gray-100"
+            role="progressbar"
+            aria-label="Profile completeness"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={completeness.percent}
+          >
+            <div className="h-full rounded-full bg-rj-black" style={{ width: `${completeness.percent}%` }} />
+          </div>
+          <p className="text-xs text-rj-gray-600">
+            {completeness.missing.length === 0
+              ? "Name, phone, birthday, gender and photo are set."
+              : `Still to add: ${completeness.missing.join(", ")}.`}
+          </p>
+        </div>
+      </aside>
+
+      <div className="rounded-2xl border border-rj-gray-100 bg-rj-white p-6 sm:p-8">
+        <div className="min-w-0">
           {formError ? (
             <div className="mb-5">
               <ErrorState title="Couldn't save your profile" message={formError} />
@@ -119,7 +182,13 @@ export function ProfileForm({
             </div>
           ) : null}
 
-          <form action={formAction} noValidate aria-busy={isPending} className="flex flex-col gap-5">
+          <form
+            action={formAction}
+            onChange={handleChange}
+            noValidate
+            aria-busy={isPending}
+            className="flex flex-col gap-5"
+          >
             <input type="hidden" name="bio" value={profile.bio ?? ""} />
 
             <ProfileRow
@@ -232,16 +301,18 @@ export function ProfileForm({
             </ProfileRow>
 
             <div className="pt-2 sm:pl-[calc(7rem+1.5rem)]">
-              <Button type="submit" variant="rj" size="rj" isLoading={isPending}>
-                {isPending ? "Saving…" : "Save Changes"}
-              </Button>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button type="submit" variant="rj" size="rj" isLoading={isPending} disabled={!isDirty}>
+                  {isPending ? "Saving…" : "Save changes"}
+                </Button>
+                <span className="text-xs text-rj-gray-600" aria-live="polite">
+                  {isDirty ? "You have unsaved changes." : "Nothing to save yet."}
+                </span>
+              </div>
             </div>
           </form>
         </div>
 
-        <div className="mt-8 flex justify-center border-t border-rj-gray-100 pt-8 lg:mt-0 lg:w-52 lg:shrink-0 lg:justify-start lg:border-l lg:border-t-0 lg:pl-10 lg:pt-0">
-          <AvatarUploader currentUrl={profile.avatarUrl} name={displayName} />
-        </div>
       </div>
     </div>
   );
