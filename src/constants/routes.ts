@@ -3,6 +3,8 @@ export const ROUTES = {
   ourStory: "/our-story",
   products: "/products",
   productDetail: (slug: string) => `/products/${slug}`,
+  /** The catalog filtered to one shop — where that shop's public branding header renders. */
+  shopCatalog: (shopId: string) => `/products?shopId=${shopId}`,
   categories: "/categories",
   categoryDetail: (slug: string) => `/categories/${slug}`,
   cart: "/cart",

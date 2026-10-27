@@ -7,6 +7,11 @@ All notable changes to RoberJ Online Shop are documented here, newest first. For
 
 ## [Unreleased]
 
+### Changed (Seller Portal: My Shop and Products)
+- **My Shop** now has a page header with a **View public shop** link, a sticky **How buyers see it** preview that follows the banner, logo and description as you edit, a three-step **Shop profile** meter, and read-only **Shop details** (name, link, status; set by an administrator). Banner and logo still save on upload; the description now shows a save bar with **Discard** only while it has unsaved edits.
+- **Products** opens with a heading and the New product button; the status chips show product counts (new read-only `getProductStatusCounts`; All excludes archived, like the list).
+- **Product editor** shows a sections-ready meter above the section list, a **Ready to publish / N things left** banner at every width (also when editing), a done / needs attention / optional mark on each section card, and keeps Save and Publish pinned to the bottom on narrow screens. No schema, action or validation changes.
+
 ### Added (Admin Reports: per-shop view)
 - **Sales by shop.** Admin Reports now opens with a table of every shop side by side (net sales with previous-period change, share of total, gross, refunds, orders, paid, average order, units, cancelled %, refunded %) and an **All shops** total that is the sum of the rows. Orders linked to no shop appear as **Unassigned** so the rows always add up. Choosing a shop row filters the whole page to it. The Admin Dashboard, Admin Reports and the admin shop dashboard now use the Seller Dashboard's sales trend chart (net sales / orders toggle), following the shop filter; the old Revenue/Orders chart cards are removed. On Admin Reports the filter bar's Trend select sets its interval.
 - **Summary KPIs** show previous-period change chips and cancellation / refund rates; the Payment source card now shows its "adds up to Gross sales" check. The CSV export adds the shop name, a by-shop section (admin) and the shop in the file name.

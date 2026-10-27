@@ -12,8 +12,13 @@ const STATUS_ORDER: ProductStatus[] = [
   PRODUCT_STATUS.archived,
 ];
 
+export interface DashboardProductStatusFilterProps {
+  /** Per-status totals shown beside each label; omitted → plain chips. "All" is the sum excluding archived, matching the list's default view. */
+  counts?: Record<ProductStatus, number>;
+}
+
 /** Status chips for the Products dashboard table — mirrors `OrderStatusFilter`'s exact pattern (sets `status`, always clears `page`). */
-export function DashboardProductStatusFilter() {
+export function DashboardProductStatusFilter({ counts }: DashboardProductStatusFilterProps = {}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -37,6 +42,7 @@ export function DashboardProductStatusFilter() {
         onClick={() => updateParams(null)}
       >
         All
+        {counts ? <ChipCount value={allCount(counts)} /> : null}
       </button>
       {STATUS_ORDER.map((status) => (
         <button
@@ -47,8 +53,18 @@ export function DashboardProductStatusFilter() {
           onClick={() => updateParams(status)}
         >
           {PRODUCT_STATUS_LABELS[status]}
+          {counts ? <ChipCount value={counts[status]} /> : null}
         </button>
       ))}
     </div>
   );
+}
+
+/** The list's default ("All") view hides archived products, so its count does too. */
+function allCount(counts: Record<ProductStatus, number>): number {
+  return counts.draft + counts.active + counts.sold;
+}
+
+function ChipCount({ value }: { value: number }) {
+  return <span className="ml-1.5 tabular-nums opacity-80">{value}</span>;
 }

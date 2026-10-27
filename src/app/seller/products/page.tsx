@@ -9,7 +9,12 @@ import { DashboardProductSearchInput } from "@/features/products/components/Dash
 import { DashboardProductStatusFilter } from "@/features/products/components/DashboardProductStatusFilter";
 import { DashboardProductsPanel } from "@/features/products/components/DashboardProductsPanel";
 import { DashboardRowsSkeleton } from "@/features/dashboard/components/DashboardRowsSkeleton";
-import { getOwnShopId, listActiveCategories, requireSessionUser } from "@/lib/supabase/queries";
+import {
+  getOwnShopId,
+  getProductStatusCounts,
+  listActiveCategories,
+  requireSessionUser,
+} from "@/lib/supabase/queries";
 
 export const metadata: Metadata = { title: "Products — Seller Portal" };
 
@@ -24,29 +29,38 @@ export default async function SellerProductsPage({ searchParams }: SellerProduct
     getOwnShopId(user.id).then((shopId) => ({ sellerId: user.id, shopId })),
     listActiveCategories(),
   ]);
+  // The tab numbers are a nicety — a failed count just leaves the plain chips.
+  const statusCounts = await getProductStatusCounts(owner).catch(() => undefined);
 
   return (
     <div className="flex flex-col gap-6 p-5 lg:p-7">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-foreground">Products</h1>
+          <p className="text-sm text-muted-foreground">
+            Create, price and publish what your shop sells.
+          </p>
+        </div>
+        <Link
+          href={ROUTES.sellerProductNew}
+          className={buttonVariants({ variant: "primary", size: "rjSm" })}
+        >
+          New product
+        </Link>
+      </div>
+
       <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center gap-2">
+        <Suspense fallback={null}>
+          <DashboardProductStatusFilter counts={statusCounts} />
+        </Suspense>
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
           <div className="min-w-[14rem] flex-1">
             <Suspense fallback={null}>
               <DashboardProductSearchInput />
             </Suspense>
           </div>
-          <Link
-            href={ROUTES.sellerProductNew}
-            className={buttonVariants({ variant: "primary", size: "rjSm" })}
-          >
-            New product
-          </Link>
-        </div>
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
           <Suspense fallback={null}>
             <DashboardCategoryFilter categories={categories} />
-          </Suspense>
-          <Suspense fallback={null}>
-            <DashboardProductStatusFilter />
           </Suspense>
         </div>
       </div>

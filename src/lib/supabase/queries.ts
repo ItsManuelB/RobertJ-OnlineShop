@@ -6818,6 +6818,42 @@ export async function getProductCount(
 }
 
 /**
+ * Per-status product totals for the Products page's status tabs — same
+ * owner-filter shape as `getProductCount`, one `head: true` probe per status
+ * (a few cheap index counts instead of fetching rows). Search/category are
+ * deliberately not applied: the tabs show the seller's whole catalog.
+ */
+export async function getProductStatusCounts(
+  owner: { sellerId: string; shopId: string | null } | null,
+): Promise<Record<ProductStatus, number>> {
+  const supabase = await createSupabaseServerClient();
+  const statuses = Object.values(PRODUCT_STATUS) as ProductStatus[];
+
+  const counts = await Promise.all(
+    statuses.map(async (status) => {
+      let query = supabase
+        .from(DATABASE_TABLES.PRODUCTS)
+        .select("id", { count: "exact", head: true })
+        .eq("status", status);
+
+      if (owner) {
+        query = query.or(
+          owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`,
+        );
+      }
+
+      const { count, error } = await query;
+      if (error) {
+        throw queryError("Failed to count products", error);
+      }
+      return [status, count ?? 0] as const;
+    }),
+  );
+
+  return Object.fromEntries(counts) as Record<ProductStatus, number>;
+}
+
+/**
  * Paginated/filtered counterpart to `listDashboardProducts` — powers the
  * Products table (search/status/category + page). Kept as a separate
  * function rather than changing `listDashboardProducts`'s signature: that
