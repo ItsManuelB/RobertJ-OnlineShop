@@ -19,6 +19,7 @@ import {
 } from "@/features/inventory/constants/inventory.constants";
 import { MoveStockToOptionsForm } from "@/features/inventory/components/MoveStockToOptionsForm";
 import { StockAdjustmentForm } from "@/features/inventory/components/StockAdjustmentForm";
+import { StockLevelBar } from "@/features/inventory/components/StockLevelBar";
 import { StockHistoryPanel } from "@/features/inventory/components/StockHistoryPanel";
 import { InventoryThresholdForm } from "@/features/inventory/components/InventoryThresholdForm";
 import { StockStatusBadge } from "@/features/inventory/components/StockStatusBadge";
@@ -371,7 +372,12 @@ export function InventoryDataTable({ items, isAdmin, groupByShop = false }: Inve
                         </div>
                       </td>
                     )}
-                    <td className="p-3 align-top text-sm font-medium text-foreground">{item.quantity}</td>
+                    <td className="p-3 align-top text-sm font-medium text-foreground">
+                      {item.quantity}
+                      {!item.isUnassigned ? (
+                        <StockLevelBar quantity={item.quantity} threshold={item.lowStockThreshold} status={item.stockStatus} />
+                      ) : null}
+                    </td>
                     <td className="p-3 align-top text-sm text-muted-foreground">
                       {item.lowStockThreshold}
                       {!isAdmin ? (

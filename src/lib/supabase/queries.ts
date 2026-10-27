@@ -102,6 +102,7 @@ import {
   type DashboardInventoryListParams,
   type InventoryItem,
   type StockAdjustment,
+  type StockStatus,
 } from "@/features/inventory/types/inventory.types";
 import { RETURN_SELLER_RESPONSE_SLA_DAYS } from "@/features/returns/constants/return.constants";
 import { SHIP_OVERDUE_DAYS } from "@/features/seller/constants/fulfilment";
@@ -3132,6 +3133,38 @@ export async function getRefundPipeline(
  * boundary behind either query.
  */
 export type DashboardOrderOwner = { sellerId: string; shopId: string | null };
+
+/**
+ * Per-status order totals for the Orders page's tabs and next-step cards —
+ * one `head: true` probe per status with the same owner scope as
+ * `listDashboardOrders` (`sellerId`/`shopId` both null = admin, no filter).
+ * Primitive arguments so React `cache()` shares one result between the page
+ * and the list panel within a request.
+ */
+export const getDashboardOrderStatusCounts = cache(async function getDashboardOrderStatusCounts(
+  sellerId: string | null,
+  shopId: string | null,
+): Promise<Record<OrderStatus, number>> {
+  const supabase = await createSupabaseServerClient();
+  const statuses = Object.values(ORDER_STATUS) as OrderStatus[];
+
+  const counts = await Promise.all(
+    statuses.map(async (status) => {
+      let query = supabase
+        .from(DATABASE_TABLES.ORDERS)
+        .select("id", { count: "exact", head: true })
+        .eq("order_status", status);
+      if (sellerId) query = query.or(orderOwnerFilter({ sellerId, shopId }));
+      const { count, error } = await query;
+      if (error) {
+        throw queryError("Failed to count orders", error);
+      }
+      return [status, count ?? 0] as const;
+    }),
+  );
+
+  return Object.fromEntries(counts) as Record<OrderStatus, number>;
+});
 
 /** PostgREST `.or()` filter for a seller's own orders: their shop, or legacy shop-less rows they sold. */
 function orderOwnerFilter(owner: DashboardOrderOwner): string {
@@ -7230,6 +7263,31 @@ export async function listDashboardInventoryPage(
     pageSize: params.pageSize,
     totalPages: Math.max(1, Math.ceil(total / params.pageSize)),
   };
+}
+
+/**
+ * Per-status inventory row totals for the Inventory page's tabs — one
+ * `head: true` probe per `stock_status` (RLS scopes the rows to the caller's
+ * shop, or every shop for an admin), same column the list's filter uses.
+ */
+export async function getInventoryStatusCounts(): Promise<Record<StockStatus, number>> {
+  const supabase = await createSupabaseServerClient();
+  const statuses: StockStatus[] = ["in_stock", "low_stock", "out_of_stock"];
+
+  const counts = await Promise.all(
+    statuses.map(async (status) => {
+      const { count, error } = await supabase
+        .from(DATABASE_TABLES.INVENTORY)
+        .select("id", { count: "exact", head: true })
+        .eq("stock_status", status);
+      if (error) {
+        throw queryError("Failed to count inventory", error);
+      }
+      return [status, count ?? 0] as const;
+    }),
+  );
+
+  return Object.fromEntries(counts) as Record<StockStatus, number>;
 }
 
 /**

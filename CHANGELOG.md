@@ -7,6 +7,11 @@ All notable changes to RoberJ Online Shop are documented here, newest first. For
 
 ## [Unreleased]
 
+### Changed (Seller Portal: Inventory and Orders)
+- **Inventory** opens with a heading, a "N items need restocking" banner (with Show only these), and stock chips that show row counts (new read-only `getInventoryStatusCounts`). Each quantity now has a small bar against its low-stock threshold.
+- **Orders** opens with a heading and Scan barcode in the header. Status chips show order counts, with a dot on stages that have work waiting (new read-only `getDashboardOrderStatusCounts`). The single warning strip is replaced by **Next steps** cards: need confirmation, ready to pack, COD cash to collect, returns to restock, each linking to where that work happens. The cards also appear on the Admin Orders list; the Admin page's filter row is unchanged.
+- **Order detail** is two columns on wide screens: the status control comes first, then the timeline, cancellation and returns, items and address on the left; summary, buyer and payment stay in view on the right. No schema, action or validation changes.
+
 ### Changed (Seller Portal: My Shop and Products)
 - **My Shop** now has a page header with a **View public shop** link, a sticky **How buyers see it** preview that follows the banner, logo and description as you edit, a three-step **Shop profile** meter, and read-only **Shop details** (name, link, status; set by an administrator). Banner and logo still save on upload; the description now shows a save bar with **Discard** only while it has unsaved edits.
 - **Products** opens with a heading and the New product button; the status chips show product counts (new read-only `getProductStatusCounts`; All excludes archived, like the list).

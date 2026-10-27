@@ -14,13 +14,27 @@ import {
   ORDER_STATUS_FLOW,
 } from "@/features/orders/constants/order.constants";
 
+/** Stages where the seller has something to do next, so a non-zero count is flagged. */
+const WORK_WAITING = new Set<OrderStatus>(["pending", "confirmed", "processing"]);
+
+function ChipCount({ value }: { value: number }) {
+  return <span className="ml-1.5 tabular-nums opacity-80">{value}</span>;
+}
+
 /**
  * Status chips for the order history. Sets `status`, always clears `page`.
  * Renders identically on Buyer /orders and both portals' Orders list — pass
  * `themed` from the portal pages only; Buyer omits it and keeps the fixed
  * rj-* chip look.
  */
-export function OrderStatusFilter({ themed = false }: { themed?: boolean }) {
+export function OrderStatusFilter({
+  themed = false,
+  counts,
+}: {
+  themed?: boolean;
+  /** Per-status totals shown beside each chip (portals only); omitted → plain chips. */
+  counts?: Record<OrderStatus, number>;
+}) {
   const CHIP_ACTIVE = themed ? FILTER_CHIP_ACTIVE_THEMED : FILTER_CHIP_ACTIVE;
   const CHIP_IDLE = themed ? FILTER_CHIP_IDLE_THEMED : FILTER_CHIP_IDLE;
   const router = useRouter();
@@ -65,6 +79,7 @@ export function OrderStatusFilter({ themed = false }: { themed?: boolean }) {
         onClick={() => updateParams(null)}
       >
         All
+        {counts ? <ChipCount value={ORDER_STATUS_FLOW.reduce((sum, status) => sum + counts[status], 0)} /> : null}
       </button>
       {ORDER_STATUS_FLOW.map((status: OrderStatus) => (
         <button
@@ -75,6 +90,12 @@ export function OrderStatusFilter({ themed = false }: { themed?: boolean }) {
           onClick={() => updateParams(status)}
         >
           {getOrderStatusLabel(status)}
+          {counts ? <ChipCount value={counts[status]} /> : null}
+          {counts && counts[status] > 0 && WORK_WAITING.has(status) && activeStatus !== status ? (
+            <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-warning align-middle">
+              <span className="sr-only"> (work waiting)</span>
+            </span>
+          ) : null}
         </button>
       ))}
     </div>
