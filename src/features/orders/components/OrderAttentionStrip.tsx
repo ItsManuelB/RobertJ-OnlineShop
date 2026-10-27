@@ -12,6 +12,8 @@ export interface OrderAttentionStripProps {
   codAwaitingCollection: number;
   /** F-10: refunded returns whose item condition was never recorded — stock stays un-restored until someone does. Not part of the `attentionOnly` order filter (it's a return_requests count, not an orders one), so its own link just points at `returnsHref`. */
   returnsAwaitingRestock: number;
+  /** Orders confirmed/processing for too long without shipping. Optional (the admin watches it platform-wide; the seller sees it on their Dashboard). */
+  overdueToShip?: number;
   /** The orders list these cards filter (the seller's or the admin's). */
   ordersHref: string;
   /** Where COD cash is recorded — Payments, not an orders filter. */
@@ -26,6 +28,7 @@ interface StepCard {
   label: string;
   cta: string;
   href: string;
+  danger?: boolean;
 }
 
 const CARD =
@@ -44,6 +47,7 @@ export function OrderAttentionStrip({
   toPack,
   codAwaitingCollection,
   returnsAwaitingRestock,
+  overdueToShip = 0,
   ordersHref,
   paymentsHref,
   returnsHref,
@@ -59,6 +63,14 @@ export function OrderAttentionStrip({
       label: needsConfirmation === 1 ? "Needs confirmation" : "Need confirmation",
       cta: "Review →",
       href: `${ordersHref}?status=pending&confirmationRequired=true`,
+    },
+    {
+      key: "overdue",
+      count: overdueToShip,
+      label: "Overdue to ship",
+      cta: "Open To Pack →",
+      href: `${ordersHref}?status=confirmed`,
+      danger: true,
     },
     { key: "pack", count: toPack, label: "Ready to pack", cta: "Open To Pack →", href: `${ordersHref}?status=confirmed` },
     { key: "cod", count: codAwaitingCollection, label: "COD cash to collect", cta: "Open Payments →", href: paymentsHref },
@@ -92,11 +104,11 @@ export function OrderAttentionStrip({
           </button>
         ) : null}
       </div>
-      <ul className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+      <ul className="grid grid-cols-2 gap-2.5 lg:grid-cols-[repeat(auto-fit,minmax(10rem,1fr))]">
         {cards.map((card) => (
           <li key={card.key} className="min-w-0">
             <Link href={card.href} className={cn(CARD)}>
-              <span className="text-2xl font-semibold tabular-nums text-primary">{card.count}</span>
+              <span className={cn("text-2xl font-semibold tabular-nums", card.danger ? "text-destructive" : "text-primary")}>{card.count}</span>
               <span className="text-sm font-semibold text-foreground">{card.label}</span>
               <span className="mt-1 text-xs font-semibold text-primary">{card.cta}</span>
             </Link>

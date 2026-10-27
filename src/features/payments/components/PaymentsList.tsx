@@ -1,7 +1,6 @@
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { PaginationControls } from "@/features/products/components/PaginationControls";
-import { PaymentAttentionStrip } from "@/features/payments/components/PaymentAttentionStrip";
 import { PaymentSummaryCards } from "@/features/payments/components/PaymentSummaryCards";
 import { PaymentsDataTable } from "@/features/payments/components/PaymentsDataTable";
 import { dashboardPaymentListParamsSchema } from "@/features/payments/schemas/payment.schema";
@@ -14,7 +13,6 @@ import { isStaleXenditAttempt } from "@/features/payments/lib/xendit-reconciliat
 import {
   getPaymentHistorySummary,
   getPaymentReceiptSignedUrl,
-  getStalePaymentCount,
   listPaymentHistory,
 } from "@/lib/supabase/queries";
 import type { PaginatedResult } from "@/types/pagination.types";
@@ -47,20 +45,11 @@ export async function PaymentsList({ searchParams, showAdminTools = false, compa
 
   let result: PaginatedResult<Payment>;
   let summary: PaymentHistorySummary;
-  let staleCount = 0;
   try {
-    if (showAdminTools) {
-      [result, summary, staleCount] = await Promise.all([
-        listPaymentHistory(params),
-        getPaymentHistorySummary(params),
-        getStalePaymentCount(),
-      ]);
-    } else {
-      [result, summary] = await Promise.all([
-        listPaymentHistory(params),
-        getPaymentHistorySummary(params),
-      ]);
-    }
+    [result, summary] = await Promise.all([
+      listPaymentHistory(params),
+      getPaymentHistorySummary(params),
+    ]);
   } catch {
     return <ErrorState message="We couldn't load payment history right now." />;
   }
@@ -92,7 +81,6 @@ export async function PaymentsList({ searchParams, showAdminTools = false, compa
 
   return (
     <div className="flex flex-col gap-6">
-      {showAdminTools ? <PaymentAttentionStrip staleCount={staleCount} /> : null}
       <PaymentSummaryCards summary={summary} paymentSource={params.paymentSource} compact={compactSummary} />
 
       {items.length === 0 ? (

@@ -1,31 +1,27 @@
 import Link from "next/link";
 
 import { FILTER_CHIP_ACTIVE_THEMED, FILTER_CHIP_IDLE_THEMED } from "@/components/ui/filter-chip";
-import { ROUTES } from "@/constants/routes";
-import {
-  SELLER_RETURN_TABS,
-  SELLER_RETURN_TAB_LABELS,
-  type SellerReturnTab,
-} from "@/features/returns/utils/seller-return-queue";
 
 export interface ReturnQueueTabsProps {
-  active: SellerReturnTab;
-  counts: Record<SellerReturnTab, number>;
+  /** The queue's own route — each tab is a plain `?tab=` link on it. */
+  basePath: string;
+  active: string;
+  tabs: readonly { value: string; label: string; count: number }[];
 }
 
-/** Server-rendered tab links for the seller returns queue — each is a plain `?tab=` URL, so there's no client state to keep in sync. */
-export function ReturnQueueTabs({ active, counts }: ReturnQueueTabsProps) {
+/** Server-rendered tab links for a returns queue (seller or admin) — each is a plain `?tab=` URL, so there's no client state to keep in sync. */
+export function ReturnQueueTabs({ basePath, active, tabs }: ReturnQueueTabsProps) {
   return (
     <nav aria-label="Filter return requests" className="flex flex-wrap gap-2">
-      {SELLER_RETURN_TABS.map((tab) => (
+      {tabs.map((tab) => (
         <Link
-          key={tab}
-          href={`${ROUTES.sellerReturns}?tab=${tab}`}
-          aria-current={active === tab ? "page" : undefined}
-          className={active === tab ? FILTER_CHIP_ACTIVE_THEMED : FILTER_CHIP_IDLE_THEMED}
+          key={tab.value}
+          href={`${basePath}?tab=${tab.value}`}
+          aria-current={active === tab.value ? "page" : undefined}
+          className={active === tab.value ? FILTER_CHIP_ACTIVE_THEMED : FILTER_CHIP_IDLE_THEMED}
         >
-          {SELLER_RETURN_TAB_LABELS[tab]}
-          <span className="ml-1.5 tabular-nums opacity-80">{counts[tab]}</span>
+          {tab.label}
+          <span className="ml-1.5 tabular-nums opacity-80">{tab.count}</span>
         </Link>
       ))}
     </nav>

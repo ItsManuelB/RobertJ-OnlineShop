@@ -7,6 +7,13 @@ All notable changes to RoberJ Online Shop are documented here, newest first. For
 
 ## [Unreleased]
 
+### Changed (Admin Portal: Orders, Returns & Refunds, Payments)
+
+- **Orders:** page heading, next-step cards (needs confirmation, overdue to ship, ready to pack, COD cash, returns to restock) and status chips with counts. The shop filter now comes first, and both the cards and the chip counts follow the selected shop. The order detail page uses the Seller layout (actions and timeline left, summary, shop and buyer right).
+- **Returns & Refunds:** tabs (Needs my decision, COD payouts, In progress, Closed, All) with counts, 10 requests per page, a banner for requests waiting on a decision (with how many have an overdue seller reply), the shop name on each request, and the decision panel on requests the seller never answered. Evidence photos are signed only for the page on screen. Tab logic lives in `admin-return-queue.ts` with unit tests.
+- **Payments:** page heading, reconciliation banner above counted status chips, and the compact two-card summary. `PaymentsList` no longer fetches the stale-payment count; the page does.
+- `getDashboardOrderStatusCounts(null, shopId)` now counts one shop's orders; with no shop it is unchanged. `ReturnQueueTabs` takes its tabs as props so both portals share it.
+
 ### Changed (Seller and Admin Portals: sidebar and top bar)
 
 - **One shared shell** (`src/components/portal/*`) now drives both portals. The old `SellerSidebar`, `SellerTopbar`, `AdminSidebar` and `AdminTopbar` are removed; each portal supplies only its menu config and data.

@@ -25,6 +25,8 @@ export interface ReturnRequest {
    * `decide_return`'s own payment-integrity check, which stays strict. */
   orderPaymentMethod: "cod" | "xendit" | null;
   orderPaymentStatus: PaymentStatus | null;
+  /** The shop the order was placed with; null for legacy shop-less orders. */
+  shopName: string | null;
   /** Null = whole-order return. */
   orderItemId: string | null;
   orderItemTitle: string | null;

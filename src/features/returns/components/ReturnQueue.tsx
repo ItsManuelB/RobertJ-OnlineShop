@@ -17,7 +17,17 @@ import { ReturnShippingActions } from "@/features/returns/components/ReturnShipp
 import { ReturnRequestStatusCard } from "@/features/returns/components/ReturnRequestStatusCard";
 import { ReturnQueueTabs } from "@/features/returns/components/ReturnQueueTabs";
 import {
+  ADMIN_RETURN_TABS,
+  ADMIN_RETURN_TAB_LABELS,
+  DEFAULT_ADMIN_RETURN_TAB,
+  isAdminReturnTab,
+  isSellerReplyOverdue,
+  matchesAdminReturnTab,
+  type AdminReturnTab,
+} from "@/features/returns/utils/admin-return-queue";
+import {
   DEFAULT_SELLER_RETURN_TAB,
+  SELLER_RETURN_TAB_LABELS,
   SELLER_RETURN_TABS,
   isSellerReturnTab,
   matchesSellerReturnTab,
@@ -39,13 +49,13 @@ export interface ReturnQueueProps {
    * to open each order individually to act.
    */
   viewer?: "admin" | "seller";
-  /** Seller view only: the `?tab=` / `?page=` URL params (raw — validated here). The admin queue is unchanged and ignores them. */
+  /** The `?tab=` / `?page=` URL params (raw — validated here against the viewer's own tab set). */
   tab?: string;
   page?: string;
 }
 
-/** Seller queue page size — evidence photos are signed per rendered request, so keep a page small. */
-const SELLER_QUEUE_PAGE_SIZE = 10;
+/** Queue page size — evidence photos are signed per rendered request, so keep a page small. */
+const QUEUE_PAGE_SIZE = 10;
 
 /**
  * Server Component: every return request visible to the caller (RLS scopes
@@ -69,31 +79,30 @@ export async function ReturnQueue({ viewer = "admin", tab, page }: ReturnQueuePr
     );
   }
 
-  // Seller view: tabs + pagination over the already-RLS-scoped list. Admin
-  // keeps the full list exactly as before.
-  let requests = allRequests;
-  let sellerTabs: { active: SellerReturnTab; counts: Record<SellerReturnTab, number> } | null = null;
-  let totalPages = 1;
-  let currentPage = 1;
-  if (viewer === "seller") {
-    const active = isSellerReturnTab(tab) ? tab : DEFAULT_SELLER_RETURN_TAB;
-    const counts = Object.fromEntries(
-      SELLER_RETURN_TABS.map((value) => [
-        value,
-        allRequests.filter((request) => matchesSellerReturnTab(request, value)).length,
-      ]),
-    ) as Record<SellerReturnTab, number>;
-    sellerTabs = { active, counts };
+  // Tabs + pagination over the already-RLS-scoped list, with the viewer's own tab set.
+  const isAdmin = viewer === "admin";
+  const activeTab: string = isAdmin
+    ? isAdminReturnTab(tab) ? tab : DEFAULT_ADMIN_RETURN_TAB
+    : isSellerReturnTab(tab) ? tab : DEFAULT_SELLER_RETURN_TAB;
+  const matches = (request: (typeof allRequests)[number], value: string) =>
+    isAdmin
+      ? matchesAdminReturnTab(request, value as AdminReturnTab)
+      : matchesSellerReturnTab(request, value as SellerReturnTab);
+  const tabValues: readonly string[] = isAdmin ? ADMIN_RETURN_TABS : SELLER_RETURN_TABS;
+  const tabLabels: Record<string, string> = isAdmin ? ADMIN_RETURN_TAB_LABELS : SELLER_RETURN_TAB_LABELS;
+  const tabs = tabValues.map((value) => ({
+    value,
+    label: tabLabels[value],
+    count: allRequests.filter((request) => matches(request, value)).length,
+  }));
 
-    const filtered = allRequests.filter((request) => matchesSellerReturnTab(request, active));
-    totalPages = Math.max(1, Math.ceil(filtered.length / SELLER_QUEUE_PAGE_SIZE));
-    const requested = Number.parseInt(page ?? "1", 10);
-    currentPage = Number.isFinite(requested) ? Math.min(Math.max(requested, 1), totalPages) : 1;
-    requests = filtered.slice(
-      (currentPage - 1) * SELLER_QUEUE_PAGE_SIZE,
-      currentPage * SELLER_QUEUE_PAGE_SIZE,
-    );
-  }
+  const filtered = allRequests.filter((request) => matches(request, activeTab));
+  const totalPages = Math.max(1, Math.ceil(filtered.length / QUEUE_PAGE_SIZE));
+  const requested = Number.parseInt(page ?? "1", 10);
+  const currentPage = Number.isFinite(requested) ? Math.min(Math.max(requested, 1), totalPages) : 1;
+  // Evidence photos are signed only for the requests actually on screen.
+  const requests = filtered.slice((currentPage - 1) * QUEUE_PAGE_SIZE, currentPage * QUEUE_PAGE_SIZE);
+  const basePath = isAdmin ? ROUTES.adminReturns : ROUTES.sellerReturns;
 
   const withEvidence = await Promise.all(
     requests.map(async (request) => ({
@@ -106,15 +115,34 @@ export async function ReturnQueue({ viewer = "admin", tab, page }: ReturnQueuePr
 
   const orderDetailHref = viewer === "seller" ? ROUTES.sellerOrderDetail : ROUTES.adminOrderDetail;
 
-  // Seller view: how many requests are still waiting on the seller's first response.
+  // Seller: requests still waiting on their first response. Admin: requests only an admin can move.
   const awaitingResponse =
     viewer === "seller" ? allRequests.filter((request) => request.status === RETURN_STATUS.pending) : [];
   const urgentCount = awaitingResponse.filter(
     (request) => getResponseDeadline(daysSince(request.createdAt)).urgent,
   ).length;
+  const needsDecision = isAdmin ? tabs.find((entry) => entry.value === "decide")?.count ?? 0 : 0;
+  const overdueReplies = isAdmin ? allRequests.filter((request) => isSellerReplyOverdue(request)).length : 0;
 
   return (
     <div className="flex flex-col gap-4">
+      {needsDecision > 0 ? (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-warning/40 bg-warning/10 p-3" role="status">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+          <p className="flex-1 text-sm text-foreground">
+            <span className="font-semibold">
+              {needsDecision} request{needsDecision === 1 ? " needs" : "s need"} your decision
+              {overdueReplies > 0 ? `, ${overdueReplies} with an overdue seller reply` : ""}.
+            </span>{" "}
+            Buyers are waiting on the outcome.
+          </p>
+          {activeTab !== "decide" ? (
+            <Link href={`${ROUTES.adminReturns}?tab=decide`} className={buttonVariants({ variant: "outline", size: "rjSm" })}>
+              Show them
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
       {awaitingResponse.length > 0 ? (
         <div className="flex flex-wrap items-center gap-3 rounded-xl border border-warning/40 bg-warning/10 p-3" role="status">
           <AlertTriangle className="h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
@@ -125,14 +153,14 @@ export async function ReturnQueue({ viewer = "admin", tab, page }: ReturnQueuePr
             </span>{" "}
             Buyers are waiting for your reply.
           </p>
-          {sellerTabs && sellerTabs.active !== "action" ? (
+          {activeTab !== "action" ? (
             <Link href={`${ROUTES.sellerReturns}?tab=action`} className={buttonVariants({ variant: "outline", size: "rjSm" })}>
               Show them
             </Link>
           ) : null}
         </div>
       ) : null}
-      {sellerTabs ? <ReturnQueueTabs active={sellerTabs.active} counts={sellerTabs.counts} /> : null}
+      <ReturnQueueTabs basePath={basePath} active={activeTab} tabs={tabs} />
       {requests.length === 0 ? (
         <EmptyState
           title="Nothing here"
@@ -154,6 +182,7 @@ export async function ReturnQueue({ viewer = "admin", tab, page }: ReturnQueuePr
                   {request.orderNumber} →
                 </Link>
                 <p className="text-xs text-muted-foreground">
+                  {isAdmin && request.shopName ? `${request.shopName} · ` : ""}
                   {request.buyerName ? `${request.buyerName} · ` : ""}
                   {requestAge(request.createdAt)}
                 </p>
@@ -167,9 +196,10 @@ export async function ReturnQueue({ viewer = "admin", tab, page }: ReturnQueuePr
             {request.status === RETURN_STATUS.pending ? (
               <RespondToReturnPanel returnId={request.id} />
             ) : null}
-            {viewer === "admin" &&
+            {isAdmin &&
             (request.status === RETURN_STATUS.sellerAccepted ||
-              request.status === RETURN_STATUS.sellerRejected) ? (
+              request.status === RETURN_STATUS.sellerRejected ||
+              isSellerReplyOverdue(request)) ? (
               <DecideReturnPanel
                 returnId={request.id}
                 sellerRejected={request.status === RETURN_STATUS.sellerRejected}
@@ -195,7 +225,7 @@ export async function ReturnQueue({ viewer = "admin", tab, page }: ReturnQueuePr
           </li>
         ))}
       </ul>
-      {sellerTabs && totalPages > 1 ? (
+      {totalPages > 1 ? (
         <PaginationControls page={currentPage} totalPages={totalPages} themed />
       ) : null}
     </div>

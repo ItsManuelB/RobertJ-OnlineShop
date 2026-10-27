@@ -3159,6 +3159,7 @@ export const getDashboardOrderStatusCounts = cache(async function getDashboardOr
         .select("id", { count: "exact", head: true })
         .eq("order_status", status);
       if (sellerId) query = query.or(orderOwnerFilter({ sellerId, shopId }));
+      else if (shopId) query = query.eq("shop_id", shopId);
       const { count, error } = await query;
       if (error) {
         throw queryError("Failed to count orders", error);
@@ -5437,7 +5438,7 @@ const RETURN_REQUEST_COLUMNS = `
   replacement_courier, replacement_tracking_number, replacement_shipped_at, replacement_completed_at, created_at, updated_at,
   cod_refund_method, cod_refund_reference, cod_refunded_at,
   return_deadline_at, return_courier, return_tracking_number, return_shipped_at, return_received_at, return_inspection,
-  order:orders!return_requests_order_id_fkey ( order_number, currency, payment_method, payment_status ),
+  order:orders!return_requests_order_id_fkey ( order_number, currency, payment_method, payment_status, shop:shops!orders_shop_id_fkey ( name ) ),
   buyer:profiles!return_requests_buyer_id_fkey ( full_name, username ),
   order_item:order_items!return_requests_order_item_id_fkey ( product_title )
 `;
@@ -5449,6 +5450,7 @@ type ReturnRequestRowWithJoins = ReturnRequestRow & {
     currency: string;
     payment_method: Database["public"]["Enums"]["order_payment_method"];
     payment_status: PaymentStatus;
+    shop: { name: string } | null;
   } | null;
   buyer: Pick<ProfileRow, "full_name" | "username"> | null;
   order_item: { product_title: string } | null;
@@ -5462,6 +5464,7 @@ function toReturnRequest(row: ReturnRequestRowWithJoins): ReturnRequest {
     currency: row.order?.currency ?? "PHP",
     orderPaymentMethod: row.order?.payment_method ?? null,
     orderPaymentStatus: row.order?.payment_status ?? null,
+    shopName: row.order?.shop?.name ?? null,
     orderItemId: row.order_item_id,
     orderItemTitle: row.order_item?.product_title ?? null,
     buyerId: row.buyer_id,
