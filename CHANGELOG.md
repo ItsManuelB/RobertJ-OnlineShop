@@ -7,6 +7,12 @@ All notable changes to RoberJ Online Shop are documented here, newest first. For
 
 ## [Unreleased]
 
+### Changed (Buyer My Account: Overview, Orders, Wishlist)
+
+- **Overview:** a "Needs your attention" panel (unpaid orders with time left on the 60-minute hold, parcels to confirm, returns in progress, or an all-caught-up line); the six order groups now match the Orders tabs and link to them; a three-item wishlist preview replaces the quick links; latest orders drop from 5 to 3.
+- **Orders:** search also matches product names; new "placed" filter (any date, last 30 days, last 90 days, this year) kept in the URL; the All tab shows a count and the result line names the date range.
+- **Wishlist:** moved into the account layout (URL unchanged); sort (recently saved, price low to high, high to low) and availability chips (All, In stock, Low or out); sold-out items are dimmed; the empty state offers "Browse products".
+
 ### Added (Admin Dashboard)
 
 - **Payments to reconcile** join the attention list, the bell and the Payments menu badge (online payments pending for over 30 minutes; the count already existed).

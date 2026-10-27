@@ -7,6 +7,7 @@ import type { CSSProperties } from "react";
 import { useState } from "react";
 
 import { ROUTES } from "@/constants/routes";
+import { cn } from "@/lib/utils/cn";
 import { formatCurrency } from "@/lib/utils/currency";
 import { useCart } from "@/features/cart/hooks/useCart";
 import { useToast } from "@/providers/ToastProvider";
@@ -169,7 +170,10 @@ export function ProductTile({ item, style }: ProductTileProps) {
             alt={item.name}
             fill
             sizes="(min-width: 1024px) 25vw, (min-width: 768px) 33vw, 50vw"
-            className="object-cover transition-transform duration-500 group-hover:scale-105"
+            className={cn(
+              "object-cover transition-transform duration-500 group-hover:scale-105",
+              isOutOfStock && "opacity-50",
+            )}
           />
         ) : (
           <span className="flex h-full items-center justify-center text-xs text-rj-gray-400">

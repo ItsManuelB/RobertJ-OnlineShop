@@ -2424,6 +2424,42 @@ function toOrder(row: OrderRowWithItems): Order {
   };
 }
 
+/** Start of the buyer's "placed" window (Asia/Manila days; "year" = since 1 January there). */
+function buyerPlacedSince(within: "30d" | "90d" | "year"): string {
+  const MANILA_OFFSET_MS = 8 * 60 * 60 * 1000;
+  const now = Date.now();
+  if (within === "year") {
+    const manilaYear = new Date(now + MANILA_OFFSET_MS).getUTCFullYear();
+    return new Date(Date.UTC(manilaYear, 0, 1) - MANILA_OFFSET_MS).toISOString();
+  }
+  return new Date(now - (within === "30d" ? 30 : 90) * 24 * 60 * 60 * 1000).toISOString();
+}
+
+/**
+ * PostgREST `.or()` filter for the buyer's order search: the order number OR any item title in
+ * the order. Returns null when the text has nothing searchable left after removing characters
+ * that would break the filter string. RLS already limits both reads to the buyer's own rows.
+ */
+async function buyerOrderSearchFilter(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  search: string,
+): Promise<string | null> {
+  const term = search.replace(/[,()*%\\]/g, " ").trim();
+  if (!term) return null;
+
+  const { data, error } = await supabase
+    .from(DATABASE_TABLES.ORDER_ITEMS)
+    .select("order_id")
+    .ilike("product_title", `%${term}%`)
+    .limit(200);
+  if (error) {
+    throw queryError("Failed to search orders", error);
+  }
+
+  const ids = Array.from(new Set((data ?? []).map((row) => row.order_id)));
+  return [`order_number.ilike.%${term}%`, ...(ids.length > 0 ? [`id.in.(${ids.join(",")})`] : [])].join(",");
+}
+
 /**
  * The signed-in buyer's order history: newest first, with an optional Order-ID
  * search (the proposal storyboard's "manually enter an Order ID") and an
@@ -2445,10 +2481,14 @@ export async function listBuyerOrders(
     .eq("buyer_id", buyerId);
 
   if (params.search) {
-    query = query.ilike("order_number", `%${params.search}%`);
+    const filter = await buyerOrderSearchFilter(supabase, params.search);
+    if (filter) query = query.or(filter);
   }
   if (params.status) {
     query = query.eq("order_status", params.status);
+  }
+  if (params.placed) {
+    query = query.gte("placed_at", buyerPlacedSince(params.placed));
   }
   query = query.order("placed_at", { ascending: false });
 
@@ -2552,7 +2592,11 @@ async function listBuyerOrdersByLifecycleTab(
     .in("id", orderIds);
 
   if (params.search) {
-    query = query.ilike("order_number", `%${params.search}%`);
+    const filter = await buyerOrderSearchFilter(supabase, params.search);
+    if (filter) query = query.or(filter);
+  }
+  if (params.placed) {
+    query = query.gte("placed_at", buyerPlacedSince(params.placed));
   }
 
   query = query.order("placed_at", { ascending: false });

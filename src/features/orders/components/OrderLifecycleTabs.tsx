@@ -10,7 +10,7 @@ import {
 import { cn } from "@/lib/utils/cn";
 
 export interface OrderLifecycleTabsProps {
-  /** Exact per-tab counts (`getBuyerOrderLifecycleCounts`) for the "(1)"-style badges — "All" never shows one, matching the reference. */
+  /** Exact per-tab counts (`getBuyerOrderLifecycleCounts`) for the "(1)"-style badges; "All" shows their sum. */
   counts: Record<LifecycleTab, number>;
 }
 
@@ -28,6 +28,8 @@ export function OrderLifecycleTabs({ counts }: OrderLifecycleTabsProps) {
   const searchParams = useSearchParams();
 
   const activeTab = searchParams.get("tab") ?? "";
+  // The six groups partition every order, so their sum is the "All" count.
+  const total = ORDER_LIFECYCLE_TABS.reduce((sum, tab) => sum + counts[tab], 0);
 
   function updateParams(tab: LifecycleTab | null) {
     const params = new URLSearchParams(searchParams.toString());
@@ -62,7 +64,7 @@ export function OrderLifecycleTabs({ counts }: OrderLifecycleTabsProps) {
         className={tabClass(!activeTab)}
         onClick={() => updateParams(null)}
       >
-        All
+        All{total > 0 ? ` (${total})` : ""}
       </button>
       {ORDER_LIFECYCLE_TABS.map((tab) => (
         <button

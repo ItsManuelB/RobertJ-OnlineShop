@@ -166,6 +166,8 @@ export interface OrderListParams {
   status?: OrderStatus;
   /** Optional lifecycle-tab filter, driven by `OrderLifecycleTabs` (buyer `/orders` only) — mutually exclusive with `status` in practice, but not enforced here. */
   lifecycleTab?: LifecycleTab;
+  /** Buyer `/orders` only: orders placed within the last 30 / 90 days or since 1 January (Asia/Manila). */
+  placed?: "30d" | "90d" | "year";
   /** Dashboard-only: narrows to how the order was paid for. */
   paymentMethod?: "cod" | "xendit";
   /** Dashboard-only: relative window off `placed_at`. */
