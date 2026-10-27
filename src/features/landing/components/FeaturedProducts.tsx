@@ -6,6 +6,7 @@ import type { FeaturedProductView } from "@/features/landing/types/landing.types
 import { getCoverImage } from "@/features/products/types/product.types";
 import type { Product } from "@/features/products/types/product.types";
 import {
+  getProductRatingSummaries,
   getProductSoldCounts,
   listProductIdsWithVariants,
   getSessionUser,
@@ -69,6 +70,13 @@ export async function FeaturedProducts() {
         )
       : new Map<string, number>();
 
+  const ratings =
+    products.length > 0
+      ? await getProductRatingSummaries(products.map((product) => product.id)).catch(
+          () => new Map<string, { average: number; count: number }>(),
+        )
+      : new Map<string, { average: number; count: number }>();
+
   const optionProductIds =
     products.length > 0
       ? await listProductIdsWithVariants(products.map((product) => product.id)).catch(
@@ -99,6 +107,7 @@ export async function FeaturedProducts() {
     maxQuantity: product.quantity,
     sellerId: product.sellerId,
     soldCount: soldCounts.get(product.id) ?? 0,
+    rating: ratings.get(product.id) ?? null,
     hasOptions: optionProductIds.has(product.id),
   }));
 

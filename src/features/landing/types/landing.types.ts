@@ -77,6 +77,8 @@ export interface FeaturedProductView {
   sellerId: string | null;
   /** Paid units sold — see `getProductSoldCounts`. */
   soldCount: number;
+  /** Average and count of visible reviews, or null when there are none. */
+  rating: { average: number; count: number } | null;
   /** Has options to choose (color, size, …) — quick-add opens the product page instead. */
   hasOptions: boolean;
 }

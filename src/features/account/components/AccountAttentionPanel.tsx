@@ -12,6 +12,8 @@ export interface AccountAttentionPanelProps {
   holdMinutesLeft: number | null;
   toReceiveCount: number;
   returnCount: number;
+  /** Delivered items without a review yet. */
+  toReviewCount: number;
 }
 
 interface AttentionItem {
@@ -32,6 +34,7 @@ export function AccountAttentionPanel({
   holdMinutesLeft,
   toReceiveCount,
   returnCount,
+  toReviewCount,
 }: AccountAttentionPanelProps) {
   const items: AttentionItem[] = [];
 
@@ -60,6 +63,16 @@ export function AccountAttentionPanel({
       detail: "Check the latest update.",
       href: `${ROUTES.orders}?tab=return_refund`,
       action: "View updates",
+    });
+  }
+
+  if (toReviewCount > 0) {
+    items.push({
+      key: "to_review",
+      title: toReviewCount === 1 ? "1 item to review" : `${toReviewCount} items to review`,
+      detail: "Tell other buyers what you think.",
+      href: "#items-to-review",
+      action: "Rate items",
     });
   }
 

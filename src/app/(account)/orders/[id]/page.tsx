@@ -33,16 +33,19 @@ import {
   getCancellationRequestForOrder,
   getReturnRequestForOrder,
   getShopMembershipBySellerIds,
-  listReviewedOrderItemIds,
+  listMyReviewsByOrderItem,
   requireSessionUser,
 } from "@/lib/supabase/queries";
 import { ORDER_STATUS } from "@/constants/status";
 import { CANCELLATION_REQUEST_ORDER_STATUSES } from "@/features/orders/constants/order.constants";
 import { formatCurrency } from "@/lib/utils/currency";
 import { USER_ROLES } from "@/constants/roles";
+import type { Review } from "@/features/reviews/types/review.types";
+import { maskReviewerName } from "@/features/reviews/utils/review-format";
 
 interface OrderDetailPageProps {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }
 
 export async function generateMetadata({
@@ -56,8 +59,11 @@ export async function generateMetadata({
 
 export default async function OrderDetailPage({
   params,
+  searchParams,
 }: OrderDetailPageProps) {
   const { id } = await params;
+  const query = (await searchParams) ?? {};
+  const rateItemId = typeof query.rate === "string" ? query.rate : undefined;
   const user = await requireSessionUser();
   const order = await getBuyerOrder(id, user.id);
 
@@ -82,14 +88,15 @@ export default async function OrderDetailPage({
   // order's channel too, not only show a failure reason.
   const activePayment = await getActivePaymentForOrder(order.id).catch(() => null);
 
-  // "Write a Review" only applies to a delivered order, and only for items
-  // the buyer hasn't already reviewed.
-  const reviewedOrderItemIds =
+  // "Write a Review" only applies to a delivered order; items already
+  // reviewed show the buyer's review (editable for 30 days) instead.
+  const myReviews =
     order.status === ORDER_STATUS.delivered
-      ? await listReviewedOrderItemIds(order.items.map((item) => item.id)).catch(
-          () => new Set<string>(),
+      ? await listMyReviewsByOrderItem(order.items.map((item) => item.id)).catch(
+          () => new Map<string, Review>(),
         )
-      : new Set<string>();
+      : new Map<string, Review>();
+  const reviewedOrderItemIds = new Set(myReviews.keys());
   const reviewableOrderItemIds =
     order.status === ORDER_STATUS.delivered
       ? new Set(
@@ -303,6 +310,9 @@ export default async function OrderDetailPage({
             currency={order.currency}
             orderId={order.id}
             reviewableOrderItemIds={reviewableOrderItemIds}
+            myReviews={myReviews}
+            reviewerPublicName={maskReviewerName(user.fullName)}
+            rateItemId={rateItemId}
           />
         </div>
         <div className="flex flex-col gap-6">

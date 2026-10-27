@@ -11,6 +11,7 @@ export { MarqueeBand } from "./components/MarqueeBand";
 export { FeaturedShops } from "./components/FeaturedShops";
 export { ProductCategories } from "./components/ProductCategories";
 export { FeaturedProducts } from "./components/FeaturedProducts";
+export { BuyerReviewsSection } from "./components/BuyerReviewsSection";
 export { EditorialBanner } from "./components/EditorialBanner";
 export { AboutSection } from "./components/AboutSection";
 export { OurStorySection } from "./components/OurStorySection";

@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { Star } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { CSSProperties, ReactNode } from "react";
 import { useState } from "react";
@@ -63,6 +64,8 @@ export interface ProductTileItem {
   canPurchase?: boolean;
   /** Optional extra line under the price, e.g. Guided Selection's reason chips. */
   footer?: ReactNode;
+  /** Average and count of visible reviews; omitted or null when there are none, so nothing shows. */
+  rating?: { average: number; count: number } | null;
 }
 
 export interface ProductTileProps {
@@ -282,6 +285,16 @@ export function ProductTile({ item, style }: ProductTileProps) {
             <span className="text-[11px] text-rj-gray-400">{item.soldCount} sold</span>
           ) : null}
         </div>
+        {item.rating && item.rating.count > 0 ? (
+          <p
+            className="mt-1 flex items-center gap-1 text-[11px] text-rj-gray-600"
+            aria-label={`Rated ${item.rating.average.toFixed(1)} out of 5 from ${item.rating.count} review${item.rating.count === 1 ? "" : "s"}`}
+          >
+            <Star className="h-3 w-3 fill-rj-gold text-rj-gold" aria-hidden="true" />
+            <span className="font-bold text-rj-black">{(Math.round(item.rating.average * 10) / 10).toFixed(1)}</span>
+            <span>({item.rating.count})</span>
+          </p>
+        ) : null}
         {item.footer ? <div className="mt-1.5">{item.footer}</div> : null}
       </div>
     </Link>

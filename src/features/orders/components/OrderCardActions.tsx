@@ -73,9 +73,16 @@ export function OrderCardActions({ order, lifecycleTab, groupInfo = null }: Orde
   }
 
   if (lifecycleTab === "completed") {
+    const firstItemId = order.items[0]?.id;
     return (
       <>
         <BuyAgainButton order={order} />
+        <Link
+          href={`${ROUTES.orderDetail(order.id)}${firstItemId ? `#review-${firstItemId}` : ""}`}
+          className={cn(buttonVariants({ variant: "rjOutline", size: "rjSm" }))}
+        >
+          Rate items
+        </Link>
         <Link
           href={ROUTES.orderDetail(order.id)}
           className={cn(buttonVariants({ variant: "rjOutline", size: "rjSm" }))}
