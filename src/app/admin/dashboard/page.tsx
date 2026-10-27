@@ -1,20 +1,21 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 
-import { Card, CardContent } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { DashboardDateFilter } from "@/features/dashboard/components/DashboardDateFilter";
+import { ROUTES } from "@/constants/routes";
 import { RecentOrdersCard, RecentOrdersCardSkeleton } from "@/features/dashboard/components/RecentOrdersCard";
 import { LowStockCard, LowStockCardSkeleton } from "@/features/dashboard/components/LowStockCard";
+import { AdminAttentionPanel, AdminAttentionPanelSkeleton } from "@/features/admin/components/AdminAttentionPanel";
+import { AdminGlanceStrip, AdminGlanceStripSkeleton } from "@/features/admin/components/AdminGlanceStrip";
+import { AdminTopShops, AdminTopShopsSkeleton } from "@/features/admin/components/AdminTopShops";
+import {
+  SellerDateFilterButton,
+} from "@/features/seller/components/SellerDateFilterButton";
+import {
+  SellerPerformanceSection,
+  SellerPerformanceSectionSkeleton,
+} from "@/features/seller/components/SellerPerformanceSection";
 import { SellerSalesTrend, SellerSalesTrendSkeleton } from "@/features/seller/components/SellerSalesTrend";
-import { ActionCenterCard, ActionCenterCardSkeleton } from "@/features/seller/components/ActionCenterCard";
-import { AdminKpiRow, AdminKpiRowSkeleton } from "@/features/admin/components/AdminKpiRow";
-import { AdminQuickAccess, AdminQuickAccessSkeleton } from "@/features/admin/components/AdminQuickAccess";
-import { OrderStatusPanel } from "@/features/reports/components/OrderStatusPanel";
-import { DEFAULT_GRANULARITY } from "@/features/reports/constants/report.constants";
-import type { ReportFilters } from "@/features/reports/types/report.types";
 import { parseDashboardDateRange } from "@/features/reports/utils/report-range";
-import { ROUTES } from "@/constants/routes";
 import { requireSessionUser } from "@/lib/supabase/queries";
 
 export const metadata: Metadata = { title: "Dashboard — Admin Portal" };
@@ -23,69 +24,66 @@ interface AdminDashboardPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-function ChartCardSkeleton() {
-  return (
-    <Card className="border-border">
-      <CardContent className="p-5">
-        <Skeleton className="h-40 w-full" />
-      </CardContent>
-    </Card>
-  );
-}
-
 export default async function AdminDashboardPage({ searchParams }: AdminDashboardPageProps) {
-  const user = await requireSessionUser();
-  const params = await searchParams;
+  const [user, params] = await Promise.all([requireSessionUser(), searchParams]);
   const { from, to } = parseDashboardDateRange(params);
-  const filters: ReportFilters = { from, to, granularity: DEFAULT_GRANULARITY, shopId: null };
+  const firstName = user.fullName?.split(" ")[0];
 
   return (
     <div className="flex flex-col gap-6 p-5 lg:p-7">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-semibold text-foreground">
-            Welcome back{user.fullName ? `, ${user.fullName}` : ""}
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            Here&apos;s what&apos;s happening across the marketplace.
-          </p>
-        </div>
-        <DashboardDateFilter from={from} to={to} />
+      <div>
+        <h1 className="text-2xl font-semibold text-foreground">Dashboard</h1>
+        <p className="text-sm text-muted-foreground">
+          Welcome back{firstName ? `, ${firstName}` : ""}. Here is what needs you today and how the marketplace is doing.
+        </p>
       </div>
 
-      <Suspense fallback={<ActionCenterCardSkeleton />}>
-        <ActionCenterCard
-          ordersHref={ROUTES.adminOrders}
-          inventoryHref={ROUTES.adminInventory}
-          returnsHref={ROUTES.adminReturns}
-        />
+      <Suspense fallback={<AdminAttentionPanelSkeleton />}>
+        <AdminAttentionPanel />
       </Suspense>
 
-      <Suspense key={`kpi:${from}:${to}`} fallback={<AdminKpiRowSkeleton />}>
-        <AdminKpiRow from={from} to={to} />
-      </Suspense>
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <Suspense key={`trend:${from}:${to}`} fallback={<SellerSalesTrendSkeleton />}>
-            <SellerSalesTrend from={from} to={to} />
-          </Suspense>
+      <section aria-labelledby="performance-heading" className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h2 id="performance-heading" className="text-base font-semibold text-foreground">
+              Marketplace performance
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              Orders placed in the selected dates across all shops, compared with the previous equal period.
+            </p>
+          </div>
+          <SellerDateFilterButton from={from} to={to} />
         </div>
-        <Suspense key={`status:${from}:${to}`} fallback={<ChartCardSkeleton />}>
-          <OrderStatusPanel filters={filters} />
+
+        <Suspense key={`kpi:${from}:${to}`} fallback={<SellerPerformanceSectionSkeleton audience="admin" />}>
+          <SellerPerformanceSection from={from} to={to} audience="admin" />
         </Suspense>
-      </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
+        <Suspense key={`glance:${from}:${to}`} fallback={<AdminGlanceStripSkeleton />}>
+          <AdminGlanceStrip from={from} to={to} />
+        </Suspense>
+
+        <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-5">
+          <div className="min-w-0 xl:col-span-3">
+            <Suspense key={`trend:${from}:${to}`} fallback={<SellerSalesTrendSkeleton />}>
+              <SellerSalesTrend from={from} to={to} />
+            </Suspense>
+          </div>
+          <div className="min-w-0 xl:col-span-2">
+            <Suspense key={`shops:${from}:${to}`} fallback={<AdminTopShopsSkeleton />}>
+              <AdminTopShops from={from} to={to} />
+            </Suspense>
+          </div>
+        </div>
+      </section>
+
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-5">
+        <div className="min-w-0 xl:col-span-3">
           <Suspense fallback={<RecentOrdersCardSkeleton />}>
             <RecentOrdersCard viewAllHref={ROUTES.adminOrders} orderHref={ROUTES.adminOrderDetail} />
           </Suspense>
         </div>
-        <div className="flex flex-col gap-4">
-          <Suspense fallback={<AdminQuickAccessSkeleton />}>
-            <AdminQuickAccess />
-          </Suspense>
+        <div className="min-w-0 xl:col-span-2">
           <Suspense fallback={<LowStockCardSkeleton />}>
             <LowStockCard viewAllHref={ROUTES.adminInventory} />
           </Suspense>

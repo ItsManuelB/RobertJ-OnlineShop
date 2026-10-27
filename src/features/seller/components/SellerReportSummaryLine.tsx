@@ -7,6 +7,8 @@ import { formatCurrency } from "@/lib/utils/currency";
 export interface SellerReportSummaryLineProps {
   from: string;
   to: string;
+  /** Admin only: narrow to one shop. */
+  shopId?: string | null;
 }
 
 function changeText(current: number, previous: number): string {
@@ -21,14 +23,14 @@ function changeText(current: number, previous: number): string {
  * how that compares with the previous equal period, and the order count. A
  * failed read renders nothing — the numbers below carry the same facts.
  */
-export async function SellerReportSummaryLine({ from, to }: SellerReportSummaryLineProps) {
+export async function SellerReportSummaryLine({ from, to, shopId = null }: SellerReportSummaryLineProps) {
   const previous = getPreviousPeriod(from, to);
   let current: Awaited<ReturnType<typeof getSalesSummary>>;
   let prior: Awaited<ReturnType<typeof getSalesSummary>>;
   try {
     [current, prior] = await Promise.all([
-      getSalesSummary(from, to, null),
-      getSalesSummary(previous.from, previous.to, null),
+      getSalesSummary(from, to, shopId),
+      getSalesSummary(previous.from, previous.to, shopId),
     ]);
   } catch {
     return null;

@@ -21,10 +21,18 @@ function initials(title: string) {
  * seller knows which restock to prioritize first. Seller Dashboard/Reports
  * only.
  */
-export async function RestockPriorityPanel({ filters }: { filters: Pick<ReportFilters, "from" | "to"> }) {
+export async function RestockPriorityPanel({
+  filters,
+  audience = "seller",
+}: {
+  filters: Pick<ReportFilters, "from" | "to"> & { shopId?: string | null };
+  audience?: "seller" | "admin";
+}) {
+  const isAdmin = audience === "admin";
+  const inventoryRoute = isAdmin ? ROUTES.adminInventory : ROUTES.sellerInventory;
   let items: Awaited<ReturnType<typeof getRestockPriorityReport>>;
   try {
-    items = await getRestockPriorityReport(filters.from, filters.to, 5, await getCurrentSellerOwner());
+    items = await getRestockPriorityReport(filters.from, filters.to, 5, isAdmin ? (filters.shopId ? { sellerId: "", shopId: filters.shopId } : null) : await getCurrentSellerOwner());
   } catch {
     return <ErrorState message="We couldn't load restock priority right now." />;
   }
@@ -37,7 +45,7 @@ export async function RestockPriorityPanel({ filters }: { filters: Pick<ReportFi
             <h3 className="text-sm font-bold text-foreground">Restock priority</h3>
             <p className="text-xs text-muted-foreground">Low or out of stock, best sellers first · stock is live</p>
           </div>
-          <Link href={ROUTES.sellerInventory} className="text-xs font-bold text-primary hover:underline">
+          <Link href={inventoryRoute} className="text-xs font-bold text-primary hover:underline">
             View inventory →
           </Link>
         </div>
@@ -45,7 +53,7 @@ export async function RestockPriorityPanel({ filters }: { filters: Pick<ReportFi
         {items.length === 0 ? (
           <EmptyState
             title="Nothing urgent"
-            description="None of your products are low or out of stock right now."
+            description={`None of ${isAdmin ? "the" : "your"} products are low or out of stock right now.`}
           />
         ) : (
           <ul className="flex flex-col divide-y divide-border">
@@ -68,7 +76,7 @@ export async function RestockPriorityPanel({ filters }: { filters: Pick<ReportFi
                   <p className="text-sm font-bold text-foreground">{formatCurrency(item.revenueCentsInRange)}</p>
                   <p className="text-[10px] text-muted-foreground">sales in these dates</p>
                   <Link
-                    href={`${ROUTES.sellerInventory}?search=${encodeURIComponent(item.productTitle)}`}
+                    href={`${inventoryRoute}?search=${encodeURIComponent(item.productTitle)}`}
                     aria-label={`Restock ${item.productTitle}${item.variantLabel ? ` ${item.variantLabel}` : ""}`}
                     className="mt-1 inline-block text-xs font-bold text-primary hover:underline"
                   >

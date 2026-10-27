@@ -1,6 +1,7 @@
 export { ReportsFilters } from "./components/ReportsFilters";
 export type { ReportShopOption } from "./components/ReportsFilters";
 export { ExportReportButton } from "./components/ExportReportButton";
+export { ReportShopFilter } from "./components/ReportShopFilter";
 export { SalesSummaryPanel } from "./components/SalesSummaryPanel";
 export { SalesByShopPanel } from "./components/SalesByShopPanel";
 export { OrderStatusPanel } from "./components/OrderStatusPanel";

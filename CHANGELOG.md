@@ -7,6 +7,13 @@ All notable changes to RoberJ Online Shop are documented here, newest first. For
 
 ## [Unreleased]
 
+### Changed (Admin Portal: Dashboard, Reports, Settings)
+
+- **Dashboard:** now reuses the Seller layout. Heading, a collapsible "Needs your attention" list built from the same entries as the bell and menu badges (one shared, request-cached source), four performance numbers with change against the previous period, a "Marketplace at a glance" strip (active shops, products live, low or out of stock, online payments paid), the sales trend beside a new "Top shops by net sales" card, then recent orders and low stock. The seven tiles, Action Center and Quick Access (including the misleading "Add Product" tile) are removed.
+- **Reports:** heading with a period and comparison line, shop filter, date button, Export menu (CSV and a new print-ready PDF at `/admin/reports/print`), a summary sentence, sticky section links, Sales by shop kept first, the Seller panels reused at marketplace scope (payment source, status, category, repeat customers, top products with a units/sales switch, restock priority), and a "How these numbers are worked out" note. Picking a shop narrows every section. The Seller print page and the new Admin one share one view.
+- **Settings:** heading, an identity header (avatar, name, email, Administrator badge) and a section menu. The forms are unchanged.
+- Seller report components gained optional `audience` / `shopId` props; with them unset they behave as before.
+
 ### Changed (Admin Portal: Management, and a polish pass)
 
 - **Users:** page heading, next-step cards (sellers with no shop, deactivated accounts, new this week) that filter the list through `?state=`, role chips with counts, a "No shop" flag on seller rows, and a result count. One read now serves the cards, counts and list. The user detail page is two columns: the management card on the left, account details and the seller's shop on the right.

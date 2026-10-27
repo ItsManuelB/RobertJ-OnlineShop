@@ -21,7 +21,30 @@ export interface SellerPerformanceSectionProps {
    * orders and refunds in progress, and a prompt appears when refunds are pending.
    */
   variant?: "dashboard" | "reports";
+  /** Whose numbers these are. Admin links to the admin pages; the seller scope is enforced by the RPCs. */
+  audience?: "seller" | "admin";
+  /** Admin only: narrow the numbers to one shop. Null/omitted = the whole marketplace. */
+  shopId?: string | null;
 }
+
+const AUDIENCE_LINKS = {
+  seller: {
+    reports: ROUTES.sellerReports,
+    orders: ROUTES.sellerOrders,
+    refunds: `${ROUTES.sellerReturns}?tab=closed`,
+    inProgress: `${ROUTES.sellerReturns}?tab=action`,
+    error: "We couldn't load your shop's performance right now. Your tasks, orders and stock are unaffected.",
+    loading: "Loading shop performance",
+  },
+  admin: {
+    reports: ROUTES.adminReports,
+    orders: ROUTES.adminOrders,
+    refunds: `${ROUTES.adminReturns}?tab=closed`,
+    inProgress: `${ROUTES.adminReturns}?tab=progress`,
+    error: "We couldn't load the marketplace performance right now. Your attention list, orders and stock are unaffected.",
+    loading: "Loading marketplace performance",
+  },
+} as const;
 
 function periodLabel(from: string, to: string): string {
   const fmt = (iso: string, year: boolean) =>
@@ -41,7 +64,14 @@ function periodLabel(from: string, to: string): string {
  * seller's shop and sums each shop's own order totals (never the combined
  * checkout payment), so multi-shop orders are credited per shop.
  */
-export async function SellerPerformanceSection({ from, to, variant = "dashboard" }: SellerPerformanceSectionProps) {
+export async function SellerPerformanceSection({
+  from,
+  to,
+  variant = "dashboard",
+  audience = "seller",
+  shopId = null,
+}: SellerPerformanceSectionProps) {
+  const links = AUDIENCE_LINKS[audience];
   const previous = getPreviousPeriod(from, to);
 
   const isReports = variant === "reports";
@@ -50,21 +80,21 @@ export async function SellerPerformanceSection({ from, to, variant = "dashboard"
   let pipeline: Awaited<ReturnType<typeof getRefundPipeline>> | null = null;
   try {
     [current, prior, pipeline] = await Promise.all([
-      getSalesSummary(from, to, null),
-      getSalesSummary(previous.from, previous.to, null),
+      getSalesSummary(from, to, shopId),
+      getSalesSummary(previous.from, previous.to, shopId),
       // Refunds in progress are not date-bound: they are money on its way back right now.
-      isReports ? getRefundPipeline({ from, to }, null).catch(() => null) : Promise.resolve(null),
+      isReports ? getRefundPipeline({ from, to }, shopId).catch(() => null) : Promise.resolve(null),
     ]);
   } catch {
-    return <ErrorState message="We couldn't load your shop's performance right now. Your tasks, orders and stock are unaffected." />;
+    return <ErrorState message={links.error} />;
   }
 
   const label = periodLabel(from, to);
-  const reportsHref = `${ROUTES.sellerReports}?from=${from}&to=${to}`;
+  const reportsHref = `${links.reports}?from=${from}&to=${to}`;
   const grossHref = isReports ? "#sources" : reportsHref;
   const netHref = isReports ? "#trend" : reportsHref;
-  const ordersHref = `${ROUTES.sellerOrders}?from=${from}&to=${to}`;
-  const refundsHref = `${ROUTES.sellerReturns}?tab=closed`;
+  const ordersHref = `${links.orders}?from=${from}&to=${to}`;
+  const refundsHref = links.refunds;
   const money = formatCurrency;
 
   const inProgressCount = pipeline ? pipeline.pendingCount + pipeline.attentionCount : 0;
@@ -187,7 +217,7 @@ export async function SellerPerformanceSection({ from, to, variant = "dashboard"
               : ""}
             In-progress refunds stay in Net sales until they are confirmed.
           </p>
-          <Link href={`${ROUTES.sellerReturns}?tab=action`} className={buttonVariants({ variant: "outline", size: "rjSm" })}>
+          <Link href={links.inProgress} className={buttonVariants({ variant: "outline", size: "rjSm" })}>
             Open returns
           </Link>
         </div>
@@ -196,10 +226,10 @@ export async function SellerPerformanceSection({ from, to, variant = "dashboard"
   );
 }
 
-export function SellerPerformanceSectionSkeleton() {
+export function SellerPerformanceSectionSkeleton({ audience = "seller" }: { audience?: "seller" | "admin" }) {
   return (
     <div className="flex flex-col gap-4" role="status">
-      <span className="sr-only">Loading shop performance</span>
+      <span className="sr-only">{AUDIENCE_LINKS[audience].loading}</span>
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
           <Card key={i}>
