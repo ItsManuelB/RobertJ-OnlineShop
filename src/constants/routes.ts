@@ -57,6 +57,7 @@ export const ROUTES = {
   adminShops: "/admin/shops",
   adminShopDashboard: (shopId: string) => `/admin/shops/${shopId}/dashboard`,
   adminCategories: "/admin/categories",
+  adminReviews: "/admin/reviews",
   adminAuditLog: "/admin/audit-log",
   adminSettings: "/admin/settings",
   /** Seller Portal — separate from the `/dashboard` tree, mirrors the Admin Portal split. */
@@ -75,6 +76,7 @@ export const ROUTES = {
   sellerOrderLabels: (ids: string[]) => `/seller/orders/labels?ids=${ids.join(",")}`,
   sellerPayments: "/seller/payments",
   sellerReturns: "/seller/returns",
+  sellerReviews: "/seller/reviews",
   sellerReports: "/seller/reports",
   sellerReportsPrint: "/seller/reports/print",
   notifications: "/notifications",
