@@ -47,10 +47,8 @@ function NavLink({
         <>
           <span
             className={cn(
-              "ml-auto grid h-5 min-w-5 flex-shrink-0 place-items-center rounded-full px-1.5 text-[11px] font-bold leading-none",
-              badge?.urgent
-                ? "bg-danger text-danger-foreground"
-                : "bg-sidebar-border text-sidebar-foreground",
+              "ml-auto grid h-5 min-w-5 flex-shrink-0 place-items-center rounded-full px-1.5 text-[11px] font-extrabold leading-none",
+              badge?.urgent ? "bg-[#d6404c] text-white" : "bg-sidebar-warning text-[#2b1d00]",
               rail && "lg:hidden",
             )}
           >
@@ -61,7 +59,7 @@ function NavLink({
               aria-hidden="true"
               className={cn(
                 "absolute right-2 top-2 hidden h-2 w-2 rounded-full lg:block",
-                badge?.urgent ? "bg-danger" : "bg-sidebar-accent-foreground",
+                badge?.urgent ? "bg-[#d6404c]" : "bg-sidebar-warning",
               )}
             />
           ) : null}

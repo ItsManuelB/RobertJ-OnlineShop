@@ -101,30 +101,30 @@
 .dark [data-theme-scope="admin"],
 .dark [data-theme-scope="seller"] {
   color-scheme: dark;
-  --background: #101b17;
-  --foreground: #f2f2f0;
-  --card: #172621;
-  --card-foreground: #f2f2f0;
-  --muted: #1f2d27;
-  --muted-foreground: #a2b9ad;
-  --border: #60736a; /* 3.1:1 against cards and 3.5:1 against the page */
-  --subtle-border: #34473e;
-  --table-divider: #34473e;
+  --background: #0b1117;
+  --foreground: #e8eef3;
+  --card: #121a22;
+  --card-foreground: #e8eef3;
+  --muted: #19232d;
+  --muted-foreground: #93a4b4;
+  --border: #5f7388; /* 3.6:1 against cards and 3.9:1 against the page */
+  --subtle-border: #2a3745;
+  --table-divider: #2a3745;
   --filter-active-background: var(--primary);
-  --filter-active-foreground: #09120f;
-  --ring: #4cb571;
-  --primary: #4cb571; /* brightened emerald for visibility on a near-black surface */
+  --filter-active-foreground: #06130e;
+  --ring: #4cc39a;
+  --primary: #4cc39a; /* mint-emerald, brightened for visibility on a near-black surface */
   /* Dark ink, not white: white text on this bright a green only reaches
      ~2.6:1 (fails WCAG AA). Using the same near-black ink as rj-black
      instead clears AA at ~7.4:1 while keeping the brightened-for-dark-mode
      accent the way `--primary` was brightened here before. */
-  --primary-foreground: #09120f;
-  --secondary: #1f2d27;
-  --secondary-foreground: #f2f2f0;
-  --success: #22c55e; /* rj-green */
+  --primary-foreground: #06130e;
+  --secondary: #19232d;
+  --secondary-foreground: #e8eef3;
+  --success: #4ade80; /* rj-green */
   --warning: #f4b942; /* rj-gold */
-  --danger: #ff7580;
-  --danger-foreground: #09120f;
+  --danger: #ff7a85;
+  --danger-foreground: #06130e;
   --info: #38bdf8;
 
   --sidebar-background: #0f1f1a;
