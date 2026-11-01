@@ -11,10 +11,11 @@ export interface MyShopPanelProps {
 }
 
 /**
- * Seller-facing shop branding editor: logo, banner, and description only —
- * name/slug/active status are shown read-only (admin-owned), and Featured
- * placement isn't shown or controllable here at all: it's a system-computed
- * ranking that branding never influences (see `getFeaturedShops`).
+ * Seller-facing shop editor: logo, banner, description, and name — any member
+ * of the shop can edit all of these. `slug`/`active` status stay read-only
+ * (admin-owned). Featured placement isn't shown or controllable here at all:
+ * it's a system-computed ranking that branding never influences (see
+ * `getFeaturedShops`).
  *
  * The page header lives here (server); the editors and the live buyer preview
  * share state in `MyShopWorkspace` (client).

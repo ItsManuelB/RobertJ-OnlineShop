@@ -3350,6 +3350,26 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      update_own_shop_name: {
+        Args: { p_name: string }
+        Returns: {
+          active: boolean
+          banner_url: string | null
+          created_at: string
+          description: string | null
+          id: string
+          logo_url: string | null
+          name: string
+          slug: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "shops"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       update_review: {
         Args: { p_comment: string; p_rating: number; p_review_id: string }
         Returns: {

@@ -12,6 +12,7 @@ import {
   deleteShopSchema,
   toggleShopActiveSchema,
   updateOwnShopDescriptionSchema,
+  updateOwnShopNameSchema,
   updateShopSchema,
   uploadShopImageSchema,
 } from "@/features/shops/schemas/shop.schema";
@@ -123,6 +124,31 @@ export async function updateOwnShopDescriptionAction(
     return ok(shop);
   } catch (error) {
     return fail(error instanceof Error ? error.message : "Could not update your shop.");
+  }
+}
+
+/**
+ * Seller-only: renames the caller's own shop. Any member of the shop may do
+ * this (the same tier `updateOwnShopDescriptionAction` already uses) — never
+ * accepts a shop id from the form; `update_own_shop_name` resolves the
+ * caller's shop itself.
+ */
+export async function updateOwnShopNameAction(
+  _prevState: ActionResult<Shop> | null,
+  formData: FormData,
+): Promise<ActionResult<Shop>> {
+  const parsed = updateOwnShopNameSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return fromZodError(parsed.error);
+
+  try {
+    await queries.requireRole([USER_ROLES.seller]);
+    const shop = await queries.updateOwnShopName(parsed.data.name);
+    revalidatePath(ROUTES.sellerShop);
+    revalidatePath(ROUTES.products);
+    revalidatePath(ROUTES.home);
+    return ok(shop);
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "Could not rename your shop.");
   }
 }
 

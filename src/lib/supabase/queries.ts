@@ -7165,6 +7165,29 @@ export async function updateOwnShopDescription(
   return toShop(data as ShopRow);
 }
 
+/**
+ * Seller-scoped: renames the caller's own shop. Unlike `updateOwnShopDescription`
+ * (a plain `.update()` — RLS already permits it), this goes through the
+ * `update_own_shop_name` `SECURITY DEFINER` RPC: `shops.name` is deliberately
+ * excluded from the authenticated column grant (defense in depth, same
+ * reasoning as `send_order_message`), so every rename — regardless of which
+ * shop member makes it — passes through this one validated path. The RPC
+ * resolves the caller's shop itself via `shop_users`; no shop id is ever
+ * accepted from the client.
+ */
+export async function updateOwnShopName(name: string): Promise<Shop> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("update_own_shop_name", {
+    p_name: name,
+  });
+
+  if (error) {
+    throw rpcError("Could not rename your shop.", error);
+  }
+
+  return toShop(data as ShopRow);
+}
+
 type ShopImageKind = "logo" | "banner";
 
 /** Extracts the Storage object path out of a public `shop-images` URL, the

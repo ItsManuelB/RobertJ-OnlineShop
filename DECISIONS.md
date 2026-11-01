@@ -43,6 +43,7 @@ Every decision is a numbered ADR with a fixed shape: **Context → Problem → O
 | [ADR-018](#adr-018-wishlist-reviews-and-a-derived-buyer-activity-feed) | Wishlist, Reviews, and a Derived Buyer Activity Feed | ✅ Accepted |
 | [ADR-020](#adr-020-authenticated-cart-becomes-database-backed-with-guest-cart-merge-on-sign-in) | Authenticated cart becomes database-backed, with guest-cart merge on sign-in | ✅ Accepted |
 | [ADR-026](#adr-026-order-scoped-buyerseller-messaging-contact-seller) | Order-scoped buyer↔seller messaging (Contact Seller) | ✅ Accepted |
+| [ADR-027](#adr-027-shop-name-moves-from-admin-only-to-seller-editable) | Shop name moves from admin-only to seller-editable | ✅ Accepted |
 
 ---
 
@@ -681,3 +682,26 @@ Original decision: Option 2. The Stripe code stayed in the repo (real, working c
 **Update (2026-11-01):** by request, messaging was promoted to a **global inbox** with **real-time delivery and unread/pinning**, superseding the refresh-based + per-order-dock parts of this ADR (the order-scoped conversation model is unchanged — a conversation is still one order). New additive migrations `20261101120000_global_inbox.sql` (per-user `order_conversation_state` + `list_my_conversations`/`get_conversation_context`/`mark_conversation_read`/`set_conversation_pinned`/`can_access_order_conversation` RPCs) and `20261101140000_realtime_order_messages.sql` (adds `order_messages` to the `supabase_realtime` publication; delivery stays gated by its existing SELECT RLS). UI: `GlobalInbox`/`GlobalInboxDock` mounted site-wide; the order pages deep-link via `OrderMessageButton` (`?chat=<orderId>`). Realtime/push notifications beyond messaging remain deferred.
 
 **Consequences:** `orders`, `create_order`, payments, and the RLS of every existing table are untouched; the only database change is the additive table + RPC (fully reversible). A new `src/features/messages/` module plus `listOrderMessages`/`sendOrderMessage` mount the conversation as a bottom-right **docked chat panel** on the buyer order page and **inline** on the seller/admin order page. Verified on the hosted project via rolled-back transactions: shared-inbox visibility, cross-shop isolation, NULL-`shop_id` non-leakage, participant-only sends, empty/over-limit rejection, dedup, and server-derived `sender_role`.
+
+---
+
+## ADR-027: Shop name moves from admin-only to seller-editable
+
+**Status:** ✅ Accepted
+
+**Context:** `20261005050000_admin_update_shop_and_column_scope.sql` deliberately revoked `UPDATE` on `shops` from `authenticated` and granted it back column-by-column for `description`/`logo_url`/`banner_url` only — `name`/`active`/`slug` were kept admin-only by design, enforced at the grant level (not just RLS), with `MyShopWorkspace`'s "Shop details" card shown read-only ("To change the name, link or status, contact an administrator"). The seller explicitly requested the ability to rename their own shop (e.g. "Shop Two" → "Rene Baterbonia Shop").
+
+**Problem:** Let a seller rename their own shop without reopening the admin-only boundary around `active`/`slug`, and without weakening the existing defense-in-depth (direct column grants staying locked, all writes through a validated RPC).
+
+**Options Considered:**
+1. Widen the `authenticated` column grant to include `name` — rejected: re-enables direct, unvalidated PostgREST writes to `name`, losing the single-path guarantee every other shop/order mutation in this codebase relies on (`send_order_message`, `admin_update_shop`, etc.).
+2. Let only a designated "shop owner" rename — rejected (for now): `shop_users` has no owner/role column (`shop_users_unique_user` — one shop per user, all members equal), so this would require a new schema concept the feature doesn't otherwise need.
+3. A new `SECURITY DEFINER` RPC, `update_own_shop_name`, resolving the caller's shop via `shop_users` and validating the 1–80 character bound (mirroring `shops_name_length`) — chosen. Same permission tier `updateOwnShopDescription`/logo/banner already use: any shop member may edit shared shop branding.
+
+**Decision:** Option 3. `update_own_shop_name(p_name)` (`20261102090000_seller_update_own_shop_name.sql`) authorizes via the caller's own `shop_users` row (never a client-submitted shop id), validates length, and updates only `name`. `active` and `slug` are untouched — `admin_update_shop` remains the only path to change them, and the shop's public URL (`ROUTES.shopCatalog`) keys off `shops.id`, never `slug`, so renaming is URL-safe. The `authenticated` column grant on `shops.name` stays revoked; this RPC is the only write path, same as `send_order_message`/`admin_update_shop`.
+
+**UI:** `ShopNameForm` (mirrors `ShopBrandingForm`'s dirty/save-bar pattern exactly) replaces the read-only "Shop name" row in `MyShopWorkspace`'s "Shop details" card; that card now only shows the still-admin-only "Public link" and "Status".
+
+**Consequences:** No existing RLS/grant/table changes beyond the one new function; `orders`, `products`, and every other table are untouched. Verified on the hosted project via rolled-back transactions: a shop member can rename their own shop; a non-member is rejected (`42501`); empty and 81+ character names are rejected (`22023`) before ever reaching the table's own `shops_name_length` CHECK.
+
+**Future Revisit:** if a genuine "shop owner vs. member" distinction becomes needed elsewhere (e.g. to gate who can remove a member), add it as its own schema change rather than retrofitting it onto this RPC.
