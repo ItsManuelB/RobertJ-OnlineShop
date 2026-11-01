@@ -4362,11 +4362,57 @@ export async function sendOrderMessage(orderId: string, body: string): Promise<v
   }
 }
 
+type ConversationThumbnailRow = {
+  order_id: string;
+  created_at: string;
+  product: { product_images: { url: string; sort_order: number }[] } | null;
+};
+
+/**
+ * One cover-image URL per order id, for the global inbox's conversation list
+ * (every other order listing in the app shows a product thumbnail — the inbox
+ * previously didn't). Batched in one query (no N+1): fetches every order's
+ * items oldest-first and keeps the first item seen per order, then picks that
+ * item's product's lowest-`sort_order` image — the same "cover image"
+ * convention `toProduct`/`getCoverImage` use elsewhere. RLS on `order_items`
+ * mirrors `order_messages`' own participant check, so this never leaks an
+ * image for an order the caller can't already see; a product with no visible
+ * image (e.g. inactive, for a buyer viewer) just maps to null.
+ */
+async function listOrderThumbnails(orderIds: string[]): Promise<Map<string, string | null>> {
+  const thumbnails = new Map<string, string | null>(orderIds.map((id) => [id, null]));
+  if (orderIds.length === 0) return thumbnails;
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from(DATABASE_TABLES.ORDER_ITEMS)
+    .select(
+      `order_id, created_at, product:products!order_items_product_id_fkey ( product_images ( url, sort_order ) )`,
+    )
+    .in("order_id", orderIds)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw queryError("Failed to load conversation thumbnails", error);
+  }
+
+  const seen = new Set<string>();
+  for (const row of (data ?? []) as unknown as ConversationThumbnailRow[]) {
+    if (seen.has(row.order_id)) continue;
+    seen.add(row.order_id);
+    const cover = [...(row.product?.product_images ?? [])].sort(
+      (a, b) => a.sort_order - b.sort_order,
+    )[0];
+    thumbnails.set(row.order_id, cover?.url ?? null);
+  }
+  return thumbnails;
+}
+
 /**
  * Global inbox: every order-scoped conversation the caller can see that already
  * has a message, with the counterpart's name, last-message preview, unread
- * count and pin flag. Visibility mirrors `order_messages`' own SELECT policy
- * (participant, shop member, or admin) — enforced inside the
+ * count, pin flag and a product thumbnail. Visibility mirrors `order_messages`'
+ * own SELECT policy (participant, shop member, or admin) — enforced inside the
  * `list_my_conversations` SECURITY DEFINER RPC. Pinned first, then most recent.
  */
 export async function listMyConversations(): Promise<ConversationSummary[]> {
@@ -4375,7 +4421,9 @@ export async function listMyConversations(): Promise<ConversationSummary[]> {
   if (error) {
     throw rpcError("Failed to load your conversations", error);
   }
-  return (data ?? []).map((row) => ({
+  const rows = data ?? [];
+  const thumbnails = await listOrderThumbnails(rows.map((row) => row.order_id));
+  return rows.map((row) => ({
     orderId: row.order_id,
     orderNumber: row.order_number,
     title: row.title,
@@ -4385,6 +4433,7 @@ export async function listMyConversations(): Promise<ConversationSummary[]> {
     lastSenderId: row.last_sender_id ?? null,
     unreadCount: row.unread_count,
     pinned: row.pinned,
+    thumbnailUrl: thumbnails.get(row.order_id) ?? null,
   }));
 }
 

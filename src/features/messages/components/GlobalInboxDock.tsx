@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import Image from "next/image";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, ChevronDown, MessageSquare, Pin, PinOff, Search } from "lucide-react";
 
@@ -345,6 +346,20 @@ export function GlobalInboxDock({ themed = false, initialConversations }: Global
                             : "hover:bg-rj-gray-50",
                       )}
                     >
+                      {convo.thumbnailUrl ? (
+                        <Image
+                          src={convo.thumbnailUrl}
+                          alt=""
+                          width={40}
+                          height={40}
+                          className="h-10 w-10 shrink-0 rounded object-cover"
+                        />
+                      ) : (
+                        <div
+                          className={cn("h-10 w-10 shrink-0 rounded", themed ? "bg-muted" : "bg-rj-gray-200")}
+                          aria-hidden="true"
+                        />
+                      )}
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
                           {convo.pinned ? (

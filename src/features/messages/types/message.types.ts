@@ -48,6 +48,8 @@ export interface ConversationSummary {
   lastSenderId: string | null;
   unreadCount: number;
   pinned: boolean;
+  /** Cover image of the order's first item, or null (no items/images visible). */
+  thumbnailUrl: string | null;
 }
 
 /**
