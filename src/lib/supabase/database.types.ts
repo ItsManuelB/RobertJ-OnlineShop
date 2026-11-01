@@ -559,6 +559,45 @@ export type Database = {
           },
         ]
       }
+      order_conversation_state: {
+        Row: {
+          last_read_at: string | null
+          order_id: string
+          pinned_at: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          last_read_at?: string | null
+          order_id: string
+          pinned_at?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          last_read_at?: string | null
+          order_id?: string
+          pinned_at?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_conversation_state_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_conversation_state_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       order_messages: {
         Row: {
           body: string
@@ -3230,6 +3269,42 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      can_access_order_conversation: {
+        Args: { p_order_id: string }
+        Returns: boolean
+      }
+      get_conversation_context: {
+        Args: { p_order_id: string }
+        Returns: {
+          buyer_name: string
+          order_id: string
+          order_number: string
+          shop_name: string
+          viewer_is_buyer: boolean
+        }[]
+      }
+      list_my_conversations: {
+        Args: never
+        Returns: {
+          last_body: string
+          last_created_at: string
+          last_sender_id: string
+          order_id: string
+          order_number: string
+          pinned: boolean
+          title: string
+          unread_count: number
+          viewer_is_buyer: boolean
+        }[]
+      }
+      mark_conversation_read: {
+        Args: { p_order_id: string }
+        Returns: undefined
+      }
+      set_conversation_pinned: {
+        Args: { p_order_id: string; p_pinned: boolean }
+        Returns: undefined
       }
       send_order_message: {
         Args: { p_body: string; p_order_id: string }

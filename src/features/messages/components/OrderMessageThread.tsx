@@ -1,24 +1,28 @@
-import { RJ_CARD, THEMED_CARD } from "@/components/ui/card";
+"use client";
+
 import { cn } from "@/lib/utils/cn";
 import { MessageThreadBody } from "@/features/messages/components/MessageThreadBody";
+import { OrderChatDock } from "@/features/messages/components/OrderChatDock";
+import { chatDockMinimizedStorageKey } from "@/features/messages/constants/message.constants";
 import type { OrderMessageView } from "@/features/messages/types/message.types";
 
 export interface OrderMessageThreadProps {
   orderId: string;
   /** Display-ready messages, oldest-first, author resolved per viewer on the server. */
   messages: OrderMessageView[];
-  /** Headline for the panel — e.g. "Messages" (seller/admin inline view). */
+  /** Context-card heading — e.g. "Messages". */
   title?: string;
-  /** Helper copy under the header. */
+  /** Helper copy under the heading. */
   description?: string;
   /** Renders through the Admin/Seller portal tokens; omit for the buyer view. */
   themed?: boolean;
 }
 
 /**
- * Inline order-conversation card — used on the seller/admin order-detail page.
- * The buyer side uses the docked `ContactSellerDock` instead; both share
- * `MessageThreadBody` so the send logic lives in one place.
+ * Seller/admin order conversation — the same Shopee-style floating chat dock the
+ * buyer uses (`ContactSellerDock`), themed for the portal and docked clear of
+ * the phone tab bar. Both wrap the shared `MessageThreadBody` so the send logic
+ * lives in one place.
  */
 export function OrderMessageThread({
   orderId,
@@ -27,23 +31,45 @@ export function OrderMessageThread({
   description,
   themed = false,
 }: OrderMessageThreadProps) {
-  const muted = themed ? "text-muted-foreground" : "text-rj-gray-600";
   return (
-    <section
-      aria-label={title}
-      className={cn(themed ? THEMED_CARD : RJ_CARD, "flex flex-col p-5")}
+    <OrderChatDock
+      themed={themed}
+      badgeCount={messages.length}
+      storageKey={chatDockMinimizedStorageKey("dashboard", orderId)}
+      contextCard={
+        title || description ? (
+          <div
+            className={cn(
+              "border-b px-4 py-3",
+              themed ? "border-border bg-muted/40" : "border-rj-gray-100 bg-rj-gray-50",
+            )}
+          >
+            {title ? (
+              <p className={cn("text-xs font-bold", themed ? "text-foreground" : "text-rj-black")}>
+                {title}
+              </p>
+            ) : null}
+            {description ? (
+              <p
+                className={cn(
+                  "mt-0.5 text-[11px] leading-snug",
+                  themed ? "text-muted-foreground" : "text-rj-gray-600",
+                )}
+              >
+                {description}
+              </p>
+            ) : null}
+          </div>
+        ) : undefined
+      }
     >
-      <h2 className={cn("text-[10px] font-bold uppercase tracking-[0.3em]", muted)}>
-        {title}
-      </h2>
-      {description ? <p className={cn("mt-1 text-xs", muted)}>{description}</p> : null}
       <MessageThreadBody
         orderId={orderId}
         messages={messages}
         themed={themed}
-        className="mt-4"
-        listClassName="max-h-96"
+        className="min-h-0 flex-1 p-4"
+        listClassName="min-h-0 flex-1"
       />
-    </section>
+    </OrderChatDock>
   );
 }

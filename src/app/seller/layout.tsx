@@ -4,6 +4,7 @@ import { ROUTES } from "@/constants/routes";
 import { USER_ROLES } from "@/constants/roles";
 import type { PortalBadges, PortalNotification, PortalShopCard } from "@/components/portal/portal.types";
 import { SellerLayout } from "@/features/seller";
+import { GlobalInbox } from "@/features/messages";
 import { buildSellerNavBadges, type SellerTask } from "@/features/seller/utils/seller-tasks";
 import { getSellerTaskList } from "@/features/seller/utils/seller-tasks.server";
 import {
@@ -91,8 +92,11 @@ export default async function SellerRootLayout({ children }: { children: ReactNo
   };
 
   return (
-    <SellerLayout user={user} notifications={notifications} badges={badges} shop={shop}>
-      {children}
-    </SellerLayout>
+    <>
+      <SellerLayout user={user} notifications={notifications} badges={badges} shop={shop}>
+        {children}
+      </SellerLayout>
+      <GlobalInbox themed />
+    </>
   );
 }

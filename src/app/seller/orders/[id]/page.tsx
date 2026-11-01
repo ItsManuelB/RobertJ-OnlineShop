@@ -21,14 +21,13 @@ import { RecordReturnConditionPanel } from "@/features/returns/components/Record
 import { ReturnRequestStatusCard } from "@/features/returns/components/ReturnRequestStatusCard";
 import { ReturnShippingActions } from "@/features/returns/components/ReturnShippingActions";
 import { RespondToReturnPanel } from "@/features/returns/components/RespondToReturnPanel";
-import { OrderMessageThread } from "@/features/messages";
+import { OrderMessageButton } from "@/features/messages";
 import {
   getDashboardOrder,
   getOwnShopId,
   getReturnEvidenceSignedUrl,
   getReturnRequestForOrder,
   hasXenditPaymentAttempt,
-  listOrderMessages,
   requireSessionUser,
 } from "@/lib/supabase/queries";
 import { RETURN_STATUS } from "@/constants/status";
@@ -73,23 +72,6 @@ export default async function SellerOrderDetailPage({ params, searchParams }: Se
   const returnEvidenceUrl = returnRequest?.evidencePath
     ? await getReturnEvidenceSignedUrl(returnRequest.evidencePath).catch(() => null)
     : null;
-
-  // Shared shop inbox: any member of the order's shop sees and replies to this
-  // conversation. Shop-mates are attributed by their individual name (the
-  // buyer side is the one that only ever shows the shop name).
-  const buyerName = getBuyerDisplayName(order);
-  const messageViews = (await listOrderMessages(order.id).catch(() => [])).map((message) => ({
-    id: message.id,
-    body: message.body,
-    createdAt: message.createdAt,
-    isOwn: message.senderId === user.id,
-    authorLabel:
-      message.senderId === user.id
-        ? "You"
-        : message.senderRole === "buyer"
-          ? buyerName
-          : (message.senderName ?? "Shop staff"),
-  }));
 
   return (
     <article className="flex flex-col gap-8 p-5 lg:p-7">
@@ -164,6 +146,9 @@ export default async function SellerOrderDetailPage({ params, searchParams }: Se
             <p className="mt-2 text-sm font-semibold text-foreground">
               {getBuyerDisplayName(order)}
             </p>
+            <div className="mt-3">
+              <OrderMessageButton orderId={order.id} label="Message buyer" themed />
+            </div>
             {order.buyerConfirmedReceivedAt ? (
               <div className="mt-3">
                 <BuyerReceiptConfirmation confirmedAt={order.buyerConfirmedReceivedAt} />
@@ -187,14 +172,6 @@ export default async function SellerOrderDetailPage({ params, searchParams }: Se
           </section>
         </div>
       </div>
-
-      <OrderMessageThread
-        orderId={order.id}
-        messages={messageViews}
-        title="Messages"
-        description="Reply to the buyer about this order. Everyone in your shop can see and respond here."
-        themed
-      />
 
       {order.notes ? (
         <section aria-label="Order notes" className={cn(THEMED_CARD, "bg-muted p-5")}>

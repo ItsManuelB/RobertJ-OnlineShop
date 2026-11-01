@@ -31,3 +31,35 @@ export interface OrderMessageView {
   /** Whether the viewing user authored this message (right-aligned bubble). */
   isOwn: boolean;
 }
+
+/**
+ * One row in the global inbox's conversation list (one per order with messages
+ * the viewer can see). `title` is the counterpart's display name already
+ * resolved for the viewer — the shop name for the buyer, the buyer name for
+ * seller/admin. From `list_my_conversations`.
+ */
+export interface ConversationSummary {
+  orderId: string;
+  orderNumber: string;
+  title: string;
+  viewerIsBuyer: boolean;
+  lastBody: string | null;
+  lastCreatedAt: string | null;
+  lastSenderId: string | null;
+  unreadCount: number;
+  pinned: boolean;
+}
+
+/**
+ * Header/identity data for one conversation — also resolves for an order with
+ * no messages yet (a deep-linked "Message" from an order page). From
+ * `get_conversation_context`; `shopName`/`buyerName` drive per-viewer author
+ * labelling.
+ */
+export interface ConversationContext {
+  orderId: string;
+  orderNumber: string;
+  viewerIsBuyer: boolean;
+  shopName: string;
+  buyerName: string;
+}

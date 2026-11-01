@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { ADMIN_ONLY_ROLES } from "@/constants/roles";
 import type { PortalBadges, PortalNotification } from "@/components/portal/portal.types";
 import { AdminLayout } from "@/features/admin";
+import { GlobalInbox } from "@/features/messages";
 import { getAdminNotifications } from "@/features/admin/utils/admin-tasks.server";
 import { requireRole } from "@/lib/supabase/queries";
 
@@ -26,8 +27,11 @@ export default async function AdminRootLayout({ children }: { children: ReactNod
   const notifications = await getAdminNotifications();
 
   return (
-    <AdminLayout user={user} notifications={notifications} badges={getAdminNavBadges(notifications)}>
-      {children}
-    </AdminLayout>
+    <>
+      <AdminLayout user={user} notifications={notifications} badges={getAdminNavBadges(notifications)}>
+        {children}
+      </AdminLayout>
+      <GlobalInbox themed />
+    </>
   );
 }

@@ -98,7 +98,11 @@ import type {
   ShippingAddress,
 } from "@/features/orders/types/order.types";
 import type { UpdateProfileInput } from "@/features/account/schemas/account.schema";
-import type { OrderMessage } from "@/features/messages/types/message.types";
+import type {
+  ConversationContext,
+  ConversationSummary,
+  OrderMessage,
+} from "@/features/messages/types/message.types";
 import type { OAuthProvider } from "@/features/auth/schemas/auth.schema";
 import type { BuyerPreferences, Profile } from "@/features/account/types/account.types";
 import {
@@ -4355,6 +4359,85 @@ export async function sendOrderMessage(orderId: string, body: string): Promise<v
 
   if (error) {
     throw rpcError("Could not send your message.", error);
+  }
+}
+
+/**
+ * Global inbox: every order-scoped conversation the caller can see that already
+ * has a message, with the counterpart's name, last-message preview, unread
+ * count and pin flag. Visibility mirrors `order_messages`' own SELECT policy
+ * (participant, shop member, or admin) — enforced inside the
+ * `list_my_conversations` SECURITY DEFINER RPC. Pinned first, then most recent.
+ */
+export async function listMyConversations(): Promise<ConversationSummary[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("list_my_conversations");
+  if (error) {
+    throw rpcError("Failed to load your conversations", error);
+  }
+  return (data ?? []).map((row) => ({
+    orderId: row.order_id,
+    orderNumber: row.order_number,
+    title: row.title,
+    viewerIsBuyer: row.viewer_is_buyer,
+    lastBody: row.last_body ?? null,
+    lastCreatedAt: row.last_created_at ?? null,
+    lastSenderId: row.last_sender_id ?? null,
+    unreadCount: row.unread_count,
+    pinned: row.pinned,
+  }));
+}
+
+/**
+ * Header/identity data for one order's conversation — resolves even when the
+ * order has no messages yet (a deep-linked "Message" from an order page).
+ * Returns null when the caller can't access it (the RPC's own participant
+ * check yields no row). Pairs with `listOrderMessages` to label authors.
+ */
+export async function getConversationContext(
+  orderId: string,
+): Promise<ConversationContext | null> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("get_conversation_context", {
+    p_order_id: orderId,
+  });
+  if (error) {
+    throw rpcError("Failed to load this conversation", error);
+  }
+  const row = (data ?? [])[0];
+  if (!row) return null;
+  return {
+    orderId: row.order_id,
+    orderNumber: row.order_number,
+    viewerIsBuyer: row.viewer_is_buyer,
+    shopName: row.shop_name,
+    buyerName: row.buyer_name,
+  };
+}
+
+/** Marks the caller's conversation for `orderId` read up to now (clears unread). */
+export async function markConversationRead(orderId: string): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc("mark_conversation_read", {
+    p_order_id: orderId,
+  });
+  if (error) {
+    throw rpcError("Could not update the conversation.", error);
+  }
+}
+
+/** Pins/unpins the caller's conversation for `orderId` (per-user state). */
+export async function setConversationPinned(
+  orderId: string,
+  pinned: boolean,
+): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc("set_conversation_pinned", {
+    p_order_id: orderId,
+    p_pinned: pinned,
+  });
+  if (error) {
+    throw rpcError("Could not update the conversation.", error);
   }
 }
 

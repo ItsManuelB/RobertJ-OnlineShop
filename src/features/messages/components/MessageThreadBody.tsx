@@ -21,14 +21,20 @@ export interface MessageThreadBodyProps {
   listClassName?: string;
   /** Autofocus the composer on mount (used when the dock opens). */
   autoFocus?: boolean;
+  /**
+   * Fired after a message is sent successfully. The order-detail pages leave
+   * this unset (they refresh via server revalidation); the client-driven global
+   * inbox uses it to re-fetch the thread + conversation list.
+   */
+  onSent?: () => void;
 }
 
 /**
  * The shared conversation body — message bubbles + composer + the
- * `sendOrderMessageAction` wiring. Chrome-less so both the inline card
- * (`OrderMessageThread`) and the buyer dock (`ContactSellerDock`) reuse one
- * copy of the send logic. Author identity is already resolved per-viewer on
- * the server (the buyer never receives an individual staff name).
+ * `sendOrderMessageAction` wiring. Chrome-less so both the buyer and the
+ * seller/admin chat docks reuse one copy of the send logic. Author identity is
+ * already resolved per-viewer on the server (the buyer never receives an
+ * individual staff name).
  */
 export function MessageThreadBody({
   orderId,
@@ -37,6 +43,7 @@ export function MessageThreadBody({
   className,
   listClassName = "max-h-96",
   autoFocus = false,
+  onSent,
 }: MessageThreadBodyProps) {
   const [body, setBody] = useState("");
   const fieldId = useId();
@@ -50,7 +57,10 @@ export function MessageThreadBody({
     FormData
   >(async (prev, formData) => {
     const result = await sendOrderMessageAction(prev, formData);
-    if (result.success) setBody("");
+    if (result.success) {
+      setBody("");
+      onSent?.();
+    }
     return result;
   }, null);
 
