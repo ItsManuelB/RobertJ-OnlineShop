@@ -61,6 +61,32 @@ export const ACTIVITY_EVENT_COPY: Record<
     icon: "📦",
     label: (orderNumber) => `A replacement was approved for order ${orderNumber}.`,
   },
+  return_approved_ship_back: {
+    icon: "📮",
+    label: (orderNumber) =>
+      `Your return for order ${orderNumber} was approved. Ship the item back before the deadline shown on your order.`,
+  },
+  return_received: {
+    icon: "📬",
+    label: (orderNumber) => `The seller received your returned item for order ${orderNumber}. Your refund is being reviewed.`,
+  },
+  return_expired: {
+    icon: "⌛",
+    label: (orderNumber) =>
+      `Your return for order ${orderNumber} expired because the item was not shipped back in time. Nothing was refunded.`,
+  },
+  return_payout_pending: {
+    icon: "💸",
+    label: (orderNumber) => `Your refund for order ${orderNumber} was approved. The payout is being sent to you.`,
+  },
+  return_replacement_shipped: {
+    icon: "🚚",
+    label: (orderNumber) => `Your replacement for order ${orderNumber} has shipped. Confirm it once it arrives.`,
+  },
+  return_replacement_completed: {
+    icon: "✅",
+    label: (orderNumber) => `Your replacement for order ${orderNumber} is complete.`,
+  },
   cancellation_requested: {
     icon: "📨",
     label: (orderNumber) => `You asked the shop to cancel order ${orderNumber}.`,
