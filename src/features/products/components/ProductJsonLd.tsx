@@ -23,7 +23,9 @@ export interface ProductJsonLdProps {
  * policy violation.
  */
 export function ProductJsonLd({ product, url, reviewSummary }: ProductJsonLdProps) {
-  const hasReviews = (reviewSummary?.reviewCount ?? 0) > 0;
+  // Real, verified-purchase reviews only: demo reviews are never sent to search engines.
+  const verifiedReviews = reviewSummary?.reviews.filter((review) => review.isVerified) ?? [];
+  const hasReviews = verifiedReviews.length > 0 && reviewSummary?.verified.average != null;
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -64,12 +66,12 @@ export function ProductJsonLd({ product, url, reviewSummary }: ProductJsonLdProp
       ? {
           aggregateRating: {
             "@type": "AggregateRating",
-            ratingValue: reviewSummary.averageRating?.toFixed(1),
-            reviewCount: reviewSummary.reviewCount,
+            ratingValue: reviewSummary.verified.average?.toFixed(1),
+            reviewCount: reviewSummary.verified.count,
           },
-          review: reviewSummary.reviews.slice(0, 10).map((review) => ({
+          review: verifiedReviews.slice(0, 10).map((review) => ({
             "@type": "Review",
-            author: { "@type": "Person", name: review.reviewerDisplayName ?? "RobertJ Customer" },
+            author: { "@type": "Person", name: review.reviewerName },
             reviewRating: { "@type": "Rating", ratingValue: review.rating },
             ...(review.comment ? { reviewBody: review.comment } : {}),
           })),

@@ -35,12 +35,13 @@ import type {
   CreateProductInput,
   UpdateProductInput,
 } from "@/features/products/schemas/product.schema";
-import type {
-  DashboardProductListParams,
-  Product,
-  ProductImage,
-  ProductListParams,
-  ProductVariant,
+import {
+  getCoverImage,
+  type DashboardProductListParams,
+  type Product,
+  type ProductImage,
+  type ProductListParams,
+  type ProductVariant,
 } from "@/features/products/types/product.types";
 import type {
   AdminCategory,
@@ -64,7 +65,20 @@ import { isOccasion } from "@/constants/occasions";
 import { filterImagesForColor } from "@/lib/utils/variant-images";
 import { channelsForPaymentSourceFilter } from "@/features/payments/lib/payment-source";
 import type { CartItem } from "@/features/cart/types/cart.types";
-import { matchCandidates, type MatchOption } from "@/features/assistant/lib/guided-match";
+import {
+  matchCandidates,
+  type MatchCandidate,
+  type MatchOption,
+  type MatchQuery,
+} from "@/features/assistant/lib/guided-match";
+import {
+  budgetPresets,
+  countAttributeValues,
+  countOccasions,
+  isPurchasable,
+  lowestPriceCents,
+  type BudgetPreset,
+} from "@/features/assistant/lib/guided-overview";
 import {
   ACTIVE_ORDER_STATUSES,
   CANCELLABLE_ORDER_STATUSES,
@@ -84,8 +98,17 @@ import type {
   ShippingAddress,
 } from "@/features/orders/types/order.types";
 import type { UpdateProfileInput } from "@/features/account/schemas/account.schema";
+import type {
+  ConversationContext,
+  ConversationSummary,
+  OrderMessage,
+} from "@/features/messages/types/message.types";
 import type { OAuthProvider } from "@/features/auth/schemas/auth.schema";
 import type { BuyerPreferences, Profile } from "@/features/account/types/account.types";
+import {
+  DEFAULT_SELLER_ALERT_PREFERENCES,
+  type SellerAlertPreferences,
+} from "@/features/seller/utils/seller-tasks";
 import type {
   DashboardPaymentListParams,
   Payment,
@@ -102,6 +125,7 @@ import {
   type DashboardInventoryListParams,
   type InventoryItem,
   type StockAdjustment,
+  type StockStatus,
 } from "@/features/inventory/types/inventory.types";
 import { RETURN_SELLER_RESPONSE_SLA_DAYS } from "@/features/returns/constants/return.constants";
 import { SHIP_OVERDUE_DAYS } from "@/features/seller/constants/fulfilment";
@@ -115,12 +139,18 @@ import type {
   SalesSummary,
   SalesTrendPoint,
   PaymentSourceSummaryRow,
+  ShopSalesRow,
   TopProduct,
 } from "@/features/reports/types/report.types";
 import type {
+  FeaturedReview,
+  ItemToReview,
+  ManagedReview,
   ProductReviewSummary,
+  RatingSummary,
   Review,
 } from "@/features/reviews/types/review.types";
+import { maskReviewerName, summarizeRatings } from "@/features/reviews/utils/review-format";
 import type { BuyerActivityEvent } from "@/features/notifications/types/notification.types";
 import {
   NO_CANCELLATION_REFUND,
@@ -1676,48 +1706,211 @@ export async function removeWishlistItem(
 // Reviews
 // ============================================================================
 
+/**
+ * Real reviews come from a delivered purchase (`submit_review`, ADR-018). Demo reviews
+ * (`is_demo`) are presentation-only samples with no order behind them; they never count as
+ * verified, are tagged "Sample" wherever they show, and appear only while Admin › Settings ›
+ * Demo content is on. Hidden reviews are removed from the storefront by an admin. Signed-in
+ * admins and shops can read more through RLS, so storefront reads filter explicitly and look
+ * the same for everyone.
+ */
+const REVIEW_COLUMNS =
+  "id, order_item_id, product_id, buyer_id, reviewer_display_name, rating, comment, created_at, updated_at, is_demo, variant_label, seller_reply, seller_replied_at, hidden_at, hidden_reason";
+
 type ReviewRow = Database["public"]["Tables"]["reviews"]["Row"];
+
+const REVIEW_LIST_LIMIT = 500;
+const REVIEW_ID_BATCH = 40;
 
 function toReview(row: ReviewRow): Review {
   return {
     id: row.id,
     orderItemId: row.order_item_id,
     productId: row.product_id,
-    reviewerDisplayName: row.reviewer_display_name,
+    reviewerName: maskReviewerName(row.reviewer_display_name),
     rating: row.rating,
     comment: row.comment,
     createdAt: row.created_at,
+    editedAt: row.updated_at,
+    variantLabel: row.variant_label,
+    isDemo: row.is_demo,
+    isVerified: !row.is_demo && row.order_item_id !== null,
+    sellerReply: row.seller_reply,
+    sellerRepliedAt: row.seller_replied_at,
+    hiddenAt: row.hidden_at,
+    hiddenReason: row.hidden_reason,
   };
 }
 
-/**
- * Public reviews for one product, newest first, with a live-computed
- * average — never denormalized onto `products` (see DECISIONS.md ADR-018).
- */
-export async function listProductReviews(
-  productId: string,
-): Promise<ProductReviewSummary> {
+/** Whether demo content is switched on in Admin › Settings. One read per request; off when it can't be read. */
+export const isDemoContentEnabled = cache(async (): Promise<boolean> => {
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from(DATABASE_TABLES.REVIEWS)
-    .select(
-      "id, order_item_id, product_id, buyer_id, reviewer_display_name, rating, comment, created_at",
-    )
-    .eq("product_id", productId)
-    .order("created_at", { ascending: false });
+  const { data, error } = await supabase.rpc("demo_content_enabled");
+  return !error && data === true;
+});
+
+/**
+ * Demo reviews (all products, or the given ones) while demo content is on; empty when it is
+ * off. A failed read shows the store without them rather than an error.
+ */
+async function listVisibleDemoReviews(productIds: readonly string[] | null, limit = 2000): Promise<Review[]> {
+  if (!(await isDemoContentEnabled())) return [];
+  const supabase = await createSupabaseServerClient();
+  const batches = productIds ? chunk(productIds, REVIEW_ID_BATCH) : [null];
+  const reviews: Review[] = [];
+  for (const batch of batches) {
+    let query = supabase.from(DATABASE_TABLES.REVIEWS).select(REVIEW_COLUMNS).eq("is_demo", true).is("hidden_at", null);
+    if (batch) query = query.in("product_id", batch);
+    const { data, error } = await query.order("created_at", { ascending: false }).limit(limit);
+    if (error) return [];
+    reviews.push(...(data ?? []).map((row) => toReview(row as ReviewRow)));
+  }
+  return reviews;
+}
+
+function chunk<T>(items: readonly T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+/**
+ * A product's storefront reviews, newest first, with a live summary — never denormalized
+ * onto `products` (ADR-018). `verified` covers real reviews only, for search-engine data.
+ */
+export async function listProductReviews(productId: string): Promise<ProductReviewSummary> {
+  const supabase = await createSupabaseServerClient();
+  const [{ data, error }, demoReviews] = await Promise.all([
+    supabase
+      .from(DATABASE_TABLES.REVIEWS)
+      .select(REVIEW_COLUMNS)
+      .eq("product_id", productId)
+      .eq("is_demo", false)
+      .is("hidden_at", null)
+      .order("created_at", { ascending: false })
+      .limit(REVIEW_LIST_LIMIT),
+    listVisibleDemoReviews([productId], REVIEW_LIST_LIMIT),
+  ]);
 
   if (error) {
     throw queryError("Failed to load reviews", error);
   }
 
-  const reviews = (data ?? []).map((row) => toReview(row as ReviewRow));
-  const reviewCount = reviews.length;
-  const averageRating =
-    reviewCount === 0
-      ? null
-      : reviews.reduce((sum, review) => sum + review.rating, 0) / reviewCount;
+  const reviews = [...(data ?? []).map((row) => toReview(row as ReviewRow)), ...demoReviews].sort((a, b) =>
+    b.createdAt.localeCompare(a.createdAt),
+  );
+  const summary = summarizeRatings(reviews.map((review) => review.rating));
+  const verified = summarizeRatings(reviews.filter((review) => review.isVerified).map((review) => review.rating));
+  return {
+    ...summary,
+    reviews,
+    withComments: reviews.filter((review) => review.comment).length,
+    verified: { average: verified.average, count: verified.count },
+  };
+}
 
-  return { reviews, averageRating, reviewCount };
+/** Average and count per product for tiles, in batched reads. Products without visible reviews are absent. */
+export async function getProductRatingSummaries(productIds: readonly string[]): Promise<Map<string, RatingSummary>> {
+  const ids = Array.from(new Set(productIds));
+  const result = new Map<string, RatingSummary>();
+  if (ids.length === 0) return result;
+  const supabase = await createSupabaseServerClient();
+
+  const ratingsByProduct = new Map<string, number[]>();
+  const add = (productId: string, rating: number) => {
+    const list = ratingsByProduct.get(productId) ?? [];
+    list.push(rating);
+    ratingsByProduct.set(productId, list);
+  };
+  for (let i = 0; i < ids.length; i += REVIEW_ID_BATCH) {
+    const { data, error } = await supabase
+      .from(DATABASE_TABLES.REVIEWS)
+      .select("product_id, rating")
+      .in("product_id", ids.slice(i, i + REVIEW_ID_BATCH))
+      .eq("is_demo", false)
+      .is("hidden_at", null);
+    if (error) {
+      throw queryError("Failed to load ratings", error);
+    }
+    for (const row of data ?? []) add(row.product_id, row.rating);
+  }
+  for (const review of await listVisibleDemoReviews(ids)) add(review.productId, review.rating);
+
+  for (const [productId, ratings] of ratingsByProduct) {
+    const summary = summarizeRatings(ratings);
+    if (summary.average !== null) result.set(productId, { average: summary.average, count: summary.count });
+  }
+  return result;
+}
+
+/** Recent, well-rated reviews with a real comment for the homepage, one per product. */
+export async function listFeaturedReviews(limit = 3): Promise<FeaturedReview[]> {
+  const supabase = await createSupabaseServerClient();
+  const [{ data, error }, demoReviews] = await Promise.all([
+    supabase
+      .from(DATABASE_TABLES.REVIEWS)
+      .select(REVIEW_COLUMNS)
+      .eq("is_demo", false)
+      .is("hidden_at", null)
+      .gte("rating", 4)
+      .not("comment", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(60),
+    listVisibleDemoReviews(null, 300),
+  ]);
+  if (error) {
+    throw queryError("Failed to load reviews", error);
+  }
+
+  const candidates = [
+    ...(data ?? []).map((row) => toReview(row as ReviewRow)),
+    ...demoReviews.filter((review) => review.rating >= 4 && review.comment),
+  ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+  // One review per product, and only comments long enough to say something.
+  const picked: Review[] = [];
+  const seen = new Set<string>();
+  for (const review of candidates) {
+    if (seen.has(review.productId) || (review.comment ?? "").length < 30) continue;
+    seen.add(review.productId);
+    picked.push(review);
+    if (picked.length === limit * 3) break;
+  }
+  if (picked.length === 0) return [];
+
+  const { data: productRows, error: productError } = await supabase
+    .from(DATABASE_TABLES.PRODUCTS)
+    .select(PRODUCT_COLUMNS)
+    .in("id", picked.map((review) => review.productId))
+    .eq("status", PRODUCT_STATUS.active);
+  if (productError) {
+    throw queryError("Failed to load reviewed products", productError);
+  }
+  const products = new Map(
+    ((productRows ?? []) as unknown as ProductRowWithImages[]).map((row) => {
+      const product = toProduct(row);
+      return [product.id, product] as const;
+    }),
+  );
+  const shopNames = await getShopNamesByIds(
+    Array.from(products.values()).flatMap((product) => (product.shopId ? [product.shopId] : [])),
+  ).catch(() => new Map<string, string>());
+
+  return picked
+    .flatMap((review) => {
+      const product = products.get(review.productId);
+      if (!product) return [];
+      return [
+        {
+          ...review,
+          productTitle: product.title,
+          productSlug: product.slug,
+          productImageUrl: getCoverImage(product)?.url ?? null,
+          shopName: product.shopId ? shopNames.get(product.shopId) ?? null : null,
+        },
+      ];
+    })
+    .slice(0, limit);
 }
 
 /**
@@ -1747,6 +1940,20 @@ export async function submitReview(
   return toReview(data as ReviewRow);
 }
 
+/** Edits the caller's own review (rating and comment), within 30 days — enforced by `update_review`. */
+export async function updateReview(reviewId: string, rating: number, comment: string | null): Promise<Review> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("update_review", {
+    p_review_id: reviewId,
+    p_rating: rating,
+    p_comment: comment ?? "",
+  });
+  if (error) {
+    throw new Error(mapPostgresError(error, "Could not update your review."));
+  }
+  return toReview(data as ReviewRow);
+}
+
 /**
  * Which of the given order items already have a review — used to hide
  * "Write a Review" for items the buyer has already covered.
@@ -1754,17 +1961,228 @@ export async function submitReview(
 export async function listReviewedOrderItemIds(
   orderItemIds: string[],
 ): Promise<Set<string>> {
-  if (orderItemIds.length === 0) return new Set();
+  return new Set((await listMyReviewsByOrderItem(orderItemIds)).keys());
+}
+
+/** The caller's own reviews for the given order items, keyed by order item — for showing and editing them on an order. */
+export async function listMyReviewsByOrderItem(orderItemIds: string[]): Promise<Map<string, Review>> {
+  const result = new Map<string, Review>();
+  if (orderItemIds.length === 0) return result;
+  const supabase = await createSupabaseServerClient();
+  for (let i = 0; i < orderItemIds.length; i += REVIEW_ID_BATCH) {
+    const { data, error } = await supabase
+      .from(DATABASE_TABLES.REVIEWS)
+      .select(REVIEW_COLUMNS)
+      .in("order_item_id", orderItemIds.slice(i, i + REVIEW_ID_BATCH));
+    if (error) {
+      throw queryError("Failed to check existing reviews", error);
+    }
+    for (const row of data ?? []) {
+      if (row.order_item_id) result.set(row.order_item_id, toReview(row as ReviewRow));
+    }
+  }
+  return result;
+}
+
+/** Delivered items the buyer has not reviewed yet, newest delivery first. */
+export async function listItemsToReview(
+  buyerId: string,
+  limit = 5,
+): Promise<{ items: ItemToReview[]; total: number }> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
-    .from(DATABASE_TABLES.REVIEWS)
-    .select("order_item_id")
-    .in("order_item_id", orderItemIds);
-
+    .from(DATABASE_TABLES.ORDERS)
+    .select("id, order_number, delivered_at, order_items(id, product_id, product_title, variant_label)")
+    .eq("buyer_id", buyerId)
+    .eq("order_status", ORDER_STATUS.delivered)
+    .order("delivered_at", { ascending: false, nullsFirst: false })
+    .limit(100);
   if (error) {
-    throw queryError("Failed to check existing reviews", error);
+    throw queryError("Failed to load items to review", error);
   }
-  return new Set((data ?? []).map((row) => row.order_item_id));
+
+  const all: ItemToReview[] = (data ?? []).flatMap((order) =>
+    (order.order_items ?? []).map((item) => ({
+      orderId: order.id,
+      orderNumber: order.order_number,
+      orderItemId: item.id,
+      productId: item.product_id,
+      productTitle: item.product_title,
+      variantLabel: item.variant_label,
+      deliveredAt: order.delivered_at,
+    })),
+  );
+  const reviewed = await listReviewedOrderItemIds(all.map((item) => item.orderItemId));
+  const open = all.filter((item) => !reviewed.has(item.orderItemId));
+  return { items: open.slice(0, limit), total: open.length };
+}
+
+/** Posts or replaces the shop's one reply under a review — `reply_to_review` checks the caller belongs to the product's shop. */
+export async function replyToReview(reviewId: string, reply: string): Promise<Review> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("reply_to_review", { p_review_id: reviewId, p_reply: reply });
+  if (error) {
+    throw new Error(mapPostgresError(error, "Could not post your reply."));
+  }
+  return toReview(data as ReviewRow);
+}
+
+export type ShopReviewTab = "reply" | "all" | "low";
+
+type ReviewWithProductRow = ReviewRow & { products: { title: string; slug: string; shop_id: string | null } | null };
+
+function toManagedReview(row: ReviewWithProductRow, shopNames: ReadonlyMap<string, string>): ManagedReview {
+  const shopId = row.products?.shop_id ?? null;
+  return {
+    ...toReview(row),
+    productTitle: row.products?.title ?? "Product",
+    productSlug: row.products?.slug ?? "",
+    shopName: shopId ? shopNames.get(shopId) ?? null : null,
+  };
+}
+
+/** Low ratings (3 stars or fewer) on real reviews that the shop has not answered. */
+const NEEDS_REPLY_MAX_RATING = 3;
+
+/**
+ * The signed-in seller's shop's reviews for the Seller Portal. "reply" = real reviews of 3
+ * stars or fewer without a reply, oldest first so nothing waits forever; "low" = 1–2 stars.
+ */
+export async function listShopReviews(
+  params: PaginationParams & { tab: ShopReviewTab },
+): Promise<PaginatedResult<ManagedReview>> {
+  const owner = await getCurrentSellerOwner();
+  if (!owner.shopId) return { items: [], total: 0, page: params.page, pageSize: params.pageSize, totalPages: 1 };
+  const supabase = await createSupabaseServerClient();
+
+  let query = supabase
+    .from(DATABASE_TABLES.REVIEWS)
+    .select(`${REVIEW_COLUMNS}, products!inner(title, slug, shop_id)`, { count: "exact" })
+    .eq("products.shop_id", owner.shopId)
+    .eq("is_demo", false);
+  if (params.tab === "reply") {
+    query = query
+      .is("seller_reply", null)
+      .is("hidden_at", null)
+      .lte("rating", NEEDS_REPLY_MAX_RATING)
+      .order("created_at", { ascending: true });
+  } else {
+    if (params.tab === "low") query = query.lte("rating", 2);
+    query = query.order("created_at", { ascending: false });
+  }
+
+  const { from, to } = toRange(params);
+  const { data, error, count } = await query.range(from, to);
+  if (error) {
+    throw queryError("Failed to load reviews", error);
+  }
+  const total = count ?? 0;
+  return {
+    items: (data ?? []).map((row) => toManagedReview(row as unknown as ReviewWithProductRow, new Map())),
+    total,
+    page: params.page,
+    pageSize: params.pageSize,
+    totalPages: Math.max(1, Math.ceil(total / params.pageSize)),
+  };
+}
+
+/** How many real low ratings the shop has not answered — the Seller Portal menu badge. */
+export const countShopReviewsNeedingReply = cache(async (shopId: string): Promise<number> => {
+  const supabase = await createSupabaseServerClient();
+  const { count, error } = await supabase
+    .from(DATABASE_TABLES.REVIEWS)
+    .select("id, products!inner(shop_id)", { count: "exact", head: true })
+    .eq("products.shop_id", shopId)
+    .eq("is_demo", false)
+    .is("seller_reply", null)
+    .is("hidden_at", null)
+    .lte("rating", NEEDS_REPLY_MAX_RATING);
+  if (error) {
+    throw queryError("Failed to count reviews", error);
+  }
+  return count ?? 0;
+});
+
+export type AdminReviewTab = "all" | "low" | "hidden" | "demo";
+
+/** Every review for the Admin Portal, newest first. Admin RLS reads hidden and switched-off demo reviews too. */
+export async function listAdminReviews(
+  params: PaginationParams & { tab: AdminReviewTab },
+): Promise<PaginatedResult<ManagedReview>> {
+  const supabase = await createSupabaseServerClient();
+  let query = supabase
+    .from(DATABASE_TABLES.REVIEWS)
+    .select(`${REVIEW_COLUMNS}, products(title, slug, shop_id)`, { count: "exact" });
+  if (params.tab === "low") query = query.lte("rating", 2).eq("is_demo", false);
+  else if (params.tab === "hidden") query = query.not("hidden_at", "is", null);
+  else if (params.tab === "demo") query = query.eq("is_demo", true);
+  else query = query.eq("is_demo", false);
+
+  const { from, to } = toRange(params);
+  const { data, error, count } = await query.order("created_at", { ascending: false }).range(from, to);
+  if (error) {
+    throw queryError("Failed to load reviews", error);
+  }
+  const rows = (data ?? []) as unknown as ReviewWithProductRow[];
+  const shopNames = await getShopNamesByIds(
+    rows.flatMap((row) => (row.products?.shop_id ? [row.products.shop_id] : [])),
+  ).catch(() => new Map<string, string>());
+  const total = count ?? 0;
+  return {
+    items: rows.map((row) => toManagedReview(row, shopNames)),
+    total,
+    page: params.page,
+    pageSize: params.pageSize,
+    totalPages: Math.max(1, Math.ceil(total / params.pageSize)),
+  };
+}
+
+/** Admin: hide a review (with a reason) or show it again. Logged to the audit log by the RPC. */
+export async function setReviewHidden(reviewId: string, hidden: boolean, reason: string | null): Promise<Review> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("admin_set_review_hidden", {
+    p_review_id: reviewId,
+    p_hidden: hidden,
+    p_reason: reason ?? "",
+  });
+  if (error) {
+    throw new Error(mapPostgresError(error, "Could not update this review."));
+  }
+  return toReview(data as ReviewRow);
+}
+
+/** Admin view of the demo set: whether it is showing and how many demo reviews exist. */
+export async function getDemoContentStatus(): Promise<{ enabled: boolean; count: number; products: number }> {
+  const supabase = await createSupabaseServerClient();
+  const [enabled, { data, error }] = await Promise.all([
+    isDemoContentEnabled(),
+    supabase.from(DATABASE_TABLES.REVIEWS).select("product_id").eq("is_demo", true).limit(5000),
+  ]);
+  if (error) {
+    throw queryError("Failed to load demo content", error);
+  }
+  const rows = data ?? [];
+  return { enabled, count: rows.length, products: new Set(rows.map((row) => row.product_id)).size };
+}
+
+/** Admin: show or hide every demo review. */
+export async function setDemoContent(enabled: boolean): Promise<boolean> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("admin_set_demo_content", { p_enabled: enabled });
+  if (error) {
+    throw new Error(mapPostgresError(error, "Could not change the demo content setting."));
+  }
+  return data === true;
+}
+
+/** Admin: delete every demo review for good (and switch demo content off). Returns how many were deleted. */
+export async function deleteDemoReviews(): Promise<number> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("admin_delete_demo_reviews");
+  if (error) {
+    throw new Error(mapPostgresError(error, "Could not remove the demo content."));
+  }
+  return data ?? 0;
 }
 
 // ============================================================================
@@ -2418,6 +2836,43 @@ function toOrder(row: OrderRowWithItems): Order {
   };
 }
 
+/** Start of the buyer's "placed" window (Asia/Manila days; "year" = since 1 January there). */
+function buyerPlacedSince(within: "30d" | "90d" | "year"): string {
+  const MANILA_OFFSET_MS = 8 * 60 * 60 * 1000;
+  const now = Date.now();
+  if (within === "year") {
+    const manilaYear = new Date(now + MANILA_OFFSET_MS).getUTCFullYear();
+    return new Date(Date.UTC(manilaYear, 0, 1) - MANILA_OFFSET_MS).toISOString();
+  }
+  return new Date(now - (within === "30d" ? 30 : 90) * 24 * 60 * 60 * 1000).toISOString();
+}
+
+/**
+ * PostgREST `.or()` filter for the buyer's order search: the order number OR any item title in
+ * the order. Returns null when the text has nothing searchable left after removing characters
+ * that would break the filter string. RLS already limits both reads to the buyer's own rows.
+ */
+async function buyerOrderSearchFilter(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  search: string,
+): Promise<string | null> {
+  const term = search.replace(/[,()*%\\"]/g, " ").trim();
+  if (!term) return null;
+
+  const { data, error } = await supabase
+    .from(DATABASE_TABLES.ORDER_ITEMS)
+    .select("order_id")
+    .ilike("product_title", `%${term}%`)
+    // Kept well under the length a long `id.in.(…)` filter can reach before the API gateway rejects the URL.
+    .limit(100);
+  if (error) {
+    throw queryError("Failed to search orders", error);
+  }
+
+  const ids = Array.from(new Set((data ?? []).map((row) => row.order_id)));
+  return [`order_number.ilike.%${term}%`, ...(ids.length > 0 ? [`id.in.(${ids.join(",")})`] : [])].join(",");
+}
+
 /**
  * The signed-in buyer's order history: newest first, with an optional Order-ID
  * search (the proposal storyboard's "manually enter an Order ID") and an
@@ -2439,10 +2894,14 @@ export async function listBuyerOrders(
     .eq("buyer_id", buyerId);
 
   if (params.search) {
-    query = query.ilike("order_number", `%${params.search}%`);
+    const filter = await buyerOrderSearchFilter(supabase, params.search);
+    if (filter) query = query.or(filter);
   }
   if (params.status) {
     query = query.eq("order_status", params.status);
+  }
+  if (params.placed) {
+    query = query.gte("placed_at", buyerPlacedSince(params.placed));
   }
   query = query.order("placed_at", { ascending: false });
 
@@ -2546,7 +3005,11 @@ async function listBuyerOrdersByLifecycleTab(
     .in("id", orderIds);
 
   if (params.search) {
-    query = query.ilike("order_number", `%${params.search}%`);
+    const filter = await buyerOrderSearchFilter(supabase, params.search);
+    if (filter) query = query.or(filter);
+  }
+  if (params.placed) {
+    query = query.gte("placed_at", buyerPlacedSince(params.placed));
   }
 
   query = query.order("placed_at", { ascending: false });
@@ -3131,6 +3594,39 @@ export async function getRefundPipeline(
  * boundary behind either query.
  */
 export type DashboardOrderOwner = { sellerId: string; shopId: string | null };
+
+/**
+ * Per-status order totals for the Orders page's tabs and next-step cards —
+ * one `head: true` probe per status with the same owner scope as
+ * `listDashboardOrders` (`sellerId`/`shopId` both null = admin, no filter).
+ * Primitive arguments so React `cache()` shares one result between the page
+ * and the list panel within a request.
+ */
+export const getDashboardOrderStatusCounts = cache(async function getDashboardOrderStatusCounts(
+  sellerId: string | null,
+  shopId: string | null,
+): Promise<Record<OrderStatus, number>> {
+  const supabase = await createSupabaseServerClient();
+  const statuses = Object.values(ORDER_STATUS) as OrderStatus[];
+
+  const counts = await Promise.all(
+    statuses.map(async (status) => {
+      let query = supabase
+        .from(DATABASE_TABLES.ORDERS)
+        .select("id", { count: "exact", head: true })
+        .eq("order_status", status);
+      if (sellerId) query = query.or(orderOwnerFilter({ sellerId, shopId }));
+      else if (shopId) query = query.eq("shop_id", shopId);
+      const { count, error } = await query;
+      if (error) {
+        throw queryError("Failed to count orders", error);
+      }
+      return [status, count ?? 0] as const;
+    }),
+  );
+
+  return Object.fromEntries(counts) as Record<OrderStatus, number>;
+});
 
 /** PostgREST `.or()` filter for a seller's own orders: their shop, or legacy shop-less rows they sold. */
 function orderOwnerFilter(owner: DashboardOrderOwner): string {
@@ -3797,6 +4293,203 @@ export async function getOrderShipment(
   return toOrderShipment(data);
 }
 
+// Contact Seller — one shared buyer<->shop conversation per order.
+const ORDER_MESSAGE_COLUMNS = `
+  id, order_id, sender_id, sender_role, body, created_at,
+  sender:profiles!order_messages_sender_id_fkey ( full_name, username )
+`;
+
+type OrderMessageRow = {
+  id: string;
+  order_id: string;
+  sender_id: string;
+  sender_role: Database["public"]["Enums"]["user_role"];
+  body: string;
+  created_at: string;
+  sender: { full_name: string | null; username: string | null } | null;
+};
+
+function toOrderMessage(row: OrderMessageRow): OrderMessage {
+  return {
+    id: row.id,
+    orderId: row.order_id,
+    senderId: row.sender_id,
+    senderRole: row.sender_role,
+    // Individual author name (for the seller-side view only — the buyer UI
+    // resolves seller/admin messages to the shop name, never this).
+    senderName: row.sender?.full_name ?? row.sender?.username ?? null,
+    body: row.body,
+    createdAt: row.created_at,
+  };
+}
+
+/**
+ * The full conversation for one order, oldest-first. RLS restricts visibility
+ * to the order's participants — its buyer, the order's seller, any member of
+ * the order's shop (`is_shop_member(shop_id)`), or an admin — see
+ * 20261031130000_order_messages.sql. Safe to call from the buyer and the
+ * seller/admin order-detail pages alike.
+ */
+export async function listOrderMessages(orderId: string): Promise<OrderMessage[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from(DATABASE_TABLES.ORDER_MESSAGES)
+    .select(ORDER_MESSAGE_COLUMNS)
+    .eq("order_id", orderId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw queryError("Failed to load messages", error);
+  }
+  return ((data ?? []) as OrderMessageRow[]).map(toOrderMessage);
+}
+
+/**
+ * Appends a message to an order's conversation via the `send_order_message`
+ * RPC (SECURITY DEFINER), which authorizes the caller as a participant and
+ * derives sender identity/role from the session — never the client. The
+ * action layer revalidates and re-reads the thread afterward.
+ */
+export async function sendOrderMessage(orderId: string, body: string): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc("send_order_message", {
+    p_order_id: orderId,
+    p_body: body,
+  });
+
+  if (error) {
+    throw rpcError("Could not send your message.", error);
+  }
+}
+
+type ConversationThumbnailRow = {
+  order_id: string;
+  created_at: string;
+  product: { product_images: { url: string; sort_order: number }[] } | null;
+};
+
+/**
+ * One cover-image URL per order id, for the global inbox's conversation list
+ * (every other order listing in the app shows a product thumbnail — the inbox
+ * previously didn't). Batched in one query (no N+1): fetches every order's
+ * items oldest-first and keeps the first item seen per order, then picks that
+ * item's product's lowest-`sort_order` image — the same "cover image"
+ * convention `toProduct`/`getCoverImage` use elsewhere. RLS on `order_items`
+ * mirrors `order_messages`' own participant check, so this never leaks an
+ * image for an order the caller can't already see; a product with no visible
+ * image (e.g. inactive, for a buyer viewer) just maps to null.
+ */
+async function listOrderThumbnails(orderIds: string[]): Promise<Map<string, string | null>> {
+  const thumbnails = new Map<string, string | null>(orderIds.map((id) => [id, null]));
+  if (orderIds.length === 0) return thumbnails;
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from(DATABASE_TABLES.ORDER_ITEMS)
+    .select(
+      `order_id, created_at, product:products!order_items_product_id_fkey ( product_images ( url, sort_order ) )`,
+    )
+    .in("order_id", orderIds)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw queryError("Failed to load conversation thumbnails", error);
+  }
+
+  const seen = new Set<string>();
+  for (const row of (data ?? []) as unknown as ConversationThumbnailRow[]) {
+    if (seen.has(row.order_id)) continue;
+    seen.add(row.order_id);
+    const cover = [...(row.product?.product_images ?? [])].sort(
+      (a, b) => a.sort_order - b.sort_order,
+    )[0];
+    thumbnails.set(row.order_id, cover?.url ?? null);
+  }
+  return thumbnails;
+}
+
+/**
+ * Global inbox: every order-scoped conversation the caller can see that already
+ * has a message, with the counterpart's name, last-message preview, unread
+ * count, pin flag and a product thumbnail. Visibility mirrors `order_messages`'
+ * own SELECT policy (participant, shop member, or admin) — enforced inside the
+ * `list_my_conversations` SECURITY DEFINER RPC. Pinned first, then most recent.
+ */
+export async function listMyConversations(): Promise<ConversationSummary[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("list_my_conversations");
+  if (error) {
+    throw rpcError("Failed to load your conversations", error);
+  }
+  const rows = data ?? [];
+  const thumbnails = await listOrderThumbnails(rows.map((row) => row.order_id));
+  return rows.map((row) => ({
+    orderId: row.order_id,
+    orderNumber: row.order_number,
+    title: row.title,
+    viewerIsBuyer: row.viewer_is_buyer,
+    lastBody: row.last_body ?? null,
+    lastCreatedAt: row.last_created_at ?? null,
+    lastSenderId: row.last_sender_id ?? null,
+    unreadCount: row.unread_count,
+    pinned: row.pinned,
+    thumbnailUrl: thumbnails.get(row.order_id) ?? null,
+  }));
+}
+
+/**
+ * Header/identity data for one order's conversation — resolves even when the
+ * order has no messages yet (a deep-linked "Message" from an order page).
+ * Returns null when the caller can't access it (the RPC's own participant
+ * check yields no row). Pairs with `listOrderMessages` to label authors.
+ */
+export async function getConversationContext(
+  orderId: string,
+): Promise<ConversationContext | null> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("get_conversation_context", {
+    p_order_id: orderId,
+  });
+  if (error) {
+    throw rpcError("Failed to load this conversation", error);
+  }
+  const row = (data ?? [])[0];
+  if (!row) return null;
+  return {
+    orderId: row.order_id,
+    orderNumber: row.order_number,
+    viewerIsBuyer: row.viewer_is_buyer,
+    shopName: row.shop_name,
+    buyerName: row.buyer_name,
+  };
+}
+
+/** Marks the caller's conversation for `orderId` read up to now (clears unread). */
+export async function markConversationRead(orderId: string): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc("mark_conversation_read", {
+    p_order_id: orderId,
+  });
+  if (error) {
+    throw rpcError("Could not update the conversation.", error);
+  }
+}
+
+/** Pins/unpins the caller's conversation for `orderId` (per-user state). */
+export async function setConversationPinned(
+  orderId: string,
+  pinned: boolean,
+): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc("set_conversation_pinned", {
+    p_order_id: orderId,
+    p_pinned: pinned,
+  });
+  if (error) {
+    throw rpcError("Could not update the conversation.", error);
+  }
+}
+
 /**
  * Shipment records for a page of orders in one query (no N+1) — used by the
  * dashboard Shipped tab to show courier/tracking. RLS scopes visibility to
@@ -4441,6 +5134,70 @@ export async function updateMyBuyerPreferences(
     throw queryError("Failed to save your preferences", error);
   }
   return toBuyerPreferences(data as BuyerPreferencesRow);
+}
+
+// ============================================================================
+// Seller alert preferences (Seller Portal > Settings > Alerts)
+// ============================================================================
+
+const SELLER_PREFERENCES_COLUMNS = "alert_orders, alert_returns, alert_payments, alert_low_stock";
+
+function toSellerPreferences(
+  row: Pick<
+    Database["public"]["Tables"]["seller_preferences"]["Row"],
+    "alert_orders" | "alert_returns" | "alert_payments" | "alert_low_stock"
+  >,
+): SellerAlertPreferences {
+  return {
+    orders: row.alert_orders,
+    returns: row.alert_returns,
+    payments: row.alert_payments,
+    lowStock: row.alert_low_stock,
+  };
+}
+
+/**
+ * The signed-in seller's alert preferences. A seller who never saved any has no
+ * row — that means "everything on". A failed read also falls back to all-on:
+ * hiding a task because a preference could not be read would be worse than
+ * showing one the seller muted.
+ */
+export const getMySellerPreferences = cache(async function getMySellerPreferences(
+  userId: string,
+): Promise<SellerAlertPreferences> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from(DATABASE_TABLES.SELLER_PREFERENCES)
+    .select(SELLER_PREFERENCES_COLUMNS)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error || !data) return DEFAULT_SELLER_ALERT_PREFERENCES;
+  return toSellerPreferences(data);
+});
+
+/** Saves one or more alert switches; omitted switches keep their stored value (see `updateMyBuyerPreferences`). */
+export async function updateMySellerPreferences(
+  userId: string,
+  input: Partial<SellerAlertPreferences>,
+): Promise<SellerAlertPreferences> {
+  const supabase = await createSupabaseServerClient();
+  const payload: Database["public"]["Tables"]["seller_preferences"]["Insert"] = { user_id: userId };
+  if (input.orders !== undefined) payload.alert_orders = input.orders;
+  if (input.returns !== undefined) payload.alert_returns = input.returns;
+  if (input.payments !== undefined) payload.alert_payments = input.payments;
+  if (input.lowStock !== undefined) payload.alert_low_stock = input.lowStock;
+
+  const { data, error } = await supabase
+    .from(DATABASE_TABLES.SELLER_PREFERENCES)
+    .upsert(payload, { onConflict: "user_id" })
+    .select(SELLER_PREFERENCES_COLUMNS)
+    .single();
+
+  if (error) {
+    throw queryError("Failed to save your alert settings", error);
+  }
+  return toSellerPreferences(data);
 }
 
 /**
@@ -5266,6 +6023,30 @@ export async function getPaymentHistorySummary(
 }
 
 /**
+ * Per-status payment totals for the Payments page's status tabs — one
+ * `head: true` probe per status, deliberately ignoring the search/method
+ * filters so the tab numbers stay put while the list narrows. RLS scopes the
+ * rows to the caller's shop (or everything for an admin).
+ */
+export async function getPaymentStatusCounts(): Promise<Record<PaymentStatus, number>> {
+  const supabase = await createSupabaseServerClient();
+  const statuses = Object.values(PAYMENT_STATUS) as PaymentStatus[];
+
+  const counts = await Promise.all(
+    statuses.map(async (status) => {
+      const { count, error } = await supabase
+        .from(DATABASE_TABLES.PAYMENTS)
+        .select("id", { count: "exact", head: true })
+        .eq("status", status);
+      if (error) throw queryError("Failed to count payments", error);
+      return [status, count ?? 0] as const;
+    }),
+  );
+
+  return Object.fromEntries(counts) as Record<PaymentStatus, number>;
+}
+
+/**
  * Exact count for the Admin Payments dashboard's "Needs reconciliation"
  * summary strip — same conservative 30-minute proxy `listPaymentHistory`'s
  * `staleOnly` filter uses, see its doc comment.
@@ -5311,7 +6092,7 @@ const RETURN_REQUEST_COLUMNS = `
   replacement_courier, replacement_tracking_number, replacement_shipped_at, replacement_completed_at, created_at, updated_at,
   cod_refund_method, cod_refund_reference, cod_refunded_at,
   return_deadline_at, return_courier, return_tracking_number, return_shipped_at, return_received_at, return_inspection,
-  order:orders!return_requests_order_id_fkey ( order_number, currency, payment_method, payment_status ),
+  order:orders!return_requests_order_id_fkey ( order_number, currency, payment_method, payment_status, shop:shops!orders_shop_id_fkey ( name ) ),
   buyer:profiles!return_requests_buyer_id_fkey ( full_name, username ),
   order_item:order_items!return_requests_order_item_id_fkey ( product_title )
 `;
@@ -5323,6 +6104,7 @@ type ReturnRequestRowWithJoins = ReturnRequestRow & {
     currency: string;
     payment_method: Database["public"]["Enums"]["order_payment_method"];
     payment_status: PaymentStatus;
+    shop: { name: string } | null;
   } | null;
   buyer: Pick<ProfileRow, "full_name" | "username"> | null;
   order_item: { product_title: string } | null;
@@ -5336,6 +6118,7 @@ function toReturnRequest(row: ReturnRequestRowWithJoins): ReturnRequest {
     currency: row.order?.currency ?? "PHP",
     orderPaymentMethod: row.order?.payment_method ?? null,
     orderPaymentStatus: row.order?.payment_status ?? null,
+    shopName: row.order?.shop?.name ?? null,
     orderItemId: row.order_item_id,
     orderItemTitle: row.order_item?.product_title ?? null,
     buyerId: row.buyer_id,
@@ -5916,7 +6699,11 @@ function toAdminActionLogEntry(row: AdminActionLogRowWithJoins): AdminActionLogE
  * only how much of the list is fetched at once.
  */
 export async function listAdminActionLog(
-  params: PaginationParams & { action?: string },
+  params: PaginationParams & {
+    action?: string;
+    /** ISO timestamp: only entries created at or after it. */
+    since?: string;
+  },
 ): Promise<PaginatedResult<AdminActionLogEntry>> {
   const supabase = await createSupabaseServerClient();
 
@@ -5926,6 +6713,9 @@ export async function listAdminActionLog(
 
   if (params.action) {
     query = query.eq("action", params.action);
+  }
+  if (params.since) {
+    query = query.gte("created_at", params.since);
   }
 
   query = query.order("created_at", { ascending: false });
@@ -5945,6 +6735,32 @@ export async function listAdminActionLog(
     pageSize: params.pageSize,
     totalPages: Math.max(1, Math.ceil(total / params.pageSize)),
   };
+}
+
+/**
+ * Entry counts for the Audit Log's action dropdown: one per known action plus
+ * the total, optionally limited to entries at or after `since`. Head-only
+ * count queries, same approach as `getInventoryStatusCounts`.
+ */
+export async function getAdminActionCounts(
+  actions: readonly string[],
+  since?: string,
+): Promise<{ total: number; byAction: Record<string, number> }> {
+  const supabase = await createSupabaseServerClient();
+
+  async function countFor(action?: string): Promise<number> {
+    let query = supabase
+      .from(DATABASE_TABLES.ADMIN_ACTION_LOG)
+      .select("id", { count: "exact", head: true });
+    if (action) query = query.eq("action", action);
+    if (since) query = query.gte("created_at", since);
+    const { count, error } = await query;
+    if (error) throw queryError("Failed to count audit log entries", error);
+    return count ?? 0;
+  }
+
+  const [total, ...perAction] = await Promise.all([countFor(), ...actions.map((action) => countFor(action))]);
+  return { total, byAction: Object.fromEntries(actions.map((action, index) => [action, perAction[index]])) };
 }
 
 // ============================================================================
@@ -6344,6 +7160,29 @@ export async function updateOwnShopDescription(
 
   if (error) {
     throw queryError("Failed to update your shop", error);
+  }
+
+  return toShop(data as ShopRow);
+}
+
+/**
+ * Seller-scoped: renames the caller's own shop. Unlike `updateOwnShopDescription`
+ * (a plain `.update()` — RLS already permits it), this goes through the
+ * `update_own_shop_name` `SECURITY DEFINER` RPC: `shops.name` is deliberately
+ * excluded from the authenticated column grant (defense in depth, same
+ * reasoning as `send_order_message`), so every rename — regardless of which
+ * shop member makes it — passes through this one validated path. The RPC
+ * resolves the caller's shop itself via `shop_users`; no shop id is ever
+ * accepted from the client.
+ */
+export async function updateOwnShopName(name: string): Promise<Shop> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("update_own_shop_name", {
+    p_name: name,
+  });
+
+  if (error) {
+    throw rpcError("Could not rename your shop.", error);
   }
 
   return toShop(data as ShopRow);
@@ -6817,6 +7656,46 @@ export async function getProductCount(
 }
 
 /**
+ * Per-status product totals for the Products page's status tabs — same
+ * owner-filter shape as `getProductCount`, one `head: true` probe per status
+ * (a few cheap index counts instead of fetching rows). Search/category are
+ * deliberately not applied: the tabs show the seller's whole catalog.
+ */
+export async function getProductStatusCounts(
+  owner: { sellerId: string; shopId: string | null } | null,
+  /** Admin only: narrow every count to one shop (ignored when `owner` is set). */
+  shopId?: string | null,
+): Promise<Record<ProductStatus, number>> {
+  const supabase = await createSupabaseServerClient();
+  const statuses = Object.values(PRODUCT_STATUS) as ProductStatus[];
+
+  const counts = await Promise.all(
+    statuses.map(async (status) => {
+      let query = supabase
+        .from(DATABASE_TABLES.PRODUCTS)
+        .select("id", { count: "exact", head: true })
+        .eq("status", status);
+
+      if (owner) {
+        query = query.or(
+          owner.shopId ? `shop_id.eq.${owner.shopId}` : `seller_id.eq.${owner.sellerId}`,
+        );
+      } else if (shopId) {
+        query = query.eq("shop_id", shopId);
+      }
+
+      const { count, error } = await query;
+      if (error) {
+        throw queryError("Failed to count products", error);
+      }
+      return [status, count ?? 0] as const;
+    }),
+  );
+
+  return Object.fromEntries(counts) as Record<ProductStatus, number>;
+}
+
+/**
  * Paginated/filtered counterpart to `listDashboardProducts` — powers the
  * Products table (search/status/category + page). Kept as a separate
  * function rather than changing `listDashboardProducts`'s signature: that
@@ -6853,6 +7732,9 @@ export async function listDashboardProductsPage(
   }
   if (params.categoryId) {
     query = query.eq("category_id", params.categoryId);
+  }
+  if (params.shopId) {
+    query = query.eq("shop_id", params.shopId);
   }
 
   query = query.order("created_at", { ascending: false });
@@ -7193,6 +8075,36 @@ export async function listDashboardInventoryPage(
     pageSize: params.pageSize,
     totalPages: Math.max(1, Math.ceil(total / params.pageSize)),
   };
+}
+
+/**
+ * Per-status inventory row totals for the Inventory page's tabs — one
+ * `head: true` probe per `stock_status` (RLS scopes the rows to the caller's
+ * shop, or every shop for an admin), same column the list's filter uses.
+ */
+export async function getInventoryStatusCounts(
+  /** Admin only: narrow every count to one shop (sellers are scoped by RLS). */
+  shopId?: string | null,
+): Promise<Record<StockStatus, number>> {
+  const supabase = await createSupabaseServerClient();
+  const statuses: StockStatus[] = ["in_stock", "low_stock", "out_of_stock"];
+
+  const counts = await Promise.all(
+    statuses.map(async (status) => {
+      let query = supabase
+        .from(DATABASE_TABLES.INVENTORY)
+        .select("id", { count: "exact", head: true })
+        .eq("stock_status", status);
+      if (shopId) query = query.eq("shop_id", shopId);
+      const { count, error } = await query;
+      if (error) {
+        throw queryError("Failed to count inventory", error);
+      }
+      return [status, count ?? 0] as const;
+    }),
+  );
+
+  return Object.fromEntries(counts) as Record<StockStatus, number>;
 }
 
 /**
@@ -7933,6 +8845,77 @@ export const getSalesTimeseries = cache(async function getSalesTimeseries(
     orderCount: row.order_count,
     revenueCents: row.revenue_cents,
   }));
+});
+
+/**
+ * Admin only: one row per shop (plus "Unassigned" when orders belong to no
+ * shop) for the range, so the rows add up to the All-shops summary. The RPC
+ * rejects non-admins.
+ */
+export const getSalesByShop = cache(async function getSalesByShop(
+  from: string,
+  to: string,
+): Promise<ShopSalesRow[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("report_sales_by_shop", {
+    p_from: from,
+    p_to: to,
+  });
+
+  if (error) {
+    throw queryError("Failed to load sales by shop", error);
+  }
+
+  // Name order (like every other shop list), not ranking order, so shops keep a fixed
+  // position when comparing; the synthetic Unassigned row goes last.
+  return (data ?? [])
+    .map((row) => ({
+      shopId: row.shop_id,
+      shopName: row.shop_name,
+      totalOrders: Number(row.total_orders),
+      paidOrders: Number(row.paid_orders),
+      cancelledOrders: Number(row.cancelled_orders),
+      grossRevenueCents: Number(row.gross_revenue_cents),
+      refundsCents: Number(row.refunds_cents),
+      revenueCents: Number(row.revenue_cents),
+      avgOrderValueCents: Number(row.avg_order_value_cents),
+      unitsSold: Number(row.units_sold),
+      refundedOrders: Number(row.refunded_orders),
+    }))
+    .sort((a, b) =>
+      a.shopId === null ? 1 : b.shopId === null ? -1 : compareNatural(a.shopName, b.shopName),
+    );
+});
+
+export interface ServiceSpeed {
+  shippedOrders: number;
+  /** Mean seconds from order placed to shipped; null when no order shipped. */
+  avgShipSeconds: number | null;
+  decidedReturns: number;
+  /** Mean seconds from a return being filed to its first decision; null when none was decided. */
+  avgReturnDecisionSeconds: number | null;
+}
+
+/** Admin only: how fast orders ship and returns get decided for work started in the range. The RPC rejects non-admins. */
+export const getServiceSpeed = cache(async function getServiceSpeed(
+  from: string,
+  to: string,
+): Promise<ServiceSpeed> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("report_service_speed", { p_from: from, p_to: to });
+
+  if (error) {
+    throw queryError("Failed to load service speed", error);
+  }
+
+  const row = data?.[0];
+  return {
+    shippedOrders: Number(row?.shipped_orders ?? 0),
+    avgShipSeconds: row?.avg_ship_seconds == null ? null : Number(row.avg_ship_seconds),
+    decidedReturns: Number(row?.decided_returns ?? 0),
+    avgReturnDecisionSeconds:
+      row?.avg_return_decision_seconds == null ? null : Number(row.avg_return_decision_seconds),
+  };
 });
 
 /** Order counts grouped by fulfilment status within the range. */
@@ -9237,17 +10220,15 @@ export interface GuidedSelectionMatchInput {
 }
 
 /**
- * Ranks active, in-stock products against the buyer's answers. The matching
- * rules live in `features/assistant/lib/guided-match.ts` (pure, unit-tested);
- * this function only gathers the live data they need: products, their active
- * options, and per-option stock (`get_variant_stock` — `inventory` is not
- * publicly readable). Products of deactivated shops are hidden, as in the
- * catalog.
+ * Loads the Guided Selection candidate pool: active products of active shops (newest first,
+ * up to `GUIDED_SELECTION_CANDIDATE_LIMIT`), their active options, and per-option stock
+ * (`get_variant_stock` — `inventory` is not publicly readable). The matching and counting
+ * rules live in `features/assistant/lib/guided-match.ts` and `guided-overview.ts` (pure,
+ * unit-tested); this only gathers the live data they need.
  */
-export async function listGuidedSelectionMatches(
-  input: GuidedSelectionMatchInput,
-  limit = 24,
-): Promise<GuidedSelectionMatch[]> {
+async function loadGuidedSelectionPool(
+  categoryId?: string,
+): Promise<{ products: ProductRowWithImages[]; candidates: MatchCandidate[] }> {
   const supabase = await createSupabaseServerClient();
 
   const { data: inactiveShopRows } = await supabase
@@ -9263,8 +10244,8 @@ export async function listGuidedSelectionMatches(
   if (inactiveShopIds.length > 0) {
     productQuery = productQuery.or(`shop_id.is.null,shop_id.not.in.(${inactiveShopIds.join(",")})`);
   }
-  if (input.categoryId) {
-    productQuery = productQuery.eq("category_id", input.categoryId);
+  if (categoryId) {
+    productQuery = productQuery.eq("category_id", categoryId);
   }
   const { data: productRows, error: productError } = await productQuery
     .order("created_at", { ascending: false })
@@ -9274,7 +10255,7 @@ export async function listGuidedSelectionMatches(
     throw queryError("Failed to load Guided Selection matches", productError);
   }
   const products = (productRows ?? []) as unknown as ProductRowWithImages[];
-  if (products.length === 0) return [];
+  if (products.length === 0) return { products, candidates: [] };
 
   // Batched: a single `.in()` over hundreds of uuids makes a URL long enough for the API gateway to reject.
   const variantRows: GuidedVariantRow[] = [];
@@ -9310,28 +10291,34 @@ export async function listGuidedSelectionMatches(
     optionsByProduct.set(variant.product_id, options);
   }
 
-  const results = matchCandidates(
-    products.map((product) => ({
-      id: product.id,
-      priceCents: product.price_cents,
-      quantity: product.quantity,
-      material: product.material,
-      dimensions: product.dimensions,
-      tags: product.tags ?? [],
-      options: optionsByProduct.get(product.id) ?? [],
-    })),
-    {
-      occasion: input.occasion,
-      size: input.size,
-      color: input.color,
-      material: input.material,
-      dimensions: input.dimensions,
-      minPriceCents: input.minPrice !== undefined ? toCents(input.minPrice) : null,
-      maxPriceCents: input.maxPrice !== undefined ? toCents(input.maxPrice) : null,
-    },
-    limit,
-  );
+  const candidates: MatchCandidate[] = products.map((product) => ({
+    id: product.id,
+    priceCents: product.price_cents,
+    quantity: product.quantity,
+    material: product.material,
+    dimensions: product.dimensions,
+    tags: product.tags ?? [],
+    options: optionsByProduct.get(product.id) ?? [],
+  }));
+  return { products, candidates };
+}
 
+function toMatchQuery(input: GuidedSelectionMatchInput): MatchQuery {
+  return {
+    occasion: input.occasion,
+    size: input.size,
+    color: input.color,
+    material: input.material,
+    dimensions: input.dimensions,
+    minPriceCents: input.minPrice !== undefined ? toCents(input.minPrice) : null,
+    maxPriceCents: input.maxPrice !== undefined ? toCents(input.maxPrice) : null,
+  };
+}
+
+function toGuidedMatches(
+  products: ProductRowWithImages[],
+  results: ReturnType<typeof matchCandidates>,
+): GuidedSelectionMatch[] {
   const productById = new Map(products.map((product) => [product.id, product]));
   return results.flatMap((result) => {
     const row = productById.get(result.candidateId);
@@ -9344,9 +10331,108 @@ export async function listGuidedSelectionMatches(
         matchedPriceCents: result.matchedPriceCents,
         fit: result.fit,
         note: result.note,
+        reasons: result.reasons,
       },
     ];
   });
+}
+
+/** One answer the buyer could drop, and how many results that would give. Category is never offered: dropping it means a different pool, so the page links to the catalog instead. */
+export interface GuidedSelectionRelaxOption {
+  key: "occasion" | "size" | "color" | "material" | "dimensions" | "budget";
+  count: number;
+}
+
+export interface GuidedSelectionResults {
+  matches: GuidedSelectionMatch[];
+  /** True when more products matched than `matches` holds. */
+  capped: boolean;
+  /** Only filled when there are no matches: single answers whose removal would give results. */
+  relax: GuidedSelectionRelaxOption[];
+}
+
+/** Results for the `/assistant` page. Loads the pool once, so the "drop one answer" counts cost no extra reads. */
+export async function getGuidedSelectionResults(
+  input: GuidedSelectionMatchInput,
+  limit = 48,
+): Promise<GuidedSelectionResults> {
+  const { products, candidates } = await loadGuidedSelectionPool(input.categoryId);
+  const query = toMatchQuery(input);
+  const ranked = matchCandidates(candidates, query, limit + 1);
+  const matches = toGuidedMatches(products, ranked.slice(0, limit));
+  if (matches.length > 0) return { matches, capped: ranked.length > limit, relax: [] };
+
+  const drops: { key: GuidedSelectionRelaxOption["key"]; query: MatchQuery }[] = [];
+  for (const key of ["occasion", "size", "color", "material", "dimensions"] as const) {
+    if (query[key]) drops.push({ key, query: { ...query, [key]: undefined } });
+  }
+  if (query.minPriceCents !== null || query.maxPriceCents !== null) {
+    drops.push({ key: "budget", query: { ...query, minPriceCents: null, maxPriceCents: null } });
+  }
+  const relax = drops
+    // Counted without the display limit, so "Any budget · 120 matches" is the real number.
+    .map(({ key, query: relaxed }) => ({ key, count: matchCandidates(candidates, relaxed, candidates.length).length }))
+    .filter((option) => option.count > 0);
+  return { matches, capped: false, relax };
+}
+
+/** One value of a Details question with how many purchasable products offer it. */
+export interface GuidedSelectionAttributeQuestion {
+  attributeKey: ProductAttributeKey;
+  label: string;
+  values: { value: string; count: number }[];
+}
+
+/** What the steps need for one category (or "any category" when omitted): counts that hide dead-end choices, and budget ranges from real prices. */
+export interface GuidedSelectionOverview {
+  /** Purchasable products in scope. */
+  inStock: number;
+  /** Purchasable products per category; only filled for "any category". */
+  categoryCounts: Record<string, number>;
+  /** Purchasable products tagged with each occasion. */
+  occasionCounts: Record<string, number>;
+  /** Details questions for the category, values with no purchasable product removed. Empty for "any category". */
+  questions: GuidedSelectionAttributeQuestion[];
+  budgetPresets: BudgetPreset[];
+}
+
+export async function getGuidedSelectionOverview(
+  categoryId: string | undefined,
+  occasions: readonly string[],
+): Promise<GuidedSelectionOverview> {
+  const [{ products, candidates }, attributeOptions] = await Promise.all([
+    loadGuidedSelectionPool(categoryId),
+    categoryId ? resolveFilterableAttributes(categoryId) : Promise.resolve([] as ProductFilterOption[]),
+  ]);
+  const purchasable = candidates.filter(isPurchasable);
+
+  const categoryCounts: Record<string, number> = {};
+  if (!categoryId) {
+    const categoryById = new Map(products.map((product) => [product.id, product.category_id]));
+    for (const candidate of purchasable) {
+      const category = categoryById.get(candidate.id);
+      if (category) categoryCounts[category] = (categoryCounts[category] ?? 0) + 1;
+    }
+  }
+
+  const questions = attributeOptions
+    .map((option) => {
+      const counts = countAttributeValues(purchasable, option.attributeKey, option.values);
+      return {
+        attributeKey: option.attributeKey,
+        label: option.label,
+        values: option.values.map((value) => ({ value, count: counts[value] ?? 0 })).filter((entry) => entry.count > 0),
+      };
+    })
+    .filter((question) => question.values.length > 0);
+
+  return {
+    inStock: purchasable.length,
+    categoryCounts,
+    occasionCounts: countOccasions(purchasable, occasions),
+    questions,
+    budgetPresets: budgetPresets(purchasable.map(lowestPriceCents)),
+  };
 }
 
 /** One active category's id/name/slug plus whether Guided Selection should ask Occasion for it — see `categories.supports_occasion_matching`. */

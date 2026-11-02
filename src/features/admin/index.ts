@@ -1,4 +1,2 @@
 export { AdminLayout } from "./components/AdminLayout";
-export { AdminSidebar } from "./components/AdminSidebar";
-export { AdminTopbar, type AdminNotification } from "./components/AdminTopbar";
-export { ADMIN_NAV_GROUPS, getAdminPageMeta } from "./constants/nav";
+export { ADMIN_NAV_GROUPS, ADMIN_SHELL_CONFIG } from "./constants/nav";

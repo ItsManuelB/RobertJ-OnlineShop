@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
+import { RJ_CARD } from "@/components/ui/card";
 import { ConfirmPanel } from "@/components/ui/confirm-panel";
 import { cn } from "@/lib/utils/cn";
 import {
@@ -30,21 +31,17 @@ function toInput(address: Address): AddressInput {
 
 export interface AddressCardProps {
   address: Address;
-  /** Last row in the list gets no bottom divider. */
-  isLast?: boolean;
 }
 
 /**
  * One saved address on `/addresses`: view, edit (via the shared
  * `AddressModal` — same one `AddressList`'s "+ Add Address" uses),
- * delete-confirm, set-default. Renders as a compact divided row (name +
- * phone, address underneath, Default badge, Edit/Delete + Set-as-default
- * aligned right) — not a bordered card — matching the Shopee-style address
- * list this page was reorganized around. `AddressSummary` (used by
+ * delete-confirm, set-default. Renders as a card in the `/addresses` grid;
+ * the default address is outlined so it stands out. `AddressSummary` (used by
  * checkout's `AddressPicker`) is deliberately not reused here so this stays
  * isolated to this page and never touches checkout's picker rows.
  */
-export function AddressCard({ address, isLast = false }: AddressCardProps) {
+export function AddressCard({ address }: AddressCardProps) {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [isSettingDefault, startSettingDefault] = useTransition();
@@ -64,11 +61,9 @@ export function AddressCard({ address, isLast = false }: AddressCardProps) {
     });
   }
 
-  const rowBorder = !isLast && "border-b border-rj-gray-100";
-
   if (confirmingDelete) {
     return (
-      <div className={cn("py-5", rowBorder)}>
+      <div className={cn(RJ_CARD, "p-4")}>
         <ConfirmPanel
           label={`Delete ${address.label} address`}
           title="Delete this address?"
@@ -91,12 +86,23 @@ export function AddressCard({ address, isLast = false }: AddressCardProps) {
     .join(", ");
 
   return (
-    <div className={cn("flex flex-col gap-3 py-5 sm:flex-row sm:items-start sm:justify-between sm:gap-4", rowBorder)}>
+    <div
+      className={cn(
+        RJ_CARD,
+        "flex flex-col gap-3 p-4",
+        address.isDefault && "border-rj-black ring-1 ring-rj-black",
+      )}
+    >
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="rounded-full bg-rj-gray-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-rj-gray-600">
             {address.label}
           </span>
+          {address.isDefault ? (
+            <span className="inline-flex w-fit items-center rounded border border-rj-red-dark px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-rj-red-dark">
+              Default
+            </span>
+          ) : null}
         </div>
         <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2">
           <span className="text-sm font-semibold text-rj-black">{address.recipientName}</span>
@@ -115,14 +121,20 @@ export function AddressCard({ address, isLast = false }: AddressCardProps) {
             {address.postalCode}, {address.country}
           </p>
         )}
-        {address.isDefault ? (
-          <span className="mt-2 inline-flex w-fit items-center rounded border border-rj-red-dark px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-rj-red-dark">
-            Default
-          </span>
-        ) : null}
       </div>
 
-      <div className="flex shrink-0 flex-row items-center gap-4 sm:flex-col sm:items-end sm:gap-2">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        {!address.isDefault ? (
+          <Button
+            type="button"
+            variant="rj"
+            size="rjSm"
+            isLoading={isSettingDefault}
+            onClick={handleSetDefault}
+          >
+            Set as default
+          </Button>
+        ) : null}
         <div className="flex gap-3">
           <button
             type="button"
@@ -139,17 +151,6 @@ export function AddressCard({ address, isLast = false }: AddressCardProps) {
             Delete
           </button>
         </div>
-        {!address.isDefault ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="rjSm"
-            isLoading={isSettingDefault}
-            onClick={handleSetDefault}
-          >
-            Set as default
-          </Button>
-        ) : null}
       </div>
 
       {isEditOpen ? (

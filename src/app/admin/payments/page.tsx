@@ -2,10 +2,12 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 
 import { Skeleton } from "@/components/ui/skeleton";
+import { PaymentAttentionStrip } from "@/features/payments/components/PaymentAttentionStrip";
 import { PaymentMethodFilter } from "@/features/payments/components/PaymentMethodFilter";
 import { PaymentSearchInput } from "@/features/payments/components/PaymentSearchInput";
 import { PaymentsList } from "@/features/payments/components/PaymentsList";
 import { PaymentStatusFilter } from "@/features/payments/components/PaymentStatusFilter";
+import { getPaymentStatusCounts, getStalePaymentCount } from "@/lib/supabase/queries";
 
 export const metadata: Metadata = { title: "Payments — Admin Portal" };
 
@@ -27,25 +29,43 @@ interface AdminPaymentsPageProps {
 
 export default async function AdminPaymentsPage({ searchParams }: AdminPaymentsPageProps) {
   const params = await searchParams;
+  // The tab numbers and reconciliation banner are a nicety — a failed count just leaves them out.
+  const [statusCounts, staleCount] = await Promise.all([
+    getPaymentStatusCounts().catch(() => undefined),
+    getStalePaymentCount().catch(() => 0),
+  ]);
 
   return (
     <div className="flex flex-col gap-6 p-5 lg:p-7">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex-1">
-          <Suspense fallback={null}>
-            <PaymentSearchInput />
-          </Suspense>
-        </div>
-        <Suspense fallback={null}>
-          <PaymentMethodFilter />
-        </Suspense>
+      <div>
+        <h1 className="text-2xl font-semibold text-foreground">Payments</h1>
+        <p className="text-sm text-muted-foreground">
+          Reconcile online payments and record cash collected on delivery.
+        </p>
       </div>
+
       <Suspense fallback={null}>
-        <PaymentStatusFilter />
+        <PaymentAttentionStrip staleCount={staleCount} />
       </Suspense>
 
+      <div className="flex flex-col gap-4">
+        <Suspense fallback={null}>
+          <PaymentStatusFilter counts={statusCounts} />
+        </Suspense>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="min-w-[14rem] flex-1">
+            <Suspense fallback={null}>
+              <PaymentSearchInput />
+            </Suspense>
+          </div>
+          <Suspense fallback={null}>
+            <PaymentMethodFilter />
+          </Suspense>
+        </div>
+      </div>
+
       <Suspense key={JSON.stringify(params)} fallback={<PaymentsListSkeleton />}>
-        <PaymentsList searchParams={params} showAdminTools />
+        <PaymentsList searchParams={params} showAdminTools compactSummary />
       </Suspense>
     </div>
   );

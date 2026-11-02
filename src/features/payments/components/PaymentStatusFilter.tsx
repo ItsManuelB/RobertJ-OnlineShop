@@ -12,11 +12,11 @@ import type { PaymentStatus } from "@/constants/status";
 const STATUS_CHIPS = Object.values(PAYMENT_STATUS) as PaymentStatus[];
 
 /**
- * Phase 4B, Admin-only. Status chips for the Admin payments view — same
+ * Status chips for the payments views — same
  * "set `status`, replace, no page param" shape as `OrderStatusFilter`.
- * Not rendered on the Seller payments page, so seller behavior is unchanged.
+ * Optional `counts` shows per-status totals beside each chip.
  */
-export function PaymentStatusFilter() {
+export function PaymentStatusFilter({ counts }: { counts?: Record<PaymentStatus, number> } = {}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -47,6 +47,7 @@ export function PaymentStatusFilter() {
         onClick={() => updateParams(null)}
       >
         All
+        {counts ? <ChipCount value={STATUS_CHIPS.reduce((sum, status) => sum + counts[status], 0)} /> : null}
       </button>
       {STATUS_CHIPS.map((status) => (
         <button
@@ -57,8 +58,13 @@ export function PaymentStatusFilter() {
           onClick={() => updateParams(status)}
         >
           {PAYMENT_STATUS_LABELS[status]}
+          {counts ? <ChipCount value={counts[status]} /> : null}
         </button>
       ))}
     </div>
   );
+}
+
+function ChipCount({ value }: { value: number }) {
+  return <span className="ml-1.5 tabular-nums opacity-80">{value}</span>;
 }

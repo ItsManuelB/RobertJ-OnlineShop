@@ -9,10 +9,6 @@ export function canViewDashboard(role: UserRole) {
   return canManageProducts(role);
 }
 
-export function canManageUsers(role: UserRole) {
-  return role === USER_ROLES.admin;
-}
-
 /**
  * Only buyers may purchase (add to cart, wishlist, checkout, create orders).
  * Seller/admin can browse the read-only storefront but never transact — the

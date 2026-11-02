@@ -9,8 +9,8 @@ const nextConfig: NextConfig = {
   turbopack: { root: import.meta.dirname },
   experimental: {
     // Turbopack's build cache records the values of the env vars it read,
-    // including server secrets (CRON_SECRET, XENDIT_WEBHOOK_TOKEN), and Netlify's
-    // secret scanner fails the deploy when it finds them in that cache file.
+    // including server secrets (CRON_SECRET, XENDIT_WEBHOOK_TOKEN), and a host's
+    // secret scanner can fail the deploy when it finds them in that cache file.
     // The hosted build starts clean each time anyway, so skip writing it.
     turbopackFileSystemCacheForBuild: false,
     serverActions: {

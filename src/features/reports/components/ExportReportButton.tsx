@@ -18,13 +18,21 @@ import type { ReportFilters } from "../types/report.types";
 export function ExportReportButton({
   filters,
   sections,
+  drawerOpen,
+  onDrawerOpenChange,
 }: {
   filters: ReportFilters;
   /** When given, the button first opens a panel listing what the file contains (Seller Reports). */
   sections?: string[];
+  /** Controlled mode (used by `SellerExportMenu`): the parent owns the panel's open state and renders its own trigger, so no button is shown here. */
+  drawerOpen?: boolean;
+  onDrawerOpenChange?: (open: boolean) => void;
 }) {
   const [isExporting, setIsExporting] = useState(false);
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const controlled = drawerOpen !== undefined && onDrawerOpenChange !== undefined;
+  const open = controlled ? drawerOpen : internalOpen;
+  const setOpen = controlled ? onDrawerOpenChange : setInternalOpen;
   const [error, setError] = useState<string | null>(null);
 
   async function handleExport() {
@@ -56,17 +64,19 @@ export function ExportReportButton({
 
   return (
     <div className="flex flex-col items-start gap-1">
-      <Button
-        type="button"
-        variant="outline"
-        size="rjSm"
-        onClick={sections ? () => { setError(null); setOpen(true); } : handleExport}
-        isLoading={sections ? false : isExporting}
-        className="text-foreground"
-      >
-        <Download className="h-4 w-4" aria-hidden="true" />
-        Export CSV
-      </Button>
+      {controlled ? null : (
+        <Button
+          type="button"
+          variant="outline"
+          size="rjSm"
+          onClick={sections ? () => { setError(null); setOpen(true); } : handleExport}
+          isLoading={sections ? false : isExporting}
+          className="text-foreground"
+        >
+          <Download className="h-4 w-4" aria-hidden="true" />
+          Export CSV
+        </Button>
+      )}
       {error && !open ? (
         <p className="text-xs text-danger" role="alert">
           {error}

@@ -1,5 +1,6 @@
 "use client";
 
+import { AlertTriangle, Check } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
@@ -26,7 +27,7 @@ import {
 import { ProductEditorActions } from "@/features/products/components/ProductEditorActions";
 import { ProductEditorNav, type EditorSection } from "@/features/products/components/ProductEditorNav";
 import { ProductEditorPreview, type PreviewCheckItem } from "@/features/products/components/ProductEditorPreview";
-import { ProductEditorSection } from "@/features/products/components/ProductEditorSection";
+import { EditorSectionStateContext, ProductEditorSection } from "@/features/products/components/ProductEditorSection";
 import {
   ProductPhotosSection,
   type PendingPhoto,
@@ -296,6 +297,8 @@ function ProductEditorForm({
     { id: "sec-visibility", label: "Visibility", state: "done" },
   ];
 
+  const sectionStates = Object.fromEntries(sections.map((section) => [section.id, section.state]));
+
   const hasPhoto = (isEdit ? savedImages.length : pendingPhotos.length) > 0;
   const checklist: PreviewCheckItem[] = [
     { label: "Category chosen", done: Boolean(values.categoryId), required: true },
@@ -304,7 +307,8 @@ function ProductEditorForm({
     { label: "Quantity above 0", done: Number(values.quantity) > 0, required: true },
     { label: "At least one photo", done: hasPhoto, required: false },
   ];
-  const canPublish = checklist.filter((item) => item.required).every((item) => item.done);
+  const missingRequired = checklist.filter((item) => item.required && !item.done);
+  const canPublish = missingRequired.length === 0;
   const optionLabels = optionVariants
     .map((variant) => [variant.color, variant.size, variant.material, variant.dimensions].filter(Boolean).join(" / "))
     .filter(Boolean);
@@ -406,10 +410,35 @@ function ProductEditorForm({
         </div>
         {actions}
       </header>
-      {!isEdit && !locked && !canPublish ? (
-        <p id="publish-hint" className="-mt-2 text-xs text-muted-foreground">
-          To publish, add a category, a product name, a price and a quantity above 0. You can save as a draft at any time, with no quantity.
-        </p>
+      {!locked && (!canPublish || values.status !== PRODUCT_STATUS.active) ? (
+        canPublish ? (
+          <p
+            id="publish-hint"
+            role="status"
+            className="-mt-2 flex items-start gap-2 rounded-xl border border-success/40 bg-success/10 px-4 py-3 text-sm text-foreground"
+          >
+            <Check className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-hidden="true" />
+            <span>
+              <span className="block font-semibold">Ready to publish</span>
+              Category, name, price and stock are set. Buyers will see it as shown in the preview.
+            </span>
+          </p>
+        ) : (
+          <p
+            id="publish-hint"
+            role="status"
+            className="-mt-2 flex items-start gap-2 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-foreground"
+          >
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+            <span>
+              <span className="block font-semibold">
+                {missingRequired.length} thing{missingRequired.length === 1 ? "" : "s"} left before you can publish
+              </span>
+              Still needed: {missingRequired.map((item) => item.label.toLowerCase()).join(", ")}. You can save as a draft at any time
+              {isEdit ? "." : ", with no quantity."}
+            </span>
+          </p>
+        )
       ) : null}
 
       {optionsOutOfStock ? (
@@ -457,6 +486,7 @@ function ProductEditorForm({
             />
           ) : null}
 
+          <EditorSectionStateContext.Provider value={sectionStates}>
           <fieldset disabled={locked} className="m-0 flex min-w-0 flex-col gap-5 border-0 p-0">
             <BasicsSection
               values={values}
@@ -528,13 +558,17 @@ function ProductEditorForm({
             <VisibilitySection values={values} setValue={setValue} isEdit={isEdit} />
 
           </fieldset>
+          </EditorSectionStateContext.Provider>
 
           <details className="rounded-xl border border-border bg-background p-3 lg:hidden">
             <summary className="min-h-11 cursor-pointer py-2 text-sm font-medium text-foreground">Preview and checklist</summary>
             <div className="mt-2">{preview}</div>
           </details>
 
-          {actions}
+          {/* Pinned on narrow screens so Save/Publish stay in reach while scrolling a long form. */}
+          <div className="sticky bottom-0 z-10 -mx-1 border-t border-border bg-background/95 px-1 py-3 backdrop-blur lg:static lg:mx-0 lg:border-0 lg:bg-transparent lg:p-0">
+            {actions}
+          </div>
         </div>
       </div>
     </div>

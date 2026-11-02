@@ -26,7 +26,7 @@ const buttonVariants = cva(
         icon: "h-10 w-10",
         // Auth/CTA sizing — content-driven height via vertical padding.
         rj: "px-7 py-3.5 text-sm",
-        rjSm: "px-6 py-2 text-[12px]",
+        rjSm: "px-6 py-2 text-[12px] max-lg:py-3",
       },
     },
     defaultVariants: { variant: "primary", size: "md" },

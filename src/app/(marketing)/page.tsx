@@ -1,5 +1,6 @@
 import {
   AboutSection,
+  BuyerReviewsSection,
   EditorialBanner,
   FeaturedProducts,
   FeaturedShops,
@@ -25,6 +26,7 @@ export default function LandingPage() {
       <MarqueeBand />
       <ProductCategories />
       <FeaturedProducts />
+      <BuyerReviewsSection />
       <FeaturedShops />
       <EditorialBanner />
       <AboutSection />

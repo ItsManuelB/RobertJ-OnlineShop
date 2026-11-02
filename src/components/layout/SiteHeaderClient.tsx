@@ -231,6 +231,13 @@ export function SiteHeaderClient({ user, categories, notifications }: SiteHeader
           ) : null}
         </div>
 
+        <Link
+          href={ROUTES.assistant}
+          className="hidden shrink-0 rounded-full px-3 py-1.5 text-[13px] font-medium text-rj-gray-600 transition-colors hover:bg-rj-gray-100 hover:text-rj-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rj-red/30 md:block"
+        >
+          Find my match
+        </Link>
+
         {/* Search — desktop, always visible, real submit */}
         <div className="relative hidden max-w-md flex-1 md:block">
           <SearchForm
@@ -364,6 +371,13 @@ export function SiteHeaderClient({ user, categories, notifications }: SiteHeader
               className="text-sm font-semibold text-rj-black"
             >
               New Arrivals
+            </Link>
+            <Link
+              href={ROUTES.assistant}
+              onClick={() => setMenuOpen(false)}
+              className="text-sm font-semibold text-rj-black"
+            >
+              Find my match
             </Link>
             {!user ? (
               <Link

@@ -28,24 +28,30 @@ export async function SellerTopProducts({
   to,
   sort = "units",
   sortHrefs,
+  audience = "seller",
+  shopId = null,
 }: {
   from: string;
   to: string;
   sort?: TopProductsSort;
   sortHrefs?: Record<TopProductsSort, string>;
+  /** Admin: marketplace-wide, or one shop when `shopId` is set. */
+  audience?: "seller" | "admin";
+  shopId?: string | null;
 }) {
+  const isAdmin = audience === "admin";
   let products: TopProduct[];
   try {
-    const owner = await getCurrentSellerOwner();
-    if (!owner.shopId) {
+    const scopeShopId = isAdmin ? shopId : (await getCurrentSellerOwner()).shopId;
+    if (!isAdmin && !scopeShopId) {
       products = [];
     } else if (sort === "sales") {
-      const pool = await getTopProducts(from, to, SALES_SORT_POOL, owner.shopId);
+      const pool = await getTopProducts(from, to, SALES_SORT_POOL, scopeShopId);
       products = [...pool]
         .sort((a, b) => b.revenueCents - a.revenueCents || b.unitsSold - a.unitsSold)
         .slice(0, SELLER_TOP_PRODUCTS_LIMIT);
     } else {
-      products = await getTopProducts(from, to, SELLER_TOP_PRODUCTS_LIMIT, owner.shopId);
+      products = await getTopProducts(from, to, SELLER_TOP_PRODUCTS_LIMIT, scopeShopId);
     }
   } catch {
     return <ErrorState message="We couldn't load top products right now." />;
@@ -119,7 +125,7 @@ export async function SellerTopProducts({
                   </span>
                 </div>
                 <Link
-                  href={ROUTES.sellerProductEdit(product.productId)}
+                  href={isAdmin ? ROUTES.adminProductEdit(product.productId) : ROUTES.sellerProductEdit(product.productId)}
                   aria-label={`View product ${product.productTitle}`}
                   className="inline-flex min-h-9 items-center justify-center justify-self-end rounded-lg border border-border px-3 text-xs font-semibold text-primary hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                 >

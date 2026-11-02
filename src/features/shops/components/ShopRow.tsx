@@ -78,6 +78,7 @@ export function ShopRow({ shop }: ShopRowProps) {
               <Badge tone={shop.active ? "success" : "neutral"}>
                 {shop.active ? "Active" : "Inactive"}
               </Badge>
+              {shop.members.length === 0 ? <Badge tone="warning">No seller</Badge> : null}
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
               {shop.members.length > 0

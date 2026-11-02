@@ -27,10 +27,11 @@ import {
  *
  * TD-9: after the payment-status sweep above, a second pass auto-expires
  * orders that are still unpaid 60 minutes after placement — see `runExpirySweep`.
- * Deliberately the SAME cron/route (not a second scheduled job): it runs
- * every 15 minutes (see netlify/functions/xendit-reconciliation.mts), which
- * is fine granularity for a 60-minute threshold, and it means one schedule
- * to reason about instead of two.
+ * Deliberately the SAME cron/route (not a second scheduled job). It should run
+ * about every 15 minutes, which is fine granularity for a 60-minute threshold;
+ * `vercel.json` only schedules it daily (Hobby limit), so call it more often
+ * with an external scheduler (`Authorization: Bearer <CRON_SECRET>`) or on a
+ * plan that allows tighter crons.
  */
 
 /** Oldest-first raw rows to consider per run — bounds the query, not the work actually done (see queries.ts docs). */

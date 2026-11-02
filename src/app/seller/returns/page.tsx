@@ -41,6 +41,13 @@ export default async function SellerReturnsPage({ searchParams }: SellerReturnsP
 
   return (
     <div className="flex flex-col gap-6 p-5 lg:p-7">
+      <div>
+        <h1 className="text-2xl font-semibold text-foreground">Returns &amp; Refunds</h1>
+        <p className="text-sm text-muted-foreground">
+          Respond to buyer requests and finish what is waiting on you.
+        </p>
+      </div>
+
       {/* Keyed so switching tab/page restarts the suspense boundary. */}
       <Suspense key={JSON.stringify(params)} fallback={<ReturnQueueSkeleton />}>
         <ReturnQueue viewer="seller" tab={first(params.tab)} page={first(params.page)} />

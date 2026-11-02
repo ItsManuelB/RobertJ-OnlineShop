@@ -89,7 +89,7 @@ export async function DashboardProductsPanel({
   const { items, page, totalPages, total } = result;
 
   if (items.length === 0) {
-    const otherFiltering = Boolean(parsed.data.search || parsed.data.categoryId);
+    const otherFiltering = Boolean(parsed.data.search || parsed.data.categoryId || parsed.data.shopId);
     if (isArchivedView) {
       return (
         <EmptyState
@@ -102,7 +102,9 @@ export async function DashboardProductsPanel({
         />
       );
     }
-    const filtering = Boolean(parsed.data.search || parsed.data.status || parsed.data.categoryId);
+    const filtering = Boolean(
+      parsed.data.search || parsed.data.status || parsed.data.categoryId || parsed.data.shopId,
+    );
     return (
       <EmptyState
         title={filtering ? "No matching products" : "No products yet"}

@@ -4,7 +4,7 @@ import { AddressList } from "@/features/addresses/components/AddressList";
 import { CatalogHeader } from "@/features/products/components/CatalogHeader";
 import { listMyAddresses, requireSessionUser } from "@/lib/supabase/queries";
 
-export const metadata: Metadata = { title: "My Addresses" };
+export const metadata: Metadata = { title: "Addresses" };
 
 export default async function AddressesPage() {
   const user = await requireSessionUser();
@@ -14,12 +14,10 @@ export default async function AddressesPage() {
     <div className="flex flex-col gap-8">
       <CatalogHeader
         eyebrow="My Account"
-        title="My Addresses"
-        description="Manage the delivery addresses saved to your account."
+        title="Addresses"
+        description="The default address is used first at checkout."
       />
-      <div className="max-w-2xl rounded-2xl border border-rj-gray-100 bg-rj-white p-6 sm:p-8">
-        <AddressList addresses={addresses} />
-      </div>
+      <AddressList addresses={addresses} />
     </div>
   );
 }

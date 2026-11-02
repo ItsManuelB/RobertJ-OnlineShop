@@ -29,7 +29,7 @@
   --primary-foreground: #ffffff;
   --secondary: #f4f4f5;
   --secondary-foreground: #171717;
-  --success: #16a34a;
+  --success: #166534;
   --warning: #b45309;
   /* Independently red on purpose: destructive actions (Archive/Reject/Cancel/
      Deactivate) keep a red "danger" regardless of brand color, so the
@@ -73,22 +73,22 @@
   --primary-foreground: #ffffff;
   --secondary: #e2f0eb; /* rj-gray-100 */
   --secondary-foreground: #09120f;
-  --success: #16a34a;
+  --success: #166534;
   --warning: #b45309;
   --danger: #c8111e; /* independent red — see :root comment */
   --danger-foreground: #ffffff;
   --info: #0284c7;
 
-  /* Sidebar is a deliberately distinct surface from --background/--card in
-     both themes (a near-white chrome against the page's off-white canvas
-     here; a near-black chrome against a lifted-black canvas in dark mode
-     below) — same convention shadcn's Sidebar primitive uses. */
-  --sidebar-background: #ffffff;
-  --sidebar-foreground: #09120f;
-  --sidebar-muted-foreground: #4a5c52;
-  --sidebar-border: #ccdcdc;
-  --sidebar-accent: rgba(19, 94, 74, 0.1);
-  --sidebar-accent-foreground: #135e4a;
+  /* Sidebar is a deliberately distinct surface from --background/--card: the
+     same deep green chrome in both themes, so the portal reads as one product
+     and the menu never changes weight with the theme. */
+  --sidebar-background: #0f1f1a;
+  --sidebar-foreground: #ffffff;
+  --sidebar-muted-foreground: #b8cbc1;
+  --sidebar-border: #223a31;
+  --sidebar-accent: #1d3b30;
+  --sidebar-accent-foreground: #8fd7ab;
+  --sidebar-warning: #e8b04a;
 }
 
 /*
@@ -101,38 +101,39 @@
 .dark [data-theme-scope="admin"],
 .dark [data-theme-scope="seller"] {
   color-scheme: dark;
-  --background: #101b17;
-  --foreground: #f2f2f0;
-  --card: #172621;
-  --card-foreground: #f2f2f0;
-  --muted: #1f2d27;
-  --muted-foreground: #a2b9ad;
-  --border: #60736a; /* 3.1:1 against cards and 3.5:1 against the page */
-  --subtle-border: #34473e;
-  --table-divider: #34473e;
+  --background: #0b1117;
+  --foreground: #e8eef3;
+  --card: #121a22;
+  --card-foreground: #e8eef3;
+  --muted: #19232d;
+  --muted-foreground: #93a4b4;
+  --border: #5f7388; /* 3.6:1 against cards and 3.9:1 against the page */
+  --subtle-border: #2a3745;
+  --table-divider: #2a3745;
   --filter-active-background: var(--primary);
-  --filter-active-foreground: #09120f;
-  --ring: #4cb571;
-  --primary: #4cb571; /* brightened emerald for visibility on a near-black surface */
+  --filter-active-foreground: #06130e;
+  --ring: #4cc39a;
+  --primary: #4cc39a; /* mint-emerald, brightened for visibility on a near-black surface */
   /* Dark ink, not white: white text on this bright a green only reaches
      ~2.6:1 (fails WCAG AA). Using the same near-black ink as rj-black
      instead clears AA at ~7.4:1 while keeping the brightened-for-dark-mode
      accent the way `--primary` was brightened here before. */
-  --primary-foreground: #09120f;
-  --secondary: #1f2d27;
-  --secondary-foreground: #f2f2f0;
-  --success: #22c55e; /* rj-green */
+  --primary-foreground: #06130e;
+  --secondary: #19232d;
+  --secondary-foreground: #e8eef3;
+  --success: #4ade80; /* rj-green */
   --warning: #f4b942; /* rj-gold */
-  --danger: #ff7580;
-  --danger-foreground: #09120f;
+  --danger: #ff7a85;
+  --danger-foreground: #06130e;
   --info: #38bdf8;
 
-  --sidebar-background: #0c1512; /* rj-black family, darkest surface */
-  --sidebar-foreground: #f8faf9; /* rj-white */
-  --sidebar-muted-foreground: #a2b9ad;
-  --sidebar-border: rgba(255, 255, 255, 0.08);
-  --sidebar-accent: rgba(76, 181, 113, 0.18);
-  --sidebar-accent-foreground: #4cb571;
+  --sidebar-background: #0f1f1a;
+  --sidebar-foreground: #ffffff;
+  --sidebar-muted-foreground: #b8cbc1;
+  --sidebar-border: #223a31;
+  --sidebar-accent: #1d3b30;
+  --sidebar-accent-foreground: #8fd7ab;
+  --sidebar-warning: #e8b04a;
 }
 
 /*
@@ -193,6 +194,7 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent: var(--sidebar-accent);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-warning: var(--sidebar-warning);
 
   /*
    * Landing-page ("RobertJ") design tokens. Fixed values — deliberately NOT in

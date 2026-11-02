@@ -1,4 +1,5 @@
 import Image from "next/image";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 
@@ -9,6 +10,7 @@ import { EmptyState } from "@/components/feedback/EmptyState";
 import { canPurchase } from "@/lib/auth/permissions";
 import { formatCurrency } from "@/lib/utils/currency";
 import {
+  getProductRatingSummaries,
   getProductSoldCounts,
   listProductIdsWithVariants,
   getSessionUser,
@@ -18,6 +20,8 @@ import {
 } from "@/lib/supabase/queries";
 import { ProductTile, type ProductTileItem } from "@/features/products/components/ProductTile";
 import { WishlistButton } from "@/features/wishlist/components/WishlistButton";
+import { GuidedSelectionPromo } from "@/features/assistant";
+import type { RatingSummary } from "@/features/reviews/types/review.types";
 import { getCoverImage, type Product } from "@/features/products/types/product.types";
 
 export interface ProductGridProps {
@@ -32,6 +36,8 @@ export interface ProductGridProps {
    * generic "no products" message — never fabricated, always the caller's
    * already-resolved shop. */
   shopName?: string;
+  /** Per-product tweaks keyed by product id: the price to show (e.g. a matched option's price) and a line under it. */
+  overrides?: Record<string, { priceCents?: number; footer?: ReactNode }>;
 }
 
 /** One row in the "list" view — same fields as `ProductTile`, laid out horizontally. */
@@ -80,6 +86,8 @@ function toTileItem(
   soldCounts: ReadonlyMap<string, number>,
   canPurchase: boolean,
   hasOptions: boolean,
+  override?: { priceCents?: number; footer?: ReactNode },
+  rating?: RatingSummary | null,
 ): ProductTileItem {
   // Real shop name when the seller belongs to one (see
   // `resolve_shop_membership`); next, the product's own `shop_id` directly
@@ -100,7 +108,7 @@ function toTileItem(
     key: product.id,
     name: product.title,
     shopName,
-    priceCents: product.priceCents,
+    priceCents: override?.priceCents ?? product.priceCents,
     originalPriceCents: null,
     currency: product.currency,
     imageUrl: getCoverImage(product)?.url ?? null,
@@ -134,6 +142,8 @@ function toTileItem(
     },
     hasOptions,
     canPurchase,
+    footer: override?.footer,
+    rating,
   };
 }
 
@@ -142,14 +152,18 @@ export async function ProductGrid({
   viewMode = "grid",
   searchTerm,
   shopName,
+  overrides,
 }: ProductGridProps) {
   if (products.length === 0) {
     if (searchTerm) {
       return (
-        <EmptyState
-          title={`No results for "${searchTerm}"`}
-          description="Check the spelling, try a shorter term, or browse by category instead."
-        />
+        <div className="flex flex-col gap-6">
+          <EmptyState
+            title={`No results for "${searchTerm}"`}
+            description="Check the spelling, try a shorter term, or browse by category instead."
+          />
+          <GuidedSelectionPromo />
+        </div>
       );
     }
 
@@ -172,10 +186,13 @@ export async function ProductGrid({
     }
 
     return (
-      <EmptyState
-        title="No products found"
-        description="Try adjusting your filters or browse another category."
-      />
+      <div className="flex flex-col gap-6">
+        <EmptyState
+          title="No products found"
+          description="Try adjusting your filters or browse another category."
+        />
+        <GuidedSelectionPromo />
+      </div>
     );
   }
 
@@ -195,7 +212,7 @@ export async function ProductGrid({
     ),
   ];
   const productIds = products.map((product) => product.id);
-  const [wishlistedIds, shopNames, shopNamesByShopId, soldCounts, optionProductIds] =
+  const [wishlistedIds, shopNames, shopNamesByShopId, soldCounts, optionProductIds, ratings] =
     await Promise.all([
       user
         ? listWishlistProductIds(user.id)
@@ -207,6 +224,8 @@ export async function ProductGrid({
       getProductSoldCounts(productIds).catch(() => new Map<string, number>()),
       // Degrades to "no options known" (quick-add as before) if this lookup fails.
       listProductIdsWithVariants(productIds).catch(() => new Set<string>()),
+      // A failed read simply shows no ratings, never a wrong one.
+      getProductRatingSummaries(productIds).catch(() => new Map<string, RatingSummary>()),
     ]);
 
   // Guests + buyers can transact; seller/admin browse read-only, so their
@@ -222,6 +241,8 @@ export async function ProductGrid({
       soldCounts,
       viewerCanPurchase,
       optionProductIds.has(product.id),
+      overrides?.[product.id],
+      ratings.get(product.id) ?? null,
     ),
   );
 

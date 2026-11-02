@@ -7,7 +7,7 @@ import { OrderCard } from "@/features/orders/components/OrderCard";
 import type { Order } from "@/features/orders/types/order.types";
 import { cn } from "@/lib/utils/cn";
 
-/** Top-5 recent orders + a link to the full history. */
+/** The latest few orders + a link to the full history. */
 export function RecentOrdersList({ orders }: { orders: Order[] }) {
   return (
     <section aria-label="Recent orders" className="flex flex-col gap-4">

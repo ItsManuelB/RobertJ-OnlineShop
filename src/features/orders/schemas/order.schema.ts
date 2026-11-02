@@ -20,11 +20,13 @@ export const lifecycleTabSchema = z.enum(lifecycleTabValues);
 
 /** Validates and normalises search params for the buyer order listing. */
 export const buyerOrderListParamsSchema = paginationSchema.extend({
-  /** Order-ID search; capped well under the real order_number length. */
+  /** Order-number or product-name search; capped well under the real order_number length. */
   search: z.string().trim().min(1).max(40).optional(),
   status: orderStatusSchema.optional(),
   /** Shopee-style lifecycle tab (`OrderLifecycleTabs`, buyer `/orders` only) — named `tab` in the URL, distinct from the raw `status` chip filter. */
   tab: lifecycleTabSchema.optional(),
+  /** Buyer-only placed-date window. */
+  placed: z.enum(["30d", "90d", "year"]).optional(),
 });
 
 /**

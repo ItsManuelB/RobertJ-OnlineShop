@@ -42,6 +42,8 @@ Every decision is a numbered ADR with a fixed shape: **Context → Problem → O
 | [ADR-017](#adr-017-oauth-account-linking-trusts-supabases-verified-email-matching-only) | OAuth account linking trusts Supabase's verified-email matching only | ✅ Accepted |
 | [ADR-018](#adr-018-wishlist-reviews-and-a-derived-buyer-activity-feed) | Wishlist, Reviews, and a Derived Buyer Activity Feed | ✅ Accepted |
 | [ADR-020](#adr-020-authenticated-cart-becomes-database-backed-with-guest-cart-merge-on-sign-in) | Authenticated cart becomes database-backed, with guest-cart merge on sign-in | ✅ Accepted |
+| [ADR-026](#adr-026-order-scoped-buyerseller-messaging-contact-seller) | Order-scoped buyer↔seller messaging (Contact Seller) | ✅ Accepted |
+| [ADR-027](#adr-027-shop-name-moves-from-admin-only-to-seller-editable) | Shop name moves from admin-only to seller-editable | ✅ Accepted |
 
 ---
 
@@ -254,7 +256,7 @@ Every decision is a numbered ADR with a fixed shape: **Context → Problem → O
 
 **Consequences:**
 - Rules are deterministic, explainable, and testable without a model-evaluation harness.
-- The `recommendation_rules` table (see [ARCHITECTURE.md → Target Database Schema](./ARCHITECTURE.md#target-database-schema)) is implemented with explicit typed columns (`occasion`, `size`, optional `variant_id`), not the SAD's indicative `jsonb conditions` blob — same rationale as `products`/`orders` already preferring real columns. `features/assistant` now has admin/seller rule authoring and a buyer-facing quiz (`GuidedSelectorQuiz`); the landing page's `SmartAssistantPreview` opens the real quiz instead of showing a cosmetic chat demo.
+- The `recommendation_rules` table (see [ARCHITECTURE.md → Target Database Schema](./ARCHITECTURE.md#target-database-schema)) is implemented with explicit typed columns (`occasion`, `size`, optional `variant_id`), not the SAD's indicative `jsonb conditions` blob — same rationale as `products`/`orders` already preferring real columns. `features/assistant` now has admin/seller rule authoring and a buyer-facing quiz (`GuidedSelectorQuiz`); the landing page's `SmartAssistantPreview` opens the real quiz instead of showing a cosmetic chat demo. *(Update, 27 Oct 2026: the quiz dialog became the step-by-step `/assistant` page; matching itself moved to the catalog under ADR-022.)*
 - Any AI/LLM approach is explicitly **out of scope** and must not be introduced without a new ADR superseding this one.
 
 **Future Revisit:** Only via explicit SAD amendment — this is a business-scope decision, not a technical preference.
@@ -482,6 +484,7 @@ Original decision: Option 2. The Stripe code stayed in the repo (real, working c
 **Consequences:**
 - Buyer trust/convenience features land without expanding the payment, courier, or messaging surface the SAD explicitly excludes.
 - Reviews require verified purchase — no anonymous or unverifiable review is possible, without needing a moderation subsystem.
+- *(Update, 29 Oct 2026, migration `20261029000000_reviews_replies_moderation_demo.sql`.)* Real reviews still require a delivered purchase. Added: one seller reply per review (`reply_to_review`, shop members only), buyer edits within 30 days (`update_review`), admin hide/show with a reason (`admin_set_review_hidden`, audit-logged), a `variant_label` snapshot of what was bought, and first-name-plus-initial display. Demo reviews (`is_demo`) exist only for presentations: no order or buyer behind them (enforced by a check constraint), never "verified", never sent to search engines, shown only while `platform_settings.demo_content_enabled` is on, each tagged "Sample", and removable in one admin call. A presenter-only, untagged variant (`20261029010000`) was tried and reverted by `20261029020000` at the client's request: the tag stays. They never touch sales, stock or sold counts.
 - The activity feed cannot represent "confirmed" or "processing" as discrete events, because no column captures those transitions (`orders` only stamps `paid_at`/`shipped_at`/`delivered_at`/`cancelled_at`). This is an accepted, documented limitation, not an oversight.
 - Wishlist introduces the first plain-RLS (non-RPC-gated) user-owned write path in this schema. Future user-owned-data features should default to this lighter pattern only when no cross-entity invariant is at stake, and to the RPC pattern otherwise.
 - The new `shops` public-read policy is additive only; existing `is_shop_member(id) OR is_admin()` read/write policies on `shops` are untouched, and inactive shops remain invisible to `anon`/`authenticated`.
@@ -654,3 +657,51 @@ Original decision: Option 2. The Stripe code stayed in the repo (real, working c
 **Amendment (atomic add):** signed-in adds now call `public.add_cart_item` — one SECURITY INVOKER function that takes a per-cart advisory lock, checks the product/option is active and that existing quantity plus the add fits live stock, writes the line and returns the new total. The earlier read-check-write in the app could be raced by two concurrent adds (nothing could be oversold — `create_order` locks stock — but the cart could exceed it). Messages are prefixed `CART: ` and shown to the buyer as they are. Add-to-cart feedback always states the cart's new total.
 
 **Consequences:** `create_order` and the cart tables are untouched; the only database change is the added function. A bought-now checkout is not saved anywhere, so reopening its link starts a new checkout for the same item (`router.replace` keeps the post-order Back button from doing that by accident). Adding a quantity beyond stock to a signed-in cart is now refused instead of accepted-and-flagged.
+
+---
+
+## ADR-026: Order-scoped buyer↔seller messaging (Contact Seller)
+
+**Status:** ✅ Accepted
+
+**Context:** The order-detail pages had no way for a buyer to reach the seller about a specific order — `SellerShopRow` even documented the absence ("no messaging feature exists in this app"). The notifications feature is a read-only *derived* activity feed, not a messaging channel. Realtime/push/email notifications are explicitly a Future Enhancement (out of scope — see [README.md → Future Enhancements](./README.md#future-enhancements)).
+
+**Problem:** Provide a buyer↔seller conversation scoped to one order, usable by a shared shop (RobertJ's model allows several sellers per shop — Shop One has three members across 103 orders), without introducing realtime infrastructure.
+
+**Options Considered:**
+1. Full in-app realtime chat (Supabase Realtime) — rejected: out of scope, large surface.
+2. A no-DB "Contact Seller" deep-link to the shop page — rejected: not an actual conversation.
+3. A refresh-based, order-scoped message thread backed by one additive table + a `SECURITY DEFINER` write RPC, authorized by the existing shop-membership RLS pattern — chosen.
+
+**Decision:** Option 3. `order_messages` (`20261031130000_order_messages.sql`): one shared conversation per `order_id`, append-only, with `shop_id` denormalized from the order. Reads go through an RLS `SELECT` policy that reuses `is_shop_member(shop_id)` exactly like orders/order_items/shipments/returns — so **every member of the order's shop** sees and can reply (a shared shop inbox), while an individual `sender_id`/`sender_role` is retained per message for accountability. Writes go only through `send_order_message` (`SECURITY DEFINER`), which authorizes the caller as an order participant (buyer, the order's seller, a shop member, or admin), derives `sender_id`/`sender_role` from the session (never the client), enforces the 1–2000-character bound, and dedups accidental double-submits. There is no `INSERT`/`UPDATE`/`DELETE` policy or grant — history is immutable.
+
+**Buyer-facing identity:** the buyer UI attributes every seller/admin message to the **shop name**, never an individual staff member; the raw `sender_id` is resolved server-side and not forwarded to the buyer view. Shop-mates see each other's individual names on the seller side.
+
+**Scope guardrails:** ~~refresh-based only — **no** realtime~~, push, email, SMS, attachments, typing indicators, or read receipts. Legacy orders with a NULL `shop_id` fall back to the policy's buyer/seller/admin branch — shop-mates don't see those threads; no backfill.
+
+**Update (2026-11-01):** by request, messaging was promoted to a **global inbox** with **real-time delivery and unread/pinning**, superseding the refresh-based + per-order-dock parts of this ADR (the order-scoped conversation model is unchanged — a conversation is still one order). New additive migrations `20261101120000_global_inbox.sql` (per-user `order_conversation_state` + `list_my_conversations`/`get_conversation_context`/`mark_conversation_read`/`set_conversation_pinned`/`can_access_order_conversation` RPCs) and `20261101140000_realtime_order_messages.sql` (adds `order_messages` to the `supabase_realtime` publication; delivery stays gated by its existing SELECT RLS). UI: `GlobalInbox`/`GlobalInboxDock` mounted site-wide; the order pages deep-link via `OrderMessageButton` (`?chat=<orderId>`). Realtime/push notifications beyond messaging remain deferred.
+
+**Consequences:** `orders`, `create_order`, payments, and the RLS of every existing table are untouched; the only database change is the additive table + RPC (fully reversible). A new `src/features/messages/` module plus `listOrderMessages`/`sendOrderMessage` mount the conversation as a bottom-right **docked chat panel** on the buyer order page and **inline** on the seller/admin order page. Verified on the hosted project via rolled-back transactions: shared-inbox visibility, cross-shop isolation, NULL-`shop_id` non-leakage, participant-only sends, empty/over-limit rejection, dedup, and server-derived `sender_role`.
+
+---
+
+## ADR-027: Shop name moves from admin-only to seller-editable
+
+**Status:** ✅ Accepted
+
+**Context:** `20261005050000_admin_update_shop_and_column_scope.sql` deliberately revoked `UPDATE` on `shops` from `authenticated` and granted it back column-by-column for `description`/`logo_url`/`banner_url` only — `name`/`active`/`slug` were kept admin-only by design, enforced at the grant level (not just RLS), with `MyShopWorkspace`'s "Shop details" card shown read-only ("To change the name, link or status, contact an administrator"). The seller explicitly requested the ability to rename their own shop (e.g. "Shop Two" → "Rene Baterbonia Shop").
+
+**Problem:** Let a seller rename their own shop without reopening the admin-only boundary around `active`/`slug`, and without weakening the existing defense-in-depth (direct column grants staying locked, all writes through a validated RPC).
+
+**Options Considered:**
+1. Widen the `authenticated` column grant to include `name` — rejected: re-enables direct, unvalidated PostgREST writes to `name`, losing the single-path guarantee every other shop/order mutation in this codebase relies on (`send_order_message`, `admin_update_shop`, etc.).
+2. Let only a designated "shop owner" rename — rejected (for now): `shop_users` has no owner/role column (`shop_users_unique_user` — one shop per user, all members equal), so this would require a new schema concept the feature doesn't otherwise need.
+3. A new `SECURITY DEFINER` RPC, `update_own_shop_name`, resolving the caller's shop via `shop_users` and validating the 1–80 character bound (mirroring `shops_name_length`) — chosen. Same permission tier `updateOwnShopDescription`/logo/banner already use: any shop member may edit shared shop branding.
+
+**Decision:** Option 3. `update_own_shop_name(p_name)` (`20261102090000_seller_update_own_shop_name.sql`) authorizes via the caller's own `shop_users` row (never a client-submitted shop id), validates length, and updates only `name`. `active` and `slug` are untouched — `admin_update_shop` remains the only path to change them, and the shop's public URL (`ROUTES.shopCatalog`) keys off `shops.id`, never `slug`, so renaming is URL-safe. The `authenticated` column grant on `shops.name` stays revoked; this RPC is the only write path, same as `send_order_message`/`admin_update_shop`.
+
+**UI:** `ShopNameForm` (mirrors `ShopBrandingForm`'s dirty/save-bar pattern exactly) replaces the read-only "Shop name" row in `MyShopWorkspace`'s "Shop details" card; that card now only shows the still-admin-only "Public link" and "Status".
+
+**Consequences:** No existing RLS/grant/table changes beyond the one new function; `orders`, `products`, and every other table are untouched. Verified on the hosted project via rolled-back transactions: a shop member can rename their own shop; a non-member is rejected (`42501`); empty and 81+ character names are rejected (`22023`) before ever reaching the table's own `shops_name_length` CHECK.
+
+**Future Revisit:** if a genuine "shop owner vs. member" distinction becomes needed elsewhere (e.g. to gate who can remove a member), add it as its own schema change rather than retrofitting it onto this RPC.

@@ -1,9 +1,0 @@
-Step 1: 
--Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-
-Step 2:
--npm install
-
-Step 3:
--npm run dev
-

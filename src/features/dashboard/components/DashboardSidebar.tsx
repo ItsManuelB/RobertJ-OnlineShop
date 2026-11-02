@@ -8,8 +8,8 @@ import { ROLE_LABELS, type UserRole } from "@/constants/roles";
 import { ROUTES } from "@/constants/routes";
 import { SignOutButton } from "@/features/auth/components/SignOutButton";
 import { getVisibleDashboardNav } from "@/features/dashboard/constants/nav";
+import { Avatar } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils/cn";
-import { getInitials } from "@/lib/utils/format";
 import type { SessionUser } from "@/types/common.types";
 
 /**
@@ -20,16 +20,18 @@ import type { SessionUser } from "@/types/common.types";
  */
 export function DashboardSidebar({ user }: { user: SessionUser }) {
   const pathname = usePathname();
-  const initials = getInitials(user.fullName ?? user.email);
   const role = user.role as UserRole;
   const items = getVisibleDashboardNav(role);
 
   return (
     <aside className="flex flex-col gap-6">
       <div className="flex items-center gap-3 rounded-2xl border border-rj-gray-100 bg-rj-gray-50 p-4">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-rj-black text-[13px] font-bold text-rj-white">
-          {initials}
-        </div>
+        <Avatar
+          src={user.avatarUrl}
+          name={user.fullName ?? user.email}
+          size={44}
+          className="h-11 w-11 bg-rj-black text-[13px] text-rj-white"
+        />
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-rj-black">
             {user.fullName ?? "Dashboard"}

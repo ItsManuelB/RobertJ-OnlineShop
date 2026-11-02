@@ -8,7 +8,7 @@ import type { SIZES } from "@/features/assistant/schemas/rule.schema";
  * answers match. Budget is intentionally not part of a rule — see the
  * `recommendation_rules` migration's header comment; it's matched against
  * the recommended product's/variant's live price by the buyer-facing quiz
- * (`getGuidedSelectionMatchesAction` / `listGuidedSelectionMatches`).
+ * (`getGuidedSelectionResults` for the `/assistant` page).
  */
 export type RecommendationOccasion =
   | "casual"
@@ -70,4 +70,6 @@ export interface GuidedSelectionMatch {
    */
   fit: "exact" | "close" | "unconfirmed";
   note: string | null;
+  /** Short reasons it fits, e.g. ["Good for Casual", "Black"] — only answers that were confirmed. */
+  reasons: string[];
 }

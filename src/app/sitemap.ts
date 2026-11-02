@@ -19,6 +19,7 @@ const STATIC_ROUTES: Array<{
   { path: ROUTES.home, priority: 1, changeFrequency: "daily" },
   { path: ROUTES.products, priority: 0.9, changeFrequency: "daily" },
   { path: ROUTES.categories, priority: 0.7, changeFrequency: "weekly" },
+  { path: ROUTES.assistant, priority: 0.6, changeFrequency: "weekly" },
   { path: ROUTES.cart, priority: 0.3, changeFrequency: "monthly" },
   { path: ROUTES.signIn, priority: 0.2, changeFrequency: "yearly" },
   { path: ROUTES.signUp, priority: 0.2, changeFrequency: "yearly" },

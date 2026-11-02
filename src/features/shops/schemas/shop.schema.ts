@@ -27,16 +27,22 @@ export const deleteShopSchema = z.object({
 const MAX_SHOP_IMAGE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_SHOP_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
-/** Payload for editing a seller's own shop description — name only via
- * `updateOwnShopNameSchema`-equivalent scope is not included: this is
- * description-only, and never accepts an `id` (the caller's shop is always
- * resolved server-side via `requireOwnShopId()`). */
+/** Payload for editing a seller's own shop description. Never accepts an
+ * `id` — the caller's shop is always resolved server-side via
+ * `requireOwnShopId()`/the `update_own_shop_name` RPC's own lookup. */
 export const updateOwnShopDescriptionSchema = z.object({
   description: z
     .string()
     .trim()
     .max(500, "Description must be 500 characters or fewer.")
     .optional(),
+});
+
+/** Payload for a seller renaming their own shop. Mirrors the admin schema's
+ * bound (and the `shops_name_length` CHECK) — never accepts an `id`; the
+ * `update_own_shop_name` RPC resolves the caller's shop via `shop_users`. */
+export const updateOwnShopNameSchema = z.object({
+  name: z.string().trim().min(1, "Name is required.").max(80),
 });
 
 /** Payload for uploading a seller's own shop logo/banner. `kind` is never
@@ -61,4 +67,5 @@ export type UpdateShopInput = z.infer<typeof updateShopSchema>;
 export type ToggleShopActiveInput = z.infer<typeof toggleShopActiveSchema>;
 export type DeleteShopInput = z.infer<typeof deleteShopSchema>;
 export type UpdateOwnShopDescriptionInput = z.infer<typeof updateOwnShopDescriptionSchema>;
+export type UpdateOwnShopNameInput = z.infer<typeof updateOwnShopNameSchema>;
 export type UploadShopImageInput = z.infer<typeof uploadShopImageSchema>;

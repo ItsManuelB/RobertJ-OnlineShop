@@ -12,7 +12,15 @@ import { cn } from "@/lib/utils/cn";
  * /orders and both portals' Orders list — pass `themed` from the portal
  * pages only; Buyer omits it and keeps the fixed rj-* look.
  */
-export function OrderSearchInput({ themed = false }: { themed?: boolean }) {
+export function OrderSearchInput({
+  themed = false,
+  label = "Search by order number",
+  placeholder = "Search by Order ID…",
+}: {
+  themed?: boolean;
+  label?: string;
+  placeholder?: string;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -37,14 +45,14 @@ export function OrderSearchInput({ themed = false }: { themed?: boolean }) {
   return (
     <div className="w-full max-w-sm">
       <label htmlFor="order-search" className="sr-only">
-        Search by order number
+        {label}
       </label>
       <input
         id="order-search"
         type="search"
         value={value}
         onChange={(event) => setValue(event.target.value)}
-        placeholder="Search by Order ID…"
+        placeholder={placeholder}
         className={cn(
           "h-11 w-full rounded-full border-[1.5px] bg-transparent px-5 text-sm outline-none transition-colors",
           themed

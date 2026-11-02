@@ -1,0 +1,37 @@
+# Calls the Xendit reconciliation sweep (which also auto-cancels orders left
+# unpaid for 60 minutes) every ~15 minutes. Vercel Hobby crons only run daily
+# (see vercel.json), so this fills the gap. Same route, same auth as the Vercel
+# Cron entry: `Authorization: Bearer <CRON_SECRET>`.
+#
+# Setup (repository -> Settings -> Secrets and variables -> Actions):
+#   Secret   CRON_SECRET  the same value as CRON_SECRET in Vercel.
+#   Variable SITE_URL     optional; defaults to https://robertjshop.store.
+# Scheduled workflows only run from the repository's default branch, and
+# GitHub may delay them a few minutes under load.
+name: Xendit reconciliation
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call reconciliation route
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SITE_URL: ${{ vars.SITE_URL || 'https://robertjshop.store' }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "CRON_SECRET secret is not set" >&2
+            exit 1
+          fi
+          curl --fail-with-body --silent --show-error \
+            --retry 2 --retry-delay 10 --max-time 120 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${SITE_URL}/api/cron/xendit-reconciliation"

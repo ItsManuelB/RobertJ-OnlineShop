@@ -8,11 +8,6 @@ export function slugify(value: string) {
     .replace(/-+/g, "-");
 }
 
-/** Truncates text to a maximum length, appending an ellipsis when cut. */
-export function truncate(value: string, maxLength: number) {
-  return value.length <= maxLength ? value : `${value.slice(0, maxLength - 1)}…`;
-}
-
 /** Returns up-to-two uppercase initials for an avatar fallback. */
 export function getInitials(name: string) {
   return name

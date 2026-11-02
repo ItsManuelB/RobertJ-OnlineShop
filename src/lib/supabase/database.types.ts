@@ -559,6 +559,104 @@ export type Database = {
           },
         ]
       }
+      order_conversation_state: {
+        Row: {
+          last_read_at: string | null
+          order_id: string
+          pinned_at: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          last_read_at?: string | null
+          order_id: string
+          pinned_at?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          last_read_at?: string | null
+          order_id?: string
+          pinned_at?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_conversation_state_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_conversation_state_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_messages: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          order_id: string
+          sender_id: string
+          sender_role: Database["public"]["Enums"]["user_role"]
+          shop_id: string | null
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          id?: string
+          order_id: string
+          sender_id: string
+          sender_role: Database["public"]["Enums"]["user_role"]
+          shop_id?: string | null
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          order_id?: string
+          sender_id?: string
+          sender_role?: Database["public"]["Enums"]["user_role"]
+          shop_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_messages_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "buyer_order_lifecycle"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "order_messages_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_messages_sender_id_fkey"
+            columns: ["sender_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_messages_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       order_shipments: {
         Row: {
           courier: string | null
@@ -876,6 +974,7 @@ export type Database = {
           business_address: string | null
           business_hours: string | null
           default_low_stock_threshold: number
+          demo_content_enabled: boolean
           id: boolean
           support_email: string
           support_phone: string | null
@@ -886,6 +985,7 @@ export type Database = {
           business_address?: string | null
           business_hours?: string | null
           default_low_stock_threshold?: number
+          demo_content_enabled?: boolean
           id?: boolean
           support_email?: string
           support_phone?: string | null
@@ -896,6 +996,7 @@ export type Database = {
           business_address?: string | null
           business_hours?: string | null
           default_low_stock_threshold?: number
+          demo_content_enabled?: boolean
           id?: boolean
           support_email?: string
           support_phone?: string | null
@@ -1459,34 +1560,55 @@ export type Database = {
       }
       reviews: {
         Row: {
-          buyer_id: string
+          buyer_id: string | null
           comment: string | null
           created_at: string
+          variant_label: string | null
+          hidden_at: string | null
+          hidden_reason: string | null
           id: string
-          order_item_id: string
+          is_demo: boolean
+          order_item_id: string | null
           product_id: string
           rating: number
           reviewer_display_name: string | null
+          seller_replied_at: string | null
+          seller_reply: string | null
+          updated_at: string | null
         }
         Insert: {
-          buyer_id: string
+          buyer_id?: string | null
           comment?: string | null
           created_at?: string
+          variant_label?: string | null
+          hidden_at?: string | null
+          hidden_reason?: string | null
           id?: string
-          order_item_id: string
+          is_demo?: boolean
+          order_item_id?: string | null
           product_id: string
           rating: number
           reviewer_display_name?: string | null
+          seller_replied_at?: string | null
+          seller_reply?: string | null
+          updated_at?: string | null
         }
         Update: {
-          buyer_id?: string
+          buyer_id?: string | null
           comment?: string | null
           created_at?: string
+          variant_label?: string | null
+          hidden_at?: string | null
+          hidden_reason?: string | null
           id?: string
-          order_item_id?: string
+          is_demo?: boolean
+          order_item_id?: string | null
           product_id?: string
           rating?: number
           reviewer_display_name?: string | null
+          seller_replied_at?: string | null
+          seller_reply?: string | null
+          updated_at?: string | null
         }
         Relationships: [
           {
@@ -1508,6 +1630,44 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      seller_preferences: {
+        Row: {
+          alert_low_stock: boolean
+          alert_orders: boolean
+          alert_payments: boolean
+          alert_returns: boolean
+          created_at: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          alert_low_stock?: boolean
+          alert_orders?: boolean
+          alert_payments?: boolean
+          alert_returns?: boolean
+          created_at?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          alert_low_stock?: boolean
+          alert_orders?: boolean
+          alert_payments?: boolean
+          alert_returns?: boolean
+          created_at?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "seller_preferences_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -2024,6 +2184,34 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      admin_delete_demo_reviews: { Args: never; Returns: number }
+      admin_set_demo_content: { Args: { p_enabled: boolean }; Returns: boolean }
+      admin_set_review_hidden: {
+        Args: { p_hidden: boolean; p_reason: string; p_review_id: string }
+        Returns: {
+            buyer_id: string | null
+            comment: string | null
+            created_at: string
+            variant_label: string | null
+            hidden_at: string | null
+            hidden_reason: string | null
+            id: string
+            is_demo: boolean
+            order_item_id: string | null
+            product_id: string
+            rating: number
+            reviewer_display_name: string | null
+            seller_replied_at: string | null
+            seller_reply: string | null
+            updated_at: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "reviews"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       admin_update_platform_settings: {
         Args: {
           p_business_address: string
@@ -2049,6 +2237,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      demo_content_enabled: { Args: never; Returns: boolean }
       update_inventory_low_stock_threshold: {
         Args: { p_product_id: string; p_variant_id: string | null; p_threshold: number | null }
         Returns: Database["public"]["Tables"]["inventory"]["Row"]
@@ -2882,6 +3071,31 @@ export type Database = {
           units_sold: number
         }[]
       }
+      report_sales_by_shop: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          avg_order_value_cents: number
+          cancelled_orders: number
+          gross_revenue_cents: number
+          paid_orders: number
+          refunded_orders: number
+          refunds_cents: number
+          revenue_cents: number
+          shop_id: string | null
+          shop_name: string
+          total_orders: number
+          units_sold: number
+        }[]
+      }
+      report_service_speed: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          avg_return_decision_seconds: number | null
+          avg_ship_seconds: number | null
+          decided_returns: number
+          shipped_orders: number
+        }[]
+      }
       report_sales_summary: {
         Args: { p_from: string; p_shop_id?: string; p_to: string }
         Returns: {
@@ -2911,6 +3125,15 @@ export type Database = {
           bucket: string
           order_count: number
           revenue_cents: number
+        }[]
+      }
+      report_sales_timeseries_by_shop: {
+        Args: { p_from: string; p_granularity?: string; p_to: string }
+        Returns: {
+          bucket: string
+          order_count: number
+          revenue_cents: number
+          shop_id: string | null
         }[]
       }
       report_top_products: {
@@ -3021,17 +3244,150 @@ export type Database = {
       }
       self_deactivate_account: { Args: never; Returns: undefined }
       slugify: { Args: { value: string }; Returns: string }
+      reply_to_review: {
+        Args: { p_reply: string; p_review_id: string }
+        Returns: {
+            buyer_id: string | null
+            comment: string | null
+            created_at: string
+            variant_label: string | null
+            hidden_at: string | null
+            hidden_reason: string | null
+            id: string
+            is_demo: boolean
+            order_item_id: string | null
+            product_id: string
+            rating: number
+            reviewer_display_name: string | null
+            seller_replied_at: string | null
+            seller_reply: string | null
+            updated_at: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "reviews"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      can_access_order_conversation: {
+        Args: { p_order_id: string }
+        Returns: boolean
+      }
+      get_conversation_context: {
+        Args: { p_order_id: string }
+        Returns: {
+          buyer_name: string
+          order_id: string
+          order_number: string
+          shop_name: string
+          viewer_is_buyer: boolean
+        }[]
+      }
+      list_my_conversations: {
+        Args: never
+        Returns: {
+          last_body: string
+          last_created_at: string
+          last_sender_id: string
+          order_id: string
+          order_number: string
+          pinned: boolean
+          title: string
+          unread_count: number
+          viewer_is_buyer: boolean
+        }[]
+      }
+      mark_conversation_read: {
+        Args: { p_order_id: string }
+        Returns: undefined
+      }
+      set_conversation_pinned: {
+        Args: { p_order_id: string; p_pinned: boolean }
+        Returns: undefined
+      }
+      send_order_message: {
+        Args: { p_body: string; p_order_id: string }
+        Returns: {
+          body: string
+          created_at: string
+          id: string
+          order_id: string
+          sender_id: string
+          sender_role: Database["public"]["Enums"]["user_role"]
+          shop_id: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "order_messages"
+          isOneToOne: false
+          isSetofReturn: false
+        }
+      }
       submit_review: {
         Args: { p_comment: string; p_order_item_id: string; p_rating: number }
         Returns: {
-          buyer_id: string
+          buyer_id: string | null
           comment: string | null
           created_at: string
+          variant_label: string | null
+          hidden_at: string | null
+          hidden_reason: string | null
           id: string
-          order_item_id: string
+          is_demo: boolean
+          order_item_id: string | null
           product_id: string
           rating: number
           reviewer_display_name: string | null
+          seller_replied_at: string | null
+          seller_reply: string | null
+          updated_at: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "reviews"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      update_own_shop_name: {
+        Args: { p_name: string }
+        Returns: {
+          active: boolean
+          banner_url: string | null
+          created_at: string
+          description: string | null
+          id: string
+          logo_url: string | null
+          name: string
+          slug: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "shops"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      update_review: {
+        Args: { p_comment: string; p_rating: number; p_review_id: string }
+        Returns: {
+            buyer_id: string | null
+            comment: string | null
+            created_at: string
+            variant_label: string | null
+            hidden_at: string | null
+            hidden_reason: string | null
+            id: string
+            is_demo: boolean
+            order_item_id: string | null
+            product_id: string
+            rating: number
+            reviewer_display_name: string | null
+            seller_replied_at: string | null
+            seller_reply: string | null
+            updated_at: string | null
         }
         SetofOptions: {
           from: "*"

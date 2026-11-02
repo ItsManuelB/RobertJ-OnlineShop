@@ -44,6 +44,7 @@ function toTileItem(
     conditionLabel: null,
     maxQuantity: view.maxQuantity,
     soldCount: view.soldCount,
+    rating: view.rating,
     // Every view is a real, purchasable product — see FeaturedProductView.
     // Null when the seller account has since been permanently deleted,
     // disabling quick-add (same guard as ProductGrid.tsx's toTileItem).

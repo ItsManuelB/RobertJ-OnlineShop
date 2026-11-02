@@ -14,5 +14,3 @@ export const paginationSchema = z.object({
     .max(PAGINATION.maxPageSize)
     .default(PAGINATION.defaultPageSize),
 });
-
-export const nonEmptyString = z.string().trim().min(1);

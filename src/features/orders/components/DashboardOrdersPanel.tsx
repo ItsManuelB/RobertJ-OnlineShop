@@ -19,6 +19,7 @@ import { ORDER_STATUS } from "@/constants/status";
 import { cn } from "@/lib/utils/cn";
 import { daysSince } from "@/lib/utils/date";
 import {
+  getDashboardOrderStatusCounts,
   getOrderAttentionCounts,
   getOwnShopId,
   listDashboardOrders,
@@ -32,6 +33,8 @@ export interface DashboardOrdersPanelProps {
   /** Overridable for the Admin Portal, which links into `/admin/orders` instead of `/dashboard/orders`. */
   clearFiltersHref?: string;
   isAdmin?: boolean;
+  /** The page renders the next-step cards itself (above its filter bar), so the panel skips them. */
+  hideAttention?: boolean;
 }
 
 /**
@@ -45,6 +48,7 @@ export async function DashboardOrdersPanel({
   searchParams,
   clearFiltersHref = ROUTES.dashboardOrders,
   isAdmin = false,
+  hideAttention = false,
 }: DashboardOrdersPanelProps) {
   const parsed = dashboardOrderListParamsSchema.safeParse(searchParams);
   if (!parsed.success) {
@@ -57,6 +61,7 @@ export async function DashboardOrdersPanel({
 
   let result: PaginatedResult<Order>;
   let attentionCounts: Awaited<ReturnType<typeof getOrderAttentionCounts>>;
+  let toPackCount = 0;
   try {
     const owner = isAdmin
       ? null
@@ -64,9 +69,15 @@ export async function DashboardOrdersPanel({
           const user = await requireSessionUser();
           return { sellerId: user.id, shopId: await getOwnShopId(user.id) };
         })();
-    [result, attentionCounts] = await Promise.all([
+    [result, attentionCounts, toPackCount] = await Promise.all([
       listDashboardOrders(params, owner),
       getOrderAttentionCounts(owner?.shopId),
+      // The To Pack card is a nicety — a failed count just hides it.
+      hideAttention
+        ? Promise.resolve(0)
+        : getDashboardOrderStatusCounts(owner?.sellerId ?? null, owner?.shopId ?? null)
+            .then((counts) => counts.confirmed)
+            .catch(() => 0),
     ]);
   } catch {
     return <ErrorState message="We couldn't load orders right now." />;
@@ -121,12 +132,17 @@ export async function DashboardOrdersPanel({
 
   return (
     <section className="flex flex-col gap-6">
-      <OrderAttentionStrip
-        needsConfirmation={attentionCounts.needsConfirmation}
-        codAwaitingCollection={attentionCounts.codAwaitingCollection}
-        returnsAwaitingRestock={attentionCounts.returnsAwaitingRestock}
-        returnsHref={isAdmin ? ROUTES.adminReturns : ROUTES.sellerReturns}
-      />
+      {hideAttention ? null : (
+        <OrderAttentionStrip
+          needsConfirmation={attentionCounts.needsConfirmation}
+          toPack={toPackCount}
+          codAwaitingCollection={attentionCounts.codAwaitingCollection}
+          returnsAwaitingRestock={attentionCounts.returnsAwaitingRestock}
+          ordersHref={clearFiltersHref}
+          paymentsHref={isAdmin ? ROUTES.adminPayments : ROUTES.sellerPayments}
+          returnsHref={isAdmin ? ROUTES.adminReturns : ROUTES.sellerReturns}
+        />
+      )}
       {params.status === ORDER_STATUS.delivered ? (
         <p className="text-xs text-muted-foreground">
           COD cash is recorded separately — collect it from{" "}

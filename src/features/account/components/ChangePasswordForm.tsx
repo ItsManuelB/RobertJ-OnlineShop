@@ -1,13 +1,14 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState, type FormEvent } from "react";
 
 import { Turnstile } from "@/components/Turnstile";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { FormField } from "@/components/forms/FormField";
 import { Button } from "@/components/ui/button";
-import { PasswordInput } from "@/features/auth";
+import { NEW_PASSWORD_MIN, PasswordInput } from "@/features/auth";
 import { changePasswordAction } from "@/features/account/actions/account.actions";
+import { SignOutOtherDevicesPanel } from "@/features/account/components/SignOutOtherDevicesPanel";
 import { useTurnstileToken } from "@/hooks/useTurnstileToken";
 import { cn } from "@/lib/utils/cn";
 import type { ActionResult } from "@/types/action.types";
@@ -37,6 +38,9 @@ export function ChangePasswordForm({ themed = false, hasPassword = true }: Chang
     null,
   );
   const captcha = useTurnstileToken(state);
+  // What has been typed since the form last (re)mounted; a successful save remounts it, which
+  // makes this snapshot stale, so it is tagged with the mount it came from.
+  const [typed, setTyped] = useState<{ mount: number; password: string; confirm: string } | null>(null);
 
   if (!hasPassword) {
     return (
@@ -51,6 +55,32 @@ export function ChangePasswordForm({ themed = false, hasPassword = true }: Chang
   const fieldErrors = state && !state.success ? state.fieldErrors : undefined;
   const formError =
     state && !state.success && (!state.fieldErrors || fieldErrors?.captchaToken) ? state.error : undefined;
+
+  const current = typed && typed.mount === captcha.successCount ? typed : null;
+  const lengthOk = (current?.password.length ?? 0) >= NEW_PASSWORD_MIN;
+  const matchOk = Boolean(current?.password) && current?.password === current?.confirm;
+
+  function handleChange(event: FormEvent<HTMLFormElement>) {
+    const data = new FormData(event.currentTarget);
+    setTyped({
+      mount: captcha.successCount,
+      password: String(data.get("password") ?? ""),
+      confirm: String(data.get("confirmPassword") ?? ""),
+    });
+  }
+
+  const requirement = (met: boolean, text: string) => (
+    <li
+      className={cn(
+        "flex items-center gap-2",
+        met ? (themed ? "text-success" : "text-rj-green") : themed ? "text-muted-foreground" : "text-rj-gray-600",
+      )}
+    >
+      <span aria-hidden="true" className="w-4 text-center">{met ? "✓" : "○"}</span>
+      {text}
+      <span className="sr-only">{met ? " (met)" : " (not met yet)"}</span>
+    </li>
+  );
 
   const field = (props: {
     label: string;
@@ -69,6 +99,7 @@ export function ChangePasswordForm({ themed = false, hasPassword = true }: Chang
     <form
       key={captcha.successCount}
       action={formAction}
+      onChange={handleChange}
       noValidate
       aria-busy={isPending}
       className="flex max-w-xl flex-col gap-5"
@@ -85,13 +116,24 @@ export function ChangePasswordForm({ themed = false, hasPassword = true }: Chang
               : "rounded-2xl border border-rj-green/30 bg-rj-green/5 p-4 text-rj-green",
           )}
         >
-          Your password has been changed.
+          <p>Your password has been changed.</p>
+          <p className={cn("mt-1 text-xs font-normal", themed ? "text-muted-foreground" : "text-rj-gray-600")}>
+            If you changed it because someone else may have used your account, sign out everywhere else too.
+          </p>
+          <div className="mt-3 font-normal">
+            <SignOutOtherDevicesPanel themed={themed} />
+          </div>
         </div>
       ) : null}
 
       {field({ label: "Current password", name: "currentPassword", autoComplete: "current-password", errors: fieldErrors?.currentPassword })}
       {field({ label: "New password", name: "password", autoComplete: "new-password", hint: "Must be at least 10 characters", errors: fieldErrors?.password })}
       {field({ label: "Confirm new password", name: "confirmPassword", autoComplete: "new-password", errors: fieldErrors?.confirmPassword })}
+
+      <ul className="flex flex-col gap-1 text-sm" aria-label="Password requirements" aria-live="polite">
+        {requirement(lengthOk, `At least ${NEW_PASSWORD_MIN} characters`)}
+        {requirement(matchOk, "Matches the confirmation")}
+      </ul>
 
       <Turnstile key={captcha.widgetKey} onVerify={captcha.setToken} />
       <input type="hidden" name="captchaToken" value={captcha.token} />

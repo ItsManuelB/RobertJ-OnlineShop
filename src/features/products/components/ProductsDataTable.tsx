@@ -405,18 +405,18 @@ export function ProductsDataTable({
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="border-b border-border bg-muted">
-              <th className="w-10 p-3">
+              <th scope="col" className="w-10 p-3">
                 <Checkbox
                   checked={someSelected && !allSelected ? "indeterminate" : allSelected}
                   onChange={(event) => toggleAll(event.target.checked)}
                   aria-label="Select all products on this page"
                 />
               </th>
-              <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Product</th>
-              <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Price</th>
-              <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Stock</th>
-              <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</th>
-              <th className="w-10 p-3" />
+              <th scope="col" className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Product</th>
+              <th scope="col" className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Price</th>
+              <th scope="col" className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Stock</th>
+              <th scope="col" className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</th>
+              <th scope="col" className="w-10 p-3" />
             </tr>
           </thead>
           <tbody>

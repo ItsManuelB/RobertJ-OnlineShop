@@ -27,23 +27,25 @@ const EMPTY_INPUT: AddressInput = {
 };
 
 /**
- * The `/addresses` management section: a top toolbar ("Address" label + "+
- * Add Address", Shopee-style — top-right, not buried at the bottom of the
- * list), the saved addresses as compact divided rows, and a centered
- * add-address modal (`AddressModal`, shared with `AddressCard`'s Edit).
+ * The `/addresses` management section: a toolbar (saved count + "+ Add
+ * address", top-right), the saved addresses as a card grid with the default
+ * first, and a centered add-address modal (`AddressModal`, shared with
+ * `AddressCard`'s Edit).
  */
 export function AddressList({ addresses }: { addresses: Address[] }) {
   const [isAddOpen, setIsAddOpen] = useState(false);
+  // Default first, otherwise the order the server returned.
+  const ordered = [...addresses].sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
         <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-rj-gray-500">
-          Address
+          Saved addresses · {addresses.length}
         </p>
         <Button type="button" variant="rj" size="rjSm" onClick={() => setIsAddOpen(true)}>
           <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-          Add Address
+          Add address
         </Button>
       </div>
 
@@ -51,17 +53,20 @@ export function AddressList({ addresses }: { addresses: Address[] }) {
         <EmptyState
           title="No saved addresses yet"
           description="Add an address to speed up checkout next time."
+          action={
+            <Button type="button" variant="rj" size="rjSm" onClick={() => setIsAddOpen(true)}>
+              Add address
+            </Button>
+          }
         />
       ) : (
-        <div className="flex flex-col">
-          {addresses.map((address, index) => (
-            <AddressCard
-              key={address.id}
-              address={address}
-              isLast={index === addresses.length - 1}
-            />
+        <ul className="grid gap-3 sm:grid-cols-2">
+          {ordered.map((address) => (
+            <li key={address.id}>
+              <AddressCard address={address} />
+            </li>
           ))}
-        </div>
+        </ul>
       )}
 
       {isAddOpen ? (

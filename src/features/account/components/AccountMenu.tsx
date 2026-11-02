@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { ChevronDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -10,8 +9,8 @@ import { USER_ROLES, type UserRole } from "@/constants/roles";
 import { ROUTES } from "@/constants/routes";
 import { SignOutButton } from "@/features/auth/components/SignOutButton";
 import { canViewDashboard } from "@/lib/auth/permissions";
+import { Avatar } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils/cn";
-import { getInitials } from "@/lib/utils/format";
 import type { SessionUser } from "@/types/common.types";
 
 const BASE_MENU_ITEMS = [
@@ -56,7 +55,6 @@ export function AccountMenu({ user }: { user: SessionUser }) {
     };
   }, [open]);
 
-  const initials = getInitials(user.fullName ?? user.email);
   const menuItems = getMenuItems(user.role as UserRole);
 
   return (
@@ -69,20 +67,12 @@ export function AccountMenu({ user }: { user: SessionUser }) {
         aria-label="Account menu"
         className="flex h-9 items-center gap-0.5 rounded-full px-1 transition-colors hover:bg-rj-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rj-red/30"
       >
-        <span className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-rj-black text-[11px] font-bold text-rj-white">
-          {user.avatarUrl ? (
-            <Image
-              src={user.avatarUrl}
-              alt=""
-              width={28}
-              height={28}
-              unoptimized
-              className="h-full w-full object-cover"
-            />
-          ) : (
-            initials
-          )}
-        </span>
+        <Avatar
+          src={user.avatarUrl}
+          name={user.fullName ?? user.email}
+          size={28}
+          className="h-7 w-7 bg-rj-black text-[11px] text-rj-white"
+        />
         <ChevronDown
           className={cn(
             "h-3.5 w-3.5 text-rj-gray-600 transition-transform",

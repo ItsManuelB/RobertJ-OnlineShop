@@ -7,14 +7,16 @@ import { formatCurrency } from "@/lib/utils/currency";
 import { cn } from "@/lib/utils/cn";
 import { ReviewForm } from "@/features/reviews/components/ReviewForm";
 import type { OrderItem } from "@/features/orders/types/order.types";
+import type { Review } from "@/features/reviews/types/review.types";
+import { canStillEdit } from "@/features/reviews/utils/review-format";
 
 /**
  * Line items with snapshots. A sold/archived product resolves to a null slug,
  * so the title renders as plain text instead of a (dead) link.
  *
  * `reviewableOrderItemIds` is only passed for a `delivered` order — when set,
- * every item whose id is in it gets a "Write a Review" entry point (already
- * excludes items the buyer has reviewed; see the Order Detail page).
+ * every item whose id is in it gets a "Write a Review" entry point; items in
+ * `myReviews` show the buyer's review instead, editable for 30 days.
  *
  * `themed`: see OrderHeader.
  */
@@ -23,12 +25,21 @@ export function OrderItemsList({
   currency,
   orderId,
   reviewableOrderItemIds,
+  myReviews,
+  reviewerPublicName = "",
+  rateItemId,
   themed = false,
 }: {
   items: OrderItem[];
   currency: string;
   orderId?: string;
   reviewableOrderItemIds?: ReadonlySet<string>;
+  /** The buyer's own reviews on this order, keyed by order item. */
+  myReviews?: ReadonlyMap<string, Review>;
+  /** How the buyer appears on reviews, e.g. "Mia S.". */
+  reviewerPublicName?: string;
+  /** Opens this item's review form straight away (from "Items to review"). */
+  rateItemId?: string;
   themed?: boolean;
 }) {
   const ink = themed ? "text-foreground" : "text-rj-black";
@@ -41,10 +52,12 @@ export function OrderItemsList({
       </h2>
       <ul className="flex flex-col gap-3">
         {items.map((item) => {
-          const canReview = orderId && reviewableOrderItemIds?.has(item.id);
+          const myReview = myReviews?.get(item.id) ?? null;
+          const canReview = Boolean(orderId && (reviewableOrderItemIds?.has(item.id) || myReview));
           return (
             <li
               key={item.id}
+              id={`review-${item.id}`}
               className={cn(themed ? THEMED_CARD : RJ_CARD, "flex flex-col gap-3 p-3")}
             >
               <div className="flex items-center gap-4">
@@ -91,11 +104,15 @@ export function OrderItemsList({
                 </p>
               </div>
 
-              {canReview ? (
+              {canReview && orderId ? (
                 <ReviewForm
                   orderId={orderId}
                   orderItemId={item.id}
                   productTitle={item.productTitle}
+                  publicName={reviewerPublicName}
+                  existing={myReview}
+                  editable={myReview ? canStillEdit(myReview.createdAt) : false}
+                  defaultOpen={rateItemId === item.id}
                 />
               ) : null}
             </li>

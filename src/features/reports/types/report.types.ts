@@ -52,6 +52,26 @@ export interface SalesTrendPoint {
   revenueCents: number;
 }
 
+/**
+ * One shop's row in the admin comparison. `shopId` is null for the synthetic
+ * "Unassigned" row (orders that belong to no shop). Money is integer centavos.
+ */
+export interface ShopSalesRow {
+  shopId: string | null;
+  shopName: string;
+  totalOrders: number;
+  paidOrders: number;
+  cancelledOrders: number;
+  /** Totals of orders that were ever paid. */
+  grossRevenueCents: number;
+  refundsCents: number;
+  /** NET: gross minus confirmed refunds. */
+  revenueCents: number;
+  avgOrderValueCents: number;
+  unitsSold: number;
+  refundedOrders: number;
+}
+
 /** Count of orders in a given fulfilment status within the range. */
 export interface OrderStatusCount {
   status: OrderStatus;

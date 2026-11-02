@@ -545,26 +545,26 @@ export function OrdersDataTable({ orders, isAdmin, shippedInfo, deliveredInfo }:
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="border-b border-border bg-muted">
-              <th className="w-10 p-3">
+              <th scope="col" className="w-10 p-3">
                 <Checkbox
                   checked={someSelected && !allSelected ? "indeterminate" : allSelected}
                   onChange={(event) => toggleAll(event.target.checked)}
                   aria-label="Select all orders on this page"
                 />
               </th>
-              <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Order</th>
+              <th scope="col" className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Order</th>
               {isAdmin ? (
-                <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Shop</th>
+                <th scope="col" className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Shop</th>
               ) : null}
-              <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Items</th>
-              <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total</th>
+              <th scope="col" className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Items</th>
+              <th scope="col" className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total</th>
               {extraColumn ? (
-                <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{extraColumn}</th>
+                <th scope="col" className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{extraColumn}</th>
               ) : null}
-              <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Payment</th>
-              <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</th>
-              <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Placed</th>
-              <th className="w-10 p-3" />
+              <th scope="col" className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Payment</th>
+              <th scope="col" className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</th>
+              <th scope="col" className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Placed</th>
+              <th scope="col" className="w-10 p-3" />
             </tr>
           </thead>
           <tbody>

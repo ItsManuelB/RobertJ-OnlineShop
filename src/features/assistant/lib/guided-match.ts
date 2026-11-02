@@ -65,6 +65,8 @@ export interface MatchResult {
   fit: "exact" | "close" | "unconfirmed";
   /** Why a "close" match is close ("₱120.00 over your budget") or what an "unconfirmed" one lacks ("Size not confirmed"). */
   note: string | null;
+  /** Short, buyer-facing reasons it fits, e.g. ["Good for Casual", "Size M", "Black"]. Only answers that were confirmed. */
+  reasons: string[];
 }
 
 /** How far outside the budget a product may be and still show as a "close" match. */
@@ -98,6 +100,7 @@ function optionLabel(option: MatchOption): string | null {
 }
 
 interface Resolved {
+  option: MatchOption | null;
   optionId: string | null;
   label: string | null;
   priceCents: number;
@@ -131,7 +134,7 @@ function resolveAttributes(candidate: MatchCandidate, query: MatchQuery): Resolv
     if (candidate.quantity <= 0) return [];
     if (material && norm(candidate.material) !== material) return [];
     if (dimensions && norm(candidate.dimensions) !== dimensions) return [];
-    return [{ optionId: null, label: null, priceCents: candidate.priceCents, unconfirmed }];
+    return [{ option: null, optionId: null, label: null, priceCents: candidate.priceCents, unconfirmed }];
   }
 
   return candidate.options
@@ -141,11 +144,37 @@ function resolveAttributes(candidate: MatchCandidate, query: MatchQuery): Resolv
     .filter((option) => !material || norm(option.material ?? candidate.material) === material)
     .filter((option) => !dimensions || norm(option.dimensions ?? candidate.dimensions) === dimensions)
     .map((option) => ({
+      option,
       optionId: narrowing ? option.id : null,
       label: narrowing ? optionLabel(option) : null,
       priceCents: option.priceCents ?? candidate.priceCents,
       unconfirmed,
     }));
+}
+
+function capitalize(value: string): string {
+  return value.replace(/^./, (c) => c.toUpperCase());
+}
+
+/**
+ * The answers this purchasable actually confirmed, in question order, using the seller's own
+ * wording for option values. Unconfirmed answers are never listed.
+ */
+function reasonsFor(candidate: MatchCandidate, item: Resolved, query: MatchQuery, occasionTagged: boolean, inBudget: boolean): string[] {
+  const reasons: string[] = [];
+  const occasion = asked(query.occasion);
+  if (occasion && occasionTagged) reasons.push(`Good for ${capitalize(occasion)}`);
+  const option = item.option;
+  const confirmed = (key: "size" | "color") => asked(query[key]) && !item.unconfirmed.includes(key);
+  if (confirmed("size") && option?.size) reasons.push(`Size ${option.size.trim()}`);
+  if (confirmed("color") && option?.color) reasons.push(option.color.trim());
+  const material = option?.material ?? candidate.material;
+  if (asked(query.material) && material) reasons.push(material.trim());
+  const dimensions = option?.dimensions ?? candidate.dimensions;
+  if (asked(query.dimensions) && dimensions) reasons.push(dimensions.trim());
+  const budgetAsked = query.minPriceCents != null || query.maxPriceCents != null;
+  if (budgetAsked && inBudget) reasons.push("Within your budget");
+  return reasons;
 }
 
 /**
@@ -184,7 +213,8 @@ export function matchCandidates(candidates: MatchCandidate[], query: MatchQuery,
             optionLabel: best.label,
             matchedPriceCents: best.priceCents,
             fit: "unconfirmed",
-            note: `${best.unconfirmed.join(" and ").replace(/^./, (c) => c.toUpperCase())} not confirmed`,
+            note: `${capitalize(best.unconfirmed.join(" and "))} not confirmed`,
+            reasons: reasonsFor(candidate, best, query, rank === 0, true),
           },
         });
         return;
@@ -199,6 +229,7 @@ export function matchCandidates(candidates: MatchCandidate[], query: MatchQuery,
           matchedPriceCents: best.priceCents,
           fit: "exact",
           note: null,
+          reasons: reasonsFor(candidate, best, query, rank === 0, true),
         },
       });
       return;
@@ -229,6 +260,7 @@ export function matchCandidates(candidates: MatchCandidate[], query: MatchQuery,
         note: nearest.over
           ? `${formatPesos(nearest.distance)} over your budget`
           : `${formatPesos(nearest.distance)} under your budget`,
+        reasons: reasonsFor(candidate, nearest.item, query, rank === 0, false),
       },
     });
   });
