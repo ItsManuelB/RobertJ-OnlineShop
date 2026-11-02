@@ -7,6 +7,11 @@ All notable changes to RoberJ Online Shop are documented here, newest first. For
 
 ## [Unreleased]
 
+### Added (Email bounce and complaint handling)
+
+- A Resend webhook (`/api/webhooks/resend`, signature-verified) records addresses that bounce permanently or report spam, and the return and order emails now skip them instead of retrying forever. A temporary bounce does not suppress.
+- Needs `RESEND_WEBHOOK_SECRET` and a webhook created in Resend (see `docs/deployment-vercel.md`); until then the endpoint answers 503 and nothing changes. Needs migration `20261102150000`. Design in ADR-030.
+
 ### Added (Order emails)
 
 - **Buyers:** a receipt right after checkout (worded for cash on delivery, paid, or still awaiting online payment), and a notice when the order is shipped and when it is delivered.

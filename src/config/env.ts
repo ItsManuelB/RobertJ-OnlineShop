@@ -29,6 +29,8 @@ const serverEnvSchema = publicEnvSchema.extend({
   EMAIL_FROM: z.string().min(1).optional(),
   /** Where buyer/seller replies go, e.g. `support@your-verified-domain`. Optional: unset, emails carry no Reply-To. */
   EMAIL_REPLY_TO: z.string().email().optional(),
+  /** Resend webhook signing secret (`whsec_...`) for /api/webhooks/resend. Optional: unset, the endpoint answers 503 and nothing is recorded. */
+  RESEND_WEBHOOK_SECRET: z.string().min(1).optional(),
 });
 
 /**
@@ -86,6 +88,7 @@ export function getServerEnv() {
     RESEND_API_KEY: process.env.RESEND_API_KEY,
     EMAIL_FROM: process.env.EMAIL_FROM,
     EMAIL_REPLY_TO: process.env.EMAIL_REPLY_TO || undefined,
+    RESEND_WEBHOOK_SECRET: process.env.RESEND_WEBHOOK_SECRET,
   });
 
   if (!result.success) formatEnvError(result.error);

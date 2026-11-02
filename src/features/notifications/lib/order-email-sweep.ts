@@ -56,7 +56,7 @@ async function deliverDueOrderEmails(due: queries.DueOrderNotification[], summar
         (audience === "buyer"
           ? isBuyerReturnEmailAllowed(recipient.buyerPrefs)
           : isSellerOrderEmailAllowed(recipient.sellerPrefs));
-      if (!allowed || !recipient.email) {
+      if (!allowed || !recipient.email || recipient.isSuppressed) {
         summary.skipped++;
         continue;
       }

@@ -46,6 +46,7 @@ Every decision is a numbered ADR with a fixed shape: **Context → Problem → O
 | [ADR-027](#adr-027-shop-name-moves-from-admin-only-to-seller-editable) | Shop name moves from admin-only to seller-editable | ✅ Accepted |
 | [ADR-028](#adr-028-return-and-refund-emails-through-an-outbox-the-existing-sweep-sends) | Return and refund emails through an outbox the existing sweep sends | ✅ Accepted |
 | [ADR-029](#adr-029-order-emails-send-at-once-after-checkout-with-the-sweep-as-backstop) | Order emails send at once after checkout, with the sweep as backstop | ✅ Accepted |
+| [ADR-030](#adr-030-stop-emailing-addresses-that-bounce-or-complain-fed-by-resends-webhook) | Stop emailing addresses that bounce or complain, fed by Resend's webhook | ✅ Accepted |
 
 ---
 
@@ -754,3 +755,24 @@ Original decision: Option 2. The Stripe code stayed in the repo (real, working c
 - Windows are short on purpose: 2 hours for the receipt and the seller notice (checkout sends them at once; the sweep only catches failures, and a stale receipt is worse than none) and 1 day for shipped and delivered. Switching this on therefore does not mail recent history.
 - Still at-most-once, like ADR-028. A failed immediate send is retried by the sweep within the window; after it, the order page is the record.
 - Not covered yet: cancellation emails, and payment-failed or payment-expired notices for online payment.
+
+---
+
+## ADR-030: Stop emailing addresses that bounce or complain, fed by Resend's webhook
+
+**Status:** ✅ Accepted
+
+**Context:** The email senders (ADR-028, ADR-029) cannot tell a delivered email from one sent to a dead mailbox, and a person who marks us as spam is emailed again by the next reminder. Sending repeatedly to bad addresses and ignoring complaints hurts the sending domain's reputation, which is shared with the Supabase auth emails (sign-up, password reset).
+
+**Options Considered:**
+1. Rely on Resend's own suppression only — rejected: it protects the domain but leaves the app blind (no record of who never got an email, and every sweep still tries and "sends").
+2. Track delivery per email in the outbox — rejected: needs a webhook for every event and a state machine for a problem that has two cases that matter.
+3. A small suppression list fed by the webhook for the two events that matter, checked before every send — chosen.
+
+**Decision:** Option 3. `POST /api/webhooks/resend` verifies Resend's Svix signature over the raw body (HMAC-SHA256, 5-minute timestamp window, constant-time compare; no new dependency) and records an address in `email_suppressions` for a **permanent** bounce or a spam complaint only. A temporary bounce can recover and does not suppress. `getEmailRecipient` reports `isSuppressed`, and both senders skip it and keep the claim, exactly like an opt-out. Recording is idempotent, a complaint outranks a bounce, and a failed write returns 500 so Resend retries.
+
+**Consequences:**
+- Needs a webhook created in Resend and its signing secret in `RESEND_WEBHOOK_SECRET`. Until then the endpoint answers 503 and nothing changes.
+- The table holds personal data (email addresses): RLS on, no policies or grants, service-role functions only. Logs record the reason and a count, never the address.
+- A suppression is permanent until someone removes the row. There is no admin screen for it yet; that is a follow-up if support needs it.
+- Only the app's own return and order emails consult it. Supabase's auth emails are sent by Supabase through Resend's SMTP and are not affected (Resend still suppresses hard-bounced addresses on its side for them).

@@ -2933,6 +2933,11 @@ export type Database = {
         Returns: boolean
       }
 
+      is_email_suppressed: {
+        Args: { p_email: string }
+        Returns: boolean
+      }
+
       list_due_order_notifications: {
         Args: { p_limit?: number; p_order_ids?: string[] | null }
         Returns: {
@@ -2946,6 +2951,11 @@ export type Database = {
           recipient_id: string
           total_cents: number
         }[]
+      }
+
+      record_email_suppression: {
+        Args: { p_detail?: string; p_email: string; p_reason: string }
+        Returns: undefined
       }
 
       release_order_notification: {

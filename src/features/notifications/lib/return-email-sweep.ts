@@ -65,7 +65,7 @@ export async function sendDueReturnEmails(limit = 25): Promise<ReturnEmailSweepS
         (audience === "buyer"
           ? isBuyerReturnEmailAllowed(recipient.buyerPrefs)
           : isSellerReturnEmailAllowed(recipient.sellerPrefs));
-      if (!allowed || !recipient.email) {
+      if (!allowed || !recipient.email || recipient.isSuppressed) {
         summary.skipped++;
         continue;
       }

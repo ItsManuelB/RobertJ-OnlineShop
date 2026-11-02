@@ -21,6 +21,7 @@ Set these under Project Settings -> Environment Variables for **Production and P
 | `CRON_SECRET` | Vercel sends it as `Authorization: Bearer <value>` on cron calls. |
 | `RESEND_API_KEY`, `EMAIL_FROM` | Optional. Turn on return/refund emails (ADR-028). Leave both empty and the emails stay off. `EMAIL_FROM` is a full From header on a domain verified in Resend, e.g. `RobertJ Shop <no-reply@robertjshop.store>`. Server only. |
 | `EMAIL_REPLY_TO` | Optional. A monitored address (e.g. `support@robertjshop.store`) added as Reply-To on every email, so replies do not go to the no-reply sender. Unset, no Reply-To is sent. |
+| `RESEND_WEBHOOK_SECRET` | Optional. The signing secret (`whsec_...`) of the Resend webhook for bounces and spam complaints (ADR-030). In Resend: Webhooks, Add Endpoint, URL `https://<your-domain>/api/webhooks/resend`, events `email.bounced` and `email.complained`; copy its signing secret here. Unset, the endpoint answers 503 and nothing is recorded. |
 
 ## 3. External settings
 

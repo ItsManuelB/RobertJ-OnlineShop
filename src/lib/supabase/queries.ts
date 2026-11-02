@@ -6279,6 +6279,8 @@ export interface EmailRecipient {
   /** Null when the account has no address or no longer exists. */
   email: string | null;
   isActive: boolean;
+  /** The address bounced permanently or reported spam (see `email_suppressions`): never email it again. */
+  isSuppressed: boolean;
   /** Null means the person never changed a setting, which counts as on. */
   buyerPrefs: { emailEnabled: boolean; orderUpdates: boolean } | null;
   sellerPrefs: { alertReturns: boolean; alertOrders: boolean } | null;
@@ -6298,13 +6300,22 @@ export async function getEmailRecipient(userId: string): Promise<EmailRecipient>
     admin.from(DATABASE_TABLES.SELLER_PREFERENCES).select("alert_returns, alert_orders").eq("user_id", userId).maybeSingle(),
   ]);
 
+  const email = authResult.data.user?.email ?? null;
+  let isSuppressed = false;
+  if (email) {
+    const suppressed = await admin.rpc("is_email_suppressed", { p_email: email });
+    if (suppressed.error) throw queryError("Failed to check the email suppression list", suppressed.error);
+    isSuppressed = suppressed.data === true;
+  }
+
   if (profileResult.error) throw queryError("Failed to load a recipient profile", profileResult.error);
   if (buyerResult.error) throw queryError("Failed to load a recipient's buyer settings", buyerResult.error);
   if (sellerResult.error) throw queryError("Failed to load a recipient's seller settings", sellerResult.error);
 
   return {
-    email: authResult.data.user?.email ?? null,
+    email,
     isActive: profileResult.data?.is_active ?? false,
+    isSuppressed,
     buyerPrefs: buyerResult.data
       ? { emailEnabled: buyerResult.data.email_enabled, orderUpdates: buyerResult.data.order_updates }
       : null,
@@ -6312,6 +6323,25 @@ export async function getEmailRecipient(userId: string): Promise<EmailRecipient>
       ? { alertReturns: sellerResult.data.alert_returns, alertOrders: sellerResult.data.alert_orders }
       : null,
   };
+}
+
+/**
+ * Records an address that bounced permanently or reported spam, so the email
+ * senders skip it from now on. Idempotent (a webhook can be delivered twice).
+ * Service role only; the address is personal data and is never exposed to a client.
+ */
+export async function recordEmailSuppression(
+  email: string,
+  reason: "bounced" | "complained",
+  detail: string | null,
+): Promise<void> {
+  const admin = createSupabaseAdminClient();
+  const { error } = await admin.rpc("record_email_suppression", {
+    p_email: email,
+    p_reason: reason,
+    p_detail: detail ?? undefined,
+  });
+  if (error) throw queryError("Failed to record an email suppression", error);
 }
 
 // ============================================================================
