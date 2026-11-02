@@ -45,6 +45,9 @@ Every decision is a numbered ADR with a fixed shape: **Context → Problem → O
 | [ADR-026](#adr-026-order-scoped-buyerseller-messaging-contact-seller) | Order-scoped buyer↔seller messaging (Contact Seller) | ✅ Accepted |
 | [ADR-027](#adr-027-shop-name-moves-from-admin-only-to-seller-editable) | Shop name moves from admin-only to seller-editable | ✅ Accepted |
 | [ADR-028](#adr-028-return-and-refund-emails-through-an-outbox-the-existing-sweep-sends) | Return and refund emails through an outbox the existing sweep sends | ✅ Accepted |
+| [ADR-029](#adr-029-order-emails-send-at-once-after-checkout-with-the-sweep-as-backstop) | Order emails send at once after checkout, with the sweep as backstop | ✅ Accepted |
+| [ADR-030](#adr-030-stop-emailing-addresses-that-bounce-or-complain-fed-by-resends-webhook) | Stop emailing addresses that bounce or complain, fed by Resend's webhook | ✅ Accepted |
+| [ADR-031](#adr-031-a-daily-admin-digest-of-returns-running-late-reusing-the-existing-late-definition) | A daily admin digest of returns running late, reusing the existing "late" definition | ✅ Accepted |
 
 ---
 
@@ -731,3 +734,67 @@ Original decision: Option 2. The Stripe code stayed in the repo (real, working c
 - At-most-once: a crash between the claim and the send loses that email. Chosen over at-least-once because a duplicate "ship back by" email to a buyer is worse than a missed reminder the order page still shows.
 - Outcome emails (added after, migration `20261102130000`): `buyer_return_refunded` (Xendit refund confirmed, or the COD payout recorded), `buyer_return_rejected` (the **admin's** rejection only: a seller rejection is not final because the admin can still decide, so it is not emailed) and `buyer_return_expired`. Same 2-day recency window and claim-before-send rules.
 - Not covered yet: emails for return received, COD payout pending and replacement shipped/completed, and an Admin digest of late cases.
+
+---
+
+## ADR-029: Order emails send at once after checkout, with the sweep as backstop
+
+**Status:** ✅ Accepted
+
+**Context:** ADR-028 sends return emails from the 15-minute sweep, which is right for reminders. An order receipt is different: a buyer expects it within seconds, and a seller should hear about a new order promptly. Up to 15 minutes late (a day if only the daily cron runs) is a poor receipt.
+
+**Options Considered:**
+1. Sweep only: rejected, too slow for a receipt.
+2. Send inside `placeOrderAction` before it returns: rejected, it puts a network call to the email provider on the checkout path, so a slow provider slows or fails a purchase.
+3. Send in `after()` once the response has gone out, through the same claim-before-send outbox, with the sweep as the backstop: chosen.
+
+**Decision:** Option 3. `placeOrderAction` calls `after(() => sendOrderEmailsFor(orderIds))` (Next.js `after`, which runs once the response is sent and never blocks or fails the order). It asks `list_due_order_notifications` for those orders, so the immediate send and the sweep share **one** set of eligibility rules, and both claim in `order_notification_log` before sending, so they can run together without double-sending. A failed send releases the claim and the sweep retries.
+
+**Messages:** `buyer_order_placed` (wording depends on COD, paid, or awaiting online payment), `buyer_order_shipped`, `buyer_order_delivered`, `seller_new_order`. For online payment the seller notice waits for confirmed payment, so a seller is not told to prepare an order that may never be paid. The buyer's "email" and "order updates" switches and the seller's "order alerts" switch are respected.
+
+**Consequences:**
+- Windows are short on purpose: 2 hours for the receipt and the seller notice (checkout sends them at once; the sweep only catches failures, and a stale receipt is worse than none) and 1 day for shipped and delivered. Switching this on therefore does not mail recent history.
+- Still at-most-once, like ADR-028. A failed immediate send is retried by the sweep within the window; after it, the order page is the record.
+- Not covered yet: cancellation emails, and payment-failed or payment-expired notices for online payment.
+
+---
+
+## ADR-030: Stop emailing addresses that bounce or complain, fed by Resend's webhook
+
+**Status:** ✅ Accepted
+
+**Context:** The email senders (ADR-028, ADR-029) cannot tell a delivered email from one sent to a dead mailbox, and a person who marks us as spam is emailed again by the next reminder. Sending repeatedly to bad addresses and ignoring complaints hurts the sending domain's reputation, which is shared with the Supabase auth emails (sign-up, password reset).
+
+**Options Considered:**
+1. Rely on Resend's own suppression only — rejected: it protects the domain but leaves the app blind (no record of who never got an email, and every sweep still tries and "sends").
+2. Track delivery per email in the outbox — rejected: needs a webhook for every event and a state machine for a problem that has two cases that matter.
+3. A small suppression list fed by the webhook for the two events that matter, checked before every send — chosen.
+
+**Decision:** Option 3. `POST /api/webhooks/resend` verifies Resend's Svix signature over the raw body (HMAC-SHA256, 5-minute timestamp window, constant-time compare; no new dependency) and records an address in `email_suppressions` for a **permanent** bounce or a spam complaint only. A temporary bounce can recover and does not suppress. `getEmailRecipient` reports `isSuppressed`, and both senders skip it and keep the claim, exactly like an opt-out. Recording is idempotent, a complaint outranks a bounce, and a failed write returns 500 so Resend retries.
+
+**Consequences:**
+- Needs a webhook created in Resend and its signing secret in `RESEND_WEBHOOK_SECRET`. Until then the endpoint answers 503 and nothing changes.
+- The table holds personal data (email addresses): RLS on, no policies or grants, service-role functions only. Logs record the reason and a count, never the address.
+- A suppression is permanent until someone removes the row. There is no admin screen for it yet; that is a follow-up if support needs it.
+- Only the app's own return and order emails consult it. Supabase's auth emails are sent by Supabase through Resend's SMTP and are not affected (Resend still suppresses hard-bounced addresses on its side for them).
+
+---
+
+## ADR-031: A daily admin digest of returns running late, reusing the existing "late" definition
+
+**Status:** ✅ Accepted
+
+**Context:** Late return cases are only visible to an admin who opens the dashboard (the bell and the "waiting on" badges). An admin who does not open it that day learns nothing, and a case can sit past its target.
+
+**Options Considered:**
+1. An email per late case — rejected: noisy, and a case stays late for days, so it would repeat.
+2. A separate "late" rule in SQL for the digest — rejected: it would duplicate `getWaitingStatus`, and the bell and the digest could then disagree about what is late.
+3. One email a day per admin, built from the same `getWaitingStatus` and target constants as the bell — chosen.
+
+**Decision:** Option 3. The 15-minute sweep calls `sendAdminReturnDigest`. From 9:00 Philippine time it claims `(Philippine date, admin)` in `admin_digest_log` before building or sending, so overlapping runs cannot double-send and a day is handled once. It loads open returns through the service role, applies `getWaitingStatus` with `RETURN_ADMIN_DECISION_TARGET_DAYS` and `RETURN_SELLER_FULFILMENT_TARGET_DAYS`, and lists the cases waiting on the admin and those waiting on sellers, longest first, capped at 10 per section. **Nothing is sent on a day with nothing late.**
+
+**Consequences:**
+- It is a signal, not an escalation: nothing is decided, reassigned or closed by it, same as the bell. The two target constants are display targets, not business rules; changing them changes the bell and the digest together.
+- A claim is kept on a day with nothing late, so a case that becomes late later the same day waits for the next morning's digest.
+- Every active admin receives it; there is no per-admin switch yet. A suppressed address (ADR-030) or an inactive admin is skipped.
+- Only the return queue is covered. Late orders, payouts and low stock are not in the digest.
