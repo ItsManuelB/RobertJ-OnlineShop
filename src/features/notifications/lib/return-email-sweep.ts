@@ -2,14 +2,17 @@ import "server-only";
 
 import { publicEnv } from "@/config/env";
 import { ROUTES } from "@/constants/routes";
+import { getEmailChrome } from "@/lib/email/chrome";
+import { renderEmail } from "@/lib/email/layout";
 import { isEmailConfigured, sendEmail } from "@/lib/email/resend";
 import * as queries from "@/lib/supabase/queries";
+import { formatOrderTotal } from "@/features/notifications/utils/order-email";
 import {
-  buildReturnEmail,
   getReturnEmailAudience,
   isBuyerReturnEmailAllowed,
   isReturnEmailKind,
   isSellerReturnEmailAllowed,
+  returnEmailMessage,
 } from "@/features/notifications/utils/return-email";
 
 export interface ReturnEmailSweepSummary {
@@ -70,13 +73,30 @@ export async function sendDueReturnEmails(limit = 25): Promise<ReturnEmailSweepS
         continue;
       }
 
+      // The refund amount is decoration: if it cannot be read, the email still says the refund was issued.
+      let refundAmount: string | null = null;
+      if (kind === "buyer_return_refunded") {
+        const refund = await queries.getReturnRefundAmount(item.returnRequestId).catch((refundError) => {
+          console.error("[return email sweep] could not load the refund amount; sending without it", {
+            returnId: item.returnRequestId,
+            message: refundError instanceof Error ? refundError.message : "unknown error",
+          });
+          return null;
+        });
+        refundAmount = refund ? formatOrderTotal(refund.cents, refund.currency) : null;
+      }
+
       const path = audience === "buyer" ? ROUTES.orderDetail(item.orderId) : ROUTES.sellerReturns;
-      const mail = buildReturnEmail({
-        kind,
-        orderNumber: item.orderNumber,
-        url: new URL(path, publicEnv.NEXT_PUBLIC_SITE_URL).toString(),
-        deadlineAt: item.deadlineAt,
-      });
+      const mail = renderEmail(
+        returnEmailMessage({
+          kind,
+          orderNumber: item.orderNumber,
+          url: new URL(path, publicEnv.NEXT_PUBLIC_SITE_URL).toString(),
+          deadlineAt: item.deadlineAt,
+          refundAmount,
+        }),
+        getEmailChrome(audience),
+      );
       await sendEmail({
         to: recipient.email,
         ...mail,

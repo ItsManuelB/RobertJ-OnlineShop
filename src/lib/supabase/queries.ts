@@ -152,6 +152,7 @@ import type {
 } from "@/features/reviews/types/review.types";
 import { maskReviewerName, summarizeRatings } from "@/features/reviews/utils/review-format";
 import type { BuyerActivityEvent } from "@/features/notifications/types/notification.types";
+import type { OrderEmailDetails } from "@/features/notifications/utils/order-email";
 import {
   NO_CANCELLATION_REFUND,
   type CancellationRefundState,
@@ -6279,6 +6280,8 @@ export interface EmailRecipient {
   /** Null when the account has no address or no longer exists. */
   email: string | null;
   isActive: boolean;
+  /** The first word of the profile name, for a greeting. Null when the person has no name set. */
+  firstName: string | null;
   /** The address bounced permanently or reported spam (see `email_suppressions`): never email it again. */
   isSuppressed: boolean;
   /** Null means the person never changed a setting, which counts as on. */
@@ -6295,7 +6298,7 @@ export async function getEmailRecipient(userId: string): Promise<EmailRecipient>
   const admin = createSupabaseAdminClient();
   const [authResult, profileResult, buyerResult, sellerResult] = await Promise.all([
     admin.auth.admin.getUserById(userId),
-    admin.from(DATABASE_TABLES.PROFILES).select("is_active").eq("id", userId).maybeSingle(),
+    admin.from(DATABASE_TABLES.PROFILES).select("is_active, full_name").eq("id", userId).maybeSingle(),
     admin.from(DATABASE_TABLES.BUYER_PREFERENCES).select("email_enabled, order_updates").eq("user_id", userId).maybeSingle(),
     admin.from(DATABASE_TABLES.SELLER_PREFERENCES).select("alert_returns, alert_orders").eq("user_id", userId).maybeSingle(),
   ]);
@@ -6312,9 +6315,12 @@ export async function getEmailRecipient(userId: string): Promise<EmailRecipient>
   if (buyerResult.error) throw queryError("Failed to load a recipient's buyer settings", buyerResult.error);
   if (sellerResult.error) throw queryError("Failed to load a recipient's seller settings", sellerResult.error);
 
+  // A long "first word" is not a name (someone typed a sentence): leave the greeting out rather than print it.
+  const firstWord = profileResult.data?.full_name?.trim().split(/\s+/)[0] ?? "";
   return {
     email,
     isActive: profileResult.data?.is_active ?? false,
+    firstName: firstWord.length > 0 && firstWord.length <= 30 ? firstWord : null,
     isSuppressed,
     buyerPrefs: buyerResult.data
       ? { emailEnabled: buyerResult.data.email_enabled, orderUpdates: buyerResult.data.order_updates }
@@ -6488,6 +6494,52 @@ export async function releaseOrderNotification(orderId: string, kind: string): P
   const admin = createSupabaseAdminClient();
   const { error } = await admin.rpc("release_order_notification", { p_order_id: orderId, p_kind: kind });
   if (error) throw queryError("Failed to release an order email", error);
+}
+
+/**
+ * What an order email lists besides its totals: the lines, the shipping fee and
+ * the shipment. Service role (the buyer's and the seller's own views are
+ * RLS-scoped, but an email is sent on the system's behalf). The caller treats
+ * this as optional decoration: an email still sends without it.
+ */
+export async function getOrderEmailDetails(orderId: string): Promise<OrderEmailDetails | null> {
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin
+    .from(DATABASE_TABLES.ORDERS)
+    .select(
+      "placed_at, shipping_fee_cents, order_items(product_title, variant_label, quantity, subtotal_cents), order_shipments(courier, tracking_number)",
+    )
+    .eq("id", orderId)
+    .order("created_at", { referencedTable: DATABASE_TABLES.ORDER_ITEMS, ascending: true })
+    .maybeSingle();
+  if (error) throw queryError("Failed to load order details for an email", error);
+  if (!data) return null;
+
+  return {
+    placedAt: data.placed_at,
+    shippingFeeCents: Number(data.shipping_fee_cents),
+    items: data.order_items.map((item) => ({
+      name: item.product_title,
+      variantLabel: item.variant_label,
+      quantity: item.quantity,
+      amountCents: Number(item.subtotal_cents),
+    })),
+    courier: data.order_shipments?.courier ?? null,
+    trackingNumber: data.order_shipments?.tracking_number ?? null,
+  };
+}
+
+/** The refund amount of one return, for the "refund issued" email. Null when none is recorded. Service role. */
+export async function getReturnRefundAmount(returnId: string): Promise<{ cents: number; currency: string } | null> {
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin
+    .from(DATABASE_TABLES.RETURN_REQUESTS)
+    .select("refund_amount_cents, orders!inner(currency)")
+    .eq("id", returnId)
+    .maybeSingle();
+  if (error) throw queryError("Failed to load a refund amount for an email", error);
+  if (!data || data.refund_amount_cents === null) return null;
+  return { cents: Number(data.refund_amount_cents), currency: data.orders.currency };
 }
 
 /**
