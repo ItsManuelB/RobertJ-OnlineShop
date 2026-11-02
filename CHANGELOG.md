@@ -7,6 +7,10 @@ All notable changes to RoberJ Online Shop are documented here, newest first. For
 
 ## [Unreleased]
 
+### Changed (Database types)
+
+- `database.types.ts` regenerated from the live database. It now includes `return_notification_log` and seven internal functions it was missing. The four argument types the generator cannot know are nullable were re-applied by hand, and CONTRIBUTING lists them so the next regeneration is quick. No behaviour change.
+
 ### Added (Return and refund emails)
 
 - **Sellers are told:** an email when a buyer files a return request, and a reminder after 2 of the 3 reply days ("Reply needed"), so the admin does not have to step in for a request nobody saw.
