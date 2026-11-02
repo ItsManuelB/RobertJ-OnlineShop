@@ -9,7 +9,12 @@ export {
   requestReturnAction,
   respondToReturnAction,
 } from "./actions/return.actions";
-export { RETURN_WINDOW_DAYS } from "./constants/return.constants";
+export {
+  RETURN_ADMIN_DECISION_TARGET_DAYS,
+  RETURN_SELLER_FULFILMENT_TARGET_DAYS,
+  RETURN_WINDOW_DAYS,
+} from "./constants/return.constants";
+export { getWaitingStatus } from "./utils/return-waiting";
 export {
   confirmReplacementReceivedSchema,
   decideReturnSchema,

@@ -16,6 +16,11 @@ import { ReturnProgress } from "@/features/returns/components/ReturnProgress";
 import { ReturnShippingActions } from "@/features/returns/components/ReturnShippingActions";
 import { ReturnRequestStatusCard } from "@/features/returns/components/ReturnRequestStatusCard";
 import { ReturnQueueTabs } from "@/features/returns/components/ReturnQueueTabs";
+import { ReturnWaitingBadge } from "@/features/returns/components/ReturnWaitingBadge";
+import {
+  RETURN_ADMIN_DECISION_TARGET_DAYS,
+  RETURN_SELLER_FULFILMENT_TARGET_DAYS,
+} from "@/features/returns/constants/return.constants";
 import {
   ADMIN_RETURN_TABS,
   ADMIN_RETURN_TAB_LABELS,
@@ -34,6 +39,7 @@ import {
   type SellerReturnTab,
 } from "@/features/returns/utils/seller-return-queue";
 import { getResponseDeadline } from "@/features/returns/utils/return-progress";
+import { getWaitingStatus } from "@/features/returns/utils/return-waiting";
 import { daysSince } from "@/lib/utils/date";
 import { PaginationControls } from "@/features/products/components/PaginationControls";
 import { getReturnEvidenceSignedUrl, listReturnRequests } from "@/lib/supabase/queries";
@@ -123,6 +129,16 @@ export async function ReturnQueue({ viewer = "admin", tab, page }: ReturnQueuePr
   ).length;
   const needsDecision = isAdmin ? tabs.find((entry) => entry.value === "decide")?.count ?? 0 : 0;
   const overdueReplies = isAdmin ? allRequests.filter((request) => isSellerReplyOverdue(request)).length : 0;
+  // Cases waiting on the admin longer than the target. Display only: nothing escalates.
+  const lateDecisions = isAdmin
+    ? allRequests.filter((request) => {
+        const waiting = getWaitingStatus(request, {
+          admin: RETURN_ADMIN_DECISION_TARGET_DAYS,
+          seller: RETURN_SELLER_FULFILMENT_TARGET_DAYS,
+        });
+        return waiting?.actor === "admin" && waiting.pastTarget;
+      }).length
+    : 0;
 
   return (
     <div className="flex flex-col gap-4">
@@ -132,7 +148,8 @@ export async function ReturnQueue({ viewer = "admin", tab, page }: ReturnQueuePr
           <p className="flex-1 text-sm text-foreground">
             <span className="font-semibold">
               {needsDecision} request{needsDecision === 1 ? " needs" : "s need"} your decision
-              {overdueReplies > 0 ? `, ${overdueReplies} with an overdue seller reply` : ""}.
+              {overdueReplies > 0 ? `, ${overdueReplies} with an overdue seller reply` : ""}
+              {lateDecisions > 0 ? `, ${lateDecisions} waiting more than ${RETURN_ADMIN_DECISION_TARGET_DAYS} days` : ""}.
             </span>{" "}
             Buyers are waiting on the outcome.
           </p>
@@ -189,7 +206,9 @@ export async function ReturnQueue({ viewer = "admin", tab, page }: ReturnQueuePr
               </div>
               {request.status === RETURN_STATUS.pending ? (
                 <ResponseDeadlineBadge elapsedDays={daysSince(request.createdAt)} />
-              ) : null}
+              ) : (
+                <ReturnWaitingBadge request={request} />
+              )}
             </div>
             <ReturnRequestStatusCard request={request} evidenceUrl={evidenceUrl} themed embedded />
             <ReturnProgress request={request} />
