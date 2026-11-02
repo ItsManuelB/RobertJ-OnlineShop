@@ -1,4 +1,12 @@
-import { Check } from "lucide-react";
+import {
+  BadgeCheck,
+  Check,
+  ClipboardList,
+  Package,
+  PackageCheck,
+  Truck,
+  type LucideIcon,
+} from "lucide-react";
 
 import { RJ_CARD, THEMED_CARD } from "@/components/ui/card";
 import type { OrderStatus } from "@/constants/status";
@@ -13,6 +21,20 @@ const TERMINAL_STATUSES: ReadonlySet<OrderStatus> = new Set([
   "cancelled",
   "refunded",
 ]);
+
+/**
+ * Logo per fulfilment step shown inside each stepper node (purely presentational,
+ * so it lives in the component layer, not the status constants). Mirrors the
+ * customer-facing labels: Pending = order placed, To Pack = packing, Ready for
+ * Pickup = packed/ready, Shipped = in transit, Delivered = received.
+ */
+const STEP_ICON: Partial<Record<OrderStatus, LucideIcon>> = {
+  pending: ClipboardList,
+  confirmed: Package,
+  processing: PackageCheck,
+  shipped: Truck,
+  delivered: BadgeCheck,
+};
 
 export interface OrderTimelineProps {
   status: OrderStatus;
@@ -112,6 +134,7 @@ export function OrderTimeline({
           const isCurrent = index === currentIndex;
           const isLast = index === ORDER_TIMELINE_STEPS.length - 1;
           const timestamp = stepTimestamp[step];
+          const StepIcon = STEP_ICON[step] ?? ClipboardList;
           const doneTrack = themed ? "bg-primary" : "bg-rj-red";
           const idleTrack = themed ? "bg-border" : "bg-rj-gray-200";
           return (
@@ -133,27 +156,40 @@ export function OrderTimeline({
                 <span
                   aria-current={isCurrent ? "step" : undefined}
                   className={cn(
-                    "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-[1.5px] text-[10px] font-bold",
+                    "relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 transition-colors",
                     themed
                       ? [
-                          isDone && "border-primary bg-primary text-primary-foreground",
+                          // Done steps read as "complete" via an outlined node
+                          // (brand ring + brand icon); the live step is the only
+                          // solid-filled node; upcoming steps stay muted.
+                          isDone && "border-primary bg-card text-primary",
                           isCurrent &&
-                            "border-primary bg-primary text-primary-foreground ring-2 ring-primary/30",
+                            "border-primary bg-primary text-primary-foreground ring-4 ring-primary/15",
                           !isDone && !isCurrent && "border-border bg-card text-muted-foreground",
                         ]
                       : [
-                          isDone && "border-rj-red bg-rj-red text-rj-white",
+                          isDone && "border-rj-red bg-rj-white text-rj-red",
                           isCurrent &&
-                            "border-rj-red bg-rj-red text-rj-white ring-2 ring-rj-red/30",
-                          !isDone && !isCurrent && "border-rj-gray-200 bg-rj-white text-rj-gray-400",
+                            "border-rj-red bg-rj-red text-rj-white ring-4 ring-rj-red/15",
+                          !isDone && !isCurrent &&
+                            "border-rj-gray-200 bg-rj-white text-rj-gray-400",
                         ],
                   )}
                 >
+                  <StepIcon className="h-5 w-5" aria-hidden="true" />
                   {isDone ? (
-                    <Check className="h-3 w-3" aria-hidden="true" />
-                  ) : (
-                    index + 1
-                  )}
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        "absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full border-2",
+                        themed
+                          ? "border-card bg-primary text-primary-foreground"
+                          : "border-rj-white bg-rj-red text-rj-white",
+                      )}
+                    >
+                      <Check className="h-2.5 w-2.5" strokeWidth={3} />
+                    </span>
+                  ) : null}
                 </span>
                 <span
                   aria-hidden="true"
@@ -165,14 +201,14 @@ export function OrderTimeline({
               </div>
               <span
                 className={cn(
-                  "text-center text-[10px] font-semibold leading-tight",
+                  "text-center text-[11px] font-semibold leading-tight",
                   isDone || isCurrent ? ink : muted,
                 )}
               >
                 {getOrderStatusLabel(step)}
               </span>
               {timestamp ? (
-                <span className={cn("text-center text-[9px] leading-tight", muted)}>
+                <span className={cn("text-center text-[10px] leading-tight", muted)}>
                   {formatDateTime(timestamp)}
                 </span>
               ) : null}
