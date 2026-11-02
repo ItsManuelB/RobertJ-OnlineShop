@@ -6,7 +6,7 @@ import { getServerEnv } from "@/config/env";
 import * as queries from "@/lib/supabase/queries";
 import { recoverCancellationRefunds } from "@/features/payments/lib/cancellation-refund";
 import { reconcileXenditRefund } from "@/features/payments/lib/xendit-refund-reconciliation";
-import { sendDueReturnEmails } from "@/features/notifications/lib/return-email-sweep";
+import { sendDueOrderEmails, sendDueReturnEmails } from "@/features/notifications/server";
 import {
   isStaleXenditAttempt,
   reconcileStaleXenditAttempt,
@@ -132,8 +132,9 @@ export async function GET(request: NextRequest) {
   const refunds = await runRefundSweep();
   const returns = await runReturnExpirySweep();
   const returnEmails = await runReturnEmailSweep();
+  const orderEmails = await runOrderEmailSweep();
 
-  return NextResponse.json({ received: true, ...summary, expiry, refunds, returns, returnEmails });
+  return NextResponse.json({ received: true, ...summary, expiry, refunds, returns, returnEmails, orderEmails });
 }
 
 /**
@@ -147,6 +148,21 @@ async function runReturnEmailSweep() {
     return await sendDueReturnEmails();
   } catch (error) {
     console.error("[return email sweep] failed", error);
+    return { configured: true, due: 0, sent: 0, skipped: 0, failed: 0, error: true };
+  }
+}
+
+/**
+ * Order emails that are due: shipped and delivered notices for buyers, and any
+ * receipt or seller new-order notice the immediate send after checkout missed.
+ * Does nothing until RESEND_API_KEY and EMAIL_FROM are set. A failure here is
+ * logged and never affects the sweeps above.
+ */
+async function runOrderEmailSweep() {
+  try {
+    return await sendDueOrderEmails();
+  } catch (error) {
+    console.error("[order email sweep] failed", error);
     return { configured: true, due: 0, sent: 0, skipped: 0, failed: 0, error: true };
   }
 }

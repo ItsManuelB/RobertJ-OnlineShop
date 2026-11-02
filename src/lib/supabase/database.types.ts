@@ -2928,6 +2928,31 @@ export type Database = {
       }
       is_admin: { Args: never; Returns: boolean }
       is_shop_member: { Args: { p_shop_id: string }; Returns: boolean }
+      claim_order_notification: {
+        Args: { p_kind: string; p_order_id: string }
+        Returns: boolean
+      }
+
+      list_due_order_notifications: {
+        Args: { p_limit?: number; p_order_ids?: string[] | null }
+        Returns: {
+          currency: string
+          item_count: number
+          kind: string
+          order_id: string
+          order_number: string
+          payment_method: string
+          payment_status: string
+          recipient_id: string
+          total_cents: number
+        }[]
+      }
+
+      release_order_notification: {
+        Args: { p_kind: string; p_order_id: string }
+        Returns: undefined
+      }
+
       list_due_return_notifications: {
         Args: { p_limit?: number }
         Returns: {

@@ -45,6 +45,7 @@ Every decision is a numbered ADR with a fixed shape: **Context → Problem → O
 | [ADR-026](#adr-026-order-scoped-buyerseller-messaging-contact-seller) | Order-scoped buyer↔seller messaging (Contact Seller) | ✅ Accepted |
 | [ADR-027](#adr-027-shop-name-moves-from-admin-only-to-seller-editable) | Shop name moves from admin-only to seller-editable | ✅ Accepted |
 | [ADR-028](#adr-028-return-and-refund-emails-through-an-outbox-the-existing-sweep-sends) | Return and refund emails through an outbox the existing sweep sends | ✅ Accepted |
+| [ADR-029](#adr-029-order-emails-send-at-once-after-checkout-with-the-sweep-as-backstop) | Order emails send at once after checkout, with the sweep as backstop | ✅ Accepted |
 
 ---
 
@@ -731,3 +732,25 @@ Original decision: Option 2. The Stripe code stayed in the repo (real, working c
 - At-most-once: a crash between the claim and the send loses that email. Chosen over at-least-once because a duplicate "ship back by" email to a buyer is worse than a missed reminder the order page still shows.
 - Outcome emails (added after, migration `20261102130000`): `buyer_return_refunded` (Xendit refund confirmed, or the COD payout recorded), `buyer_return_rejected` (the **admin's** rejection only: a seller rejection is not final because the admin can still decide, so it is not emailed) and `buyer_return_expired`. Same 2-day recency window and claim-before-send rules.
 - Not covered yet: emails for return received, COD payout pending and replacement shipped/completed, and an Admin digest of late cases.
+
+---
+
+## ADR-029: Order emails send at once after checkout, with the sweep as backstop
+
+**Status:** ✅ Accepted
+
+**Context:** ADR-028 sends return emails from the 15-minute sweep, which is right for reminders. An order receipt is different: a buyer expects it within seconds, and a seller should hear about a new order promptly. Up to 15 minutes late (a day if only the daily cron runs) is a poor receipt.
+
+**Options Considered:**
+1. Sweep only: rejected, too slow for a receipt.
+2. Send inside `placeOrderAction` before it returns: rejected, it puts a network call to the email provider on the checkout path, so a slow provider slows or fails a purchase.
+3. Send in `after()` once the response has gone out, through the same claim-before-send outbox, with the sweep as the backstop: chosen.
+
+**Decision:** Option 3. `placeOrderAction` calls `after(() => sendOrderEmailsFor(orderIds))` (Next.js `after`, which runs once the response is sent and never blocks or fails the order). It asks `list_due_order_notifications` for those orders, so the immediate send and the sweep share **one** set of eligibility rules, and both claim in `order_notification_log` before sending, so they can run together without double-sending. A failed send releases the claim and the sweep retries.
+
+**Messages:** `buyer_order_placed` (wording depends on COD, paid, or awaiting online payment), `buyer_order_shipped`, `buyer_order_delivered`, `seller_new_order`. For online payment the seller notice waits for confirmed payment, so a seller is not told to prepare an order that may never be paid. The buyer's "email" and "order updates" switches and the seller's "order alerts" switch are respected.
+
+**Consequences:**
+- Windows are short on purpose: 2 hours for the receipt and the seller notice (checkout sends them at once; the sweep only catches failures, and a stale receipt is worse than none) and 1 day for shipped and delivered. Switching this on therefore does not mail recent history.
+- Still at-most-once, like ADR-028. A failed immediate send is retried by the sweep within the window; after it, the order page is the record.
+- Not covered yet: cancellation emails, and payment-failed or payment-expired notices for online payment.

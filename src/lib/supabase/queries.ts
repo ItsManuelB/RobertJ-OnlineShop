@@ -6275,27 +6275,27 @@ export async function releaseReturnNotification(returnId: string, kind: string):
   if (error) throw queryError("Failed to release a return email", error);
 }
 
-export interface ReturnEmailRecipient {
+export interface EmailRecipient {
   /** Null when the account has no address or no longer exists. */
   email: string | null;
   isActive: boolean;
   /** Null means the person never changed a setting, which counts as on. */
   buyerPrefs: { emailEnabled: boolean; orderUpdates: boolean } | null;
-  sellerPrefs: { alertReturns: boolean } | null;
+  sellerPrefs: { alertReturns: boolean; alertOrders: boolean } | null;
 }
 
 /**
- * Where a return email goes and whether the person allows it. Emails live in
+ * Where an email (return or order) goes and whether the person allows it. Emails live in
  * the auth system, not in `profiles`, so this needs the service role; the
  * address is used to send and never returned to a client.
  */
-export async function getReturnEmailRecipient(userId: string): Promise<ReturnEmailRecipient> {
+export async function getEmailRecipient(userId: string): Promise<EmailRecipient> {
   const admin = createSupabaseAdminClient();
   const [authResult, profileResult, buyerResult, sellerResult] = await Promise.all([
     admin.auth.admin.getUserById(userId),
     admin.from(DATABASE_TABLES.PROFILES).select("is_active").eq("id", userId).maybeSingle(),
     admin.from(DATABASE_TABLES.BUYER_PREFERENCES).select("email_enabled, order_updates").eq("user_id", userId).maybeSingle(),
-    admin.from(DATABASE_TABLES.SELLER_PREFERENCES).select("alert_returns").eq("user_id", userId).maybeSingle(),
+    admin.from(DATABASE_TABLES.SELLER_PREFERENCES).select("alert_returns, alert_orders").eq("user_id", userId).maybeSingle(),
   ]);
 
   if (profileResult.error) throw queryError("Failed to load a recipient profile", profileResult.error);
@@ -6308,8 +6308,68 @@ export async function getReturnEmailRecipient(userId: string): Promise<ReturnEma
     buyerPrefs: buyerResult.data
       ? { emailEnabled: buyerResult.data.email_enabled, orderUpdates: buyerResult.data.order_updates }
       : null,
-    sellerPrefs: sellerResult.data ? { alertReturns: sellerResult.data.alert_returns } : null,
+    sellerPrefs: sellerResult.data
+      ? { alertReturns: sellerResult.data.alert_returns, alertOrders: sellerResult.data.alert_orders }
+      : null,
   };
+}
+
+// ============================================================================
+// Order email outbox (service role only — see
+// 20261102140000_order_email_notifications.sql)
+// ============================================================================
+
+export interface DueOrderNotification {
+  orderId: string;
+  /** One of `OrderEmailKind`; narrowed by the caller. */
+  kind: string;
+  orderNumber: string;
+  recipientId: string;
+  totalCents: number;
+  currency: string;
+  paymentMethod: string;
+  paymentStatus: string;
+  itemCount: number;
+}
+
+/**
+ * Order emails that are due and not yet claimed, oldest first. Pass `orderIds`
+ * to look at specific orders only (the immediate send after checkout), under
+ * exactly the same eligibility rules as the sweep.
+ */
+export async function listDueOrderNotifications(limit = 25, orderIds?: string[]): Promise<DueOrderNotification[]> {
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin.rpc("list_due_order_notifications", {
+    p_limit: limit,
+    p_order_ids: orderIds ?? null,
+  });
+  if (error) throw queryError("Failed to load due order emails", error);
+  return (data ?? []).map((row) => ({
+    orderId: row.order_id,
+    kind: row.kind,
+    orderNumber: row.order_number,
+    recipientId: row.recipient_id,
+    totalCents: Number(row.total_cents),
+    currency: row.currency,
+    paymentMethod: row.payment_method,
+    paymentStatus: row.payment_status,
+    itemCount: row.item_count,
+  }));
+}
+
+/** Atomically claims one order email so two overlapping runs cannot both send it. False means someone already did. */
+export async function claimOrderNotification(orderId: string, kind: string): Promise<boolean> {
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin.rpc("claim_order_notification", { p_order_id: orderId, p_kind: kind });
+  if (error) throw queryError("Failed to claim an order email", error);
+  return data === true;
+}
+
+/** Gives a claim back after a failed send so the next run retries it. */
+export async function releaseOrderNotification(orderId: string, kind: string): Promise<void> {
+  const admin = createSupabaseAdminClient();
+  const { error } = await admin.rpc("release_order_notification", { p_order_id: orderId, p_kind: kind });
+  if (error) throw queryError("Failed to release an order email", error);
 }
 
 /**

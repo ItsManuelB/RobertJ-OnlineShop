@@ -7,6 +7,12 @@ All notable changes to RoberJ Online Shop are documented here, newest first. For
 
 ## [Unreleased]
 
+### Added (Order emails)
+
+- **Buyers:** a receipt right after checkout (worded for cash on delivery, paid, or still awaiting online payment), and a notice when the order is shipped and when it is delivered.
+- **Sellers:** an email for each new order in their shop. For online payment it waits until the payment is confirmed.
+- The receipt and seller notice are sent right after checkout, after the response, so they never slow or fail an order; the 15-minute sweep catches a failed send. Only recent events are eligible, so switching this on does not mail history. Respects buyers' "email" and "order updates" settings and sellers' "order alerts" setting. Needs migration `20261102140000` applied before deploy. Design in ADR-029.
+
 ### Added (Email Reply-To)
 
 - Optional `EMAIL_REPLY_TO`: when set, every email carries a Reply-To so a buyer or seller who replies reaches a monitored address instead of `no-reply@`. Unset, nothing changes.

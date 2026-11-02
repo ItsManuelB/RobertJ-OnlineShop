@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 
 import { ROUTES } from "@/constants/routes";
 import { USER_ROLES } from "@/constants/roles";
@@ -11,6 +12,7 @@ import type {
   PlaceOrderResult,
   PlacedOrder,
 } from "@/features/checkout/types/checkout.types";
+import { sendOrderEmailsFor } from "@/features/notifications/server";
 import type { LifecycleTab } from "@/features/orders";
 import { fail, fromZodError, ok } from "@/lib/utils/result";
 import * as queries from "@/lib/supabase/queries";
@@ -168,6 +170,8 @@ export async function placeOrderAction(
 
       revalidatePath(ROUTES.orders, "layout");
       revalidatePath(ROUTES.account, "layout");
+      // Receipt right away, after the response is sent; the sweep is the backstop.
+      after(() => sendOrderEmailsFor(created.map((order) => order.orderId)));
 
       const redirectTab = await resolveRedirectTab(created.map((order) => order.orderId), user.id);
       return ok({ created, failed: [], checkoutGroupId: group.checkoutGroupId, redirectTab });
@@ -231,6 +235,8 @@ export async function placeOrderAction(
       // Re-render the buyer's order history and overview so the new orders appear.
       revalidatePath(ROUTES.orders, "layout");
       revalidatePath(ROUTES.account, "layout");
+      // Receipt right away, after the response is sent; the sweep is the backstop.
+      after(() => sendOrderEmailsFor(created.map((order) => order.orderId)));
     }
 
     const redirectTab = await resolveRedirectTab(created.map((order) => order.orderId), user.id);
