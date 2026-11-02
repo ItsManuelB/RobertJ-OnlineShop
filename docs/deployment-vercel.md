@@ -20,6 +20,7 @@ Set these under Project Settings -> Environment Variables for **Production and P
 | `XENDIT_SECRET_KEY`, `XENDIT_WEBHOOK_TOKEN` | Server only. |
 | `CRON_SECRET` | Vercel sends it as `Authorization: Bearer <value>` on cron calls. |
 | `RESEND_API_KEY`, `EMAIL_FROM` | Optional. Turn on return/refund emails (ADR-028). Leave both empty and the emails stay off. `EMAIL_FROM` is a full From header on a domain verified in Resend, e.g. `RobertJ Shop <no-reply@robertjshop.store>`. Server only. |
+| `EMAIL_REPLY_TO` | Optional. A monitored address (e.g. `support@robertjshop.store`) added as Reply-To on every email, so replies do not go to the no-reply sender. Unset, no Reply-To is sent. |
 
 ## 3. External settings
 

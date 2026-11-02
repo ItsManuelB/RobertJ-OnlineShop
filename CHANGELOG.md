@@ -7,6 +7,10 @@ All notable changes to RoberJ Online Shop are documented here, newest first. For
 
 ## [Unreleased]
 
+### Added (Email Reply-To)
+
+- Optional `EMAIL_REPLY_TO`: when set, every email carries a Reply-To so a buyer or seller who replies reaches a monitored address instead of `no-reply@`. Unset, nothing changes.
+
 ### Added (Return outcome emails)
 
 - **Buyers are told how a return ended:** an email when the refund is issued, when the admin rejects the request, and when the ship-back deadline passes and the return is closed. Refund wording promises no number of days, because that depends on the buyer's bank or e-wallet.

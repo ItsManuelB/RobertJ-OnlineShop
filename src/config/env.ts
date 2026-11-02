@@ -27,6 +27,8 @@ const serverEnvSchema = publicEnvSchema.extend({
   RESEND_API_KEY: z.string().min(1).optional(),
   /** The From header, e.g. `RobertJ Shop <no-reply@your-verified-domain>`. The domain must be verified in Resend. */
   EMAIL_FROM: z.string().min(1).optional(),
+  /** Where buyer/seller replies go, e.g. `support@your-verified-domain`. Optional: unset, emails carry no Reply-To. */
+  EMAIL_REPLY_TO: z.string().email().optional(),
 });
 
 /**
@@ -83,6 +85,7 @@ export function getServerEnv() {
     CRON_SECRET: process.env.CRON_SECRET,
     RESEND_API_KEY: process.env.RESEND_API_KEY,
     EMAIL_FROM: process.env.EMAIL_FROM,
+    EMAIL_REPLY_TO: process.env.EMAIL_REPLY_TO || undefined,
   });
 
   if (!result.success) formatEnvError(result.error);
