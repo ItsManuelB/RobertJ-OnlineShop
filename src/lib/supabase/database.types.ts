@@ -2661,7 +2661,7 @@ export type Database = {
         }
       }
       get_buyer_activity_feed: {
-        Args: { p_limit?: number }
+        Args: { p_limit?: number; p_before?: string | null }
         Returns: {
           event_type: string
           occurred_at: string
