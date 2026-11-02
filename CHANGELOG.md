@@ -7,6 +7,13 @@ All notable changes to RoberJ Online Shop are documented here, newest first. For
 
 ## [Unreleased]
 
+### Added (Stalled return and refund signals)
+
+- **Who is waiting, and for how long:** the Returns queues for the seller and the admin now show "Waiting on admin · 3 days" on each open request, in red with "· late" once the person is past their target (admin 2 days, seller 3 days for confirming a returned parcel, shipping a replacement or recording the item's condition). The admin banner counts the late ones, and the admin bell has a "Returns waiting too long" item.
+- **Display only:** nothing is decided, escalated or emailed when a target passes. The targets live in `return.constants.ts` and have no database counterpart.
+- **Fix:** the admin bell's "Returns awaiting decision" now includes requests the seller rejected, which also need the admin and were already in the queue's "Needs my decision" tab.
+- No migration. The clock uses timestamps a request already carries.
+
 ### Added (Buyer reviews and ratings)
 
 - **Ratings where buyers decide:** "★ 4.6 (23)" on product tiles across the homepage, catalog, Guided Selection results and wishlist (hidden when a product has no reviews), and a homepage section, "What buyers are saying", with three recent 4–5 star reviews linked to their products.

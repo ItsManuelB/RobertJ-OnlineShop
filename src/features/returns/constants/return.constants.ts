@@ -120,3 +120,16 @@ export const COD_REFUND_METHOD_LABELS = {
   bank_transfer: "Bank transfer",
   cash: "Cash",
 } as const;
+
+/**
+ * Refund audit gap 2: how long a case may wait on the admin before it is flagged
+ * as late. Display only: no SQL counterpart, nothing is decided or escalated
+ * when it passes. Change it here to move the flag.
+ */
+export const RETURN_ADMIN_DECISION_TARGET_DAYS = 2;
+
+/**
+ * Same idea for the seller's follow-up work after the admin has acted: confirm
+ * a returned parcel, ship a replacement, record the item's condition. Display only.
+ */
+export const RETURN_SELLER_FULFILMENT_TARGET_DAYS = 3;
