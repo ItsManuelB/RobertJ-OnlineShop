@@ -6,6 +6,7 @@ import { getServerEnv } from "@/config/env";
 import * as queries from "@/lib/supabase/queries";
 import { recoverCancellationRefunds } from "@/features/payments/lib/cancellation-refund";
 import { reconcileXenditRefund } from "@/features/payments/lib/xendit-refund-reconciliation";
+import { sendDueReturnEmails } from "@/features/notifications/lib/return-email-sweep";
 import {
   isStaleXenditAttempt,
   reconcileStaleXenditAttempt,
@@ -130,8 +131,24 @@ export async function GET(request: NextRequest) {
   const expiry = await runExpirySweep();
   const refunds = await runRefundSweep();
   const returns = await runReturnExpirySweep();
+  const returnEmails = await runReturnEmailSweep();
 
-  return NextResponse.json({ received: true, ...summary, expiry, refunds, returns });
+  return NextResponse.json({ received: true, ...summary, expiry, refunds, returns, returnEmails });
+}
+
+/**
+ * Return/refund emails that are due (new request and reminders for the seller,
+ * approval and ship-back reminder for the buyer). Does nothing until
+ * RESEND_API_KEY and EMAIL_FROM are set. A failure here is logged and never
+ * affects the sweeps above.
+ */
+async function runReturnEmailSweep() {
+  try {
+    return await sendDueReturnEmails();
+  } catch (error) {
+    console.error("[return email sweep] failed", error);
+    return { configured: true, due: 0, sent: 0, skipped: 0, failed: 0, error: true };
+  }
 }
 
 /**

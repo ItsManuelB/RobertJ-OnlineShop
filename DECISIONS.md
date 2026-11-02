@@ -44,6 +44,7 @@ Every decision is a numbered ADR with a fixed shape: **Context → Problem → O
 | [ADR-020](#adr-020-authenticated-cart-becomes-database-backed-with-guest-cart-merge-on-sign-in) | Authenticated cart becomes database-backed, with guest-cart merge on sign-in | ✅ Accepted |
 | [ADR-026](#adr-026-order-scoped-buyerseller-messaging-contact-seller) | Order-scoped buyer↔seller messaging (Contact Seller) | ✅ Accepted |
 | [ADR-027](#adr-027-shop-name-moves-from-admin-only-to-seller-editable) | Shop name moves from admin-only to seller-editable | ✅ Accepted |
+| [ADR-028](#adr-028-return-and-refund-emails-through-an-outbox-the-existing-sweep-sends) | Return and refund emails through an outbox the existing sweep sends | ✅ Accepted |
 
 ---
 
@@ -705,3 +706,27 @@ Original decision: Option 2. The Stripe code stayed in the repo (real, working c
 **Consequences:** No existing RLS/grant/table changes beyond the one new function; `orders`, `products`, and every other table are untouched. Verified on the hosted project via rolled-back transactions: a shop member can rename their own shop; a non-member is rejected (`42501`); empty and 81+ character names are rejected (`22023`) before ever reaching the table's own `shops_name_length` CHECK.
 
 **Future Revisit:** if a genuine "shop owner vs. member" distinction becomes needed elsewhere (e.g. to gate who can remove a member), add it as its own schema change rather than retrofitting it onto this RPC.
+
+---
+
+## ADR-028: Return and refund emails through an outbox the existing sweep sends
+
+**Status:** ✅ Accepted
+
+**Context:** The refund process audit (2026-11-02) found that a buyer approved for Return and Refund has 5 days to ship the item back and is told nothing: the derived activity feed (ADR-018) only shows what the buyer opens, and the app sent no application email at all (Resend only carried Supabase Auth email). A seller was likewise never told a request arrived, and had a 3-day reply window with no reminder.
+
+**Problem:** Send a small set of return/refund emails without coupling the return actions to an email provider, without a notification service, and without mailing the whole history when switched on.
+
+**Options Considered:**
+1. Send from the server actions right after a request is filed or approved — rejected: couples `requestReturnAction`/`decideReturnAction` to a network call, needs the new request id threaded back from `request_return`, and still needs a separate job for the reminders.
+2. A queue service or database triggers/webhooks — rejected: new infrastructure for four messages.
+3. An outbox read by the existing 15-minute reconciliation sweep (`/api/cron/xendit-reconciliation`, already authenticated with `CRON_SECRET`) — chosen.
+
+**Decision:** Option 3. `list_due_return_notifications` derives what is due from columns a return already carries; `claim_return_notification` inserts into `return_notification_log` (primary key return + kind) **before** the send, so overlapping runs cannot double-send; a failed send releases the claim so the next run retries; a recipient who opted out keeps the claim so they are not re-listed. All three functions are `service_role`-only and the table has RLS on with no policies. Delivery is plain `fetch` to Resend's REST API (no SDK, no new dependency) with an `Idempotency-Key`, gated by optional `RESEND_API_KEY` and `EMAIL_FROM`: with either unset the sweep does nothing. Addresses come from the auth system with the service-role client and are never returned to a client. Opt-outs reuse existing switches: buyers' `email_enabled` and `order_updates`, sellers' `alert_returns`; a missing row counts as on.
+
+**Messages:** `seller_new_request`, `seller_response_reminder` (after 2 of the 3 reply days), `buyer_return_approved` (with the deadline), `buyer_ship_back_reminder` (under 48 hours left). Only recent items are eligible, so switching it on does not mail old requests.
+
+**Consequences:**
+- A message can be up to ~15 minutes late when the GitHub Actions caller runs, or up to a day when only the daily Vercel cron does. Acceptable for 2-day and 48-hour reminders.
+- At-most-once: a crash between the claim and the send loses that email. Chosen over at-least-once because a duplicate "ship back by" email to a buyer is worse than a missed reminder the order page still shows.
+- Not covered yet: emails for the other buyer events (received, expired, payout pending, replacement), and an Admin digest of late cases.
