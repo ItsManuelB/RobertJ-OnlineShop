@@ -58,14 +58,14 @@ export async function sendDueReturnEmails(limit = 25): Promise<ReturnEmailSweepS
     if (!claimed) continue;
 
     try {
-      const recipient = await queries.getReturnEmailRecipient(item.recipientId);
+      const recipient = await queries.getEmailRecipient(item.recipientId);
       const audience = getReturnEmailAudience(kind);
       const allowed =
         recipient.isActive &&
         (audience === "buyer"
           ? isBuyerReturnEmailAllowed(recipient.buyerPrefs)
           : isSellerReturnEmailAllowed(recipient.sellerPrefs));
-      if (!allowed || !recipient.email) {
+      if (!allowed || !recipient.email || recipient.isSuppressed) {
         summary.skipped++;
         continue;
       }

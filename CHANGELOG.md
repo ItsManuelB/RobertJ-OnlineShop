@@ -7,6 +7,26 @@ All notable changes to RoberJ Online Shop are documented here, newest first. For
 
 ## [Unreleased]
 
+### Added (Admin returns digest)
+
+- Each active admin gets one email a day, from 9:00 Philippine time, listing returns running late: those waiting on the admin and those waiting on sellers, longest first. Nothing is sent on a day with nothing late.
+- Uses the same definition of "late" as the admin bell (`getWaitingStatus` and the two target constants), so they cannot disagree. A signal only: nothing is escalated or decided. Needs migration `20261102160000`. Design in ADR-031.
+
+### Added (Email bounce and complaint handling)
+
+- A Resend webhook (`/api/webhooks/resend`, signature-verified) records addresses that bounce permanently or report spam, and the return and order emails now skip them instead of retrying forever. A temporary bounce does not suppress.
+- Needs `RESEND_WEBHOOK_SECRET` and a webhook created in Resend (see `docs/deployment-vercel.md`); until then the endpoint answers 503 and nothing changes. Needs migration `20261102150000`. Design in ADR-030.
+
+### Added (Order emails)
+
+- **Buyers:** a receipt right after checkout (worded for cash on delivery, paid, or still awaiting online payment), and a notice when the order is shipped and when it is delivered.
+- **Sellers:** an email for each new order in their shop. For online payment it waits until the payment is confirmed.
+- The receipt and seller notice are sent right after checkout, after the response, so they never slow or fail an order; the 15-minute sweep catches a failed send. Only recent events are eligible, so switching this on does not mail history. Respects buyers' "email" and "order updates" settings and sellers' "order alerts" setting. Needs migration `20261102140000` applied before deploy. Design in ADR-029.
+
+### Added (Email Reply-To)
+
+- Optional `EMAIL_REPLY_TO`: when set, every email carries a Reply-To so a buyer or seller who replies reaches a monitored address instead of `no-reply@`. Unset, nothing changes.
+
 ### Added (Return outcome emails)
 
 - **Buyers are told how a return ended:** an email when the refund is issued, when the admin rejects the request, and when the ship-back deadline passes and the return is closed. Refund wording promises no number of days, because that depends on the buyer's bank or e-wallet.

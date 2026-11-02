@@ -41,6 +41,7 @@ export async function sendEmail(input: SendEmailInput): Promise<void> {
     body: JSON.stringify({
       from: env.EMAIL_FROM,
       to: [input.to],
+      ...(env.EMAIL_REPLY_TO ? { reply_to: env.EMAIL_REPLY_TO } : {}),
       subject: input.subject,
       text: input.text,
       html: input.html,
