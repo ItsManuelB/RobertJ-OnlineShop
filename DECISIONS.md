@@ -729,4 +729,5 @@ Original decision: Option 2. The Stripe code stayed in the repo (real, working c
 **Consequences:**
 - A message can be up to ~15 minutes late when the GitHub Actions caller runs, or up to a day when only the daily Vercel cron does. Acceptable for 2-day and 48-hour reminders.
 - At-most-once: a crash between the claim and the send loses that email. Chosen over at-least-once because a duplicate "ship back by" email to a buyer is worse than a missed reminder the order page still shows.
-- Not covered yet: emails for the other buyer events (received, expired, payout pending, replacement), and an Admin digest of late cases.
+- Outcome emails (added after, migration `20261102130000`): `buyer_return_refunded` (Xendit refund confirmed, or the COD payout recorded), `buyer_return_rejected` (the **admin's** rejection only: a seller rejection is not final because the admin can still decide, so it is not emailed) and `buyer_return_expired`. Same 2-day recency window and claim-before-send rules.
+- Not covered yet: emails for return received, COD payout pending and replacement shipped/completed, and an Admin digest of late cases.

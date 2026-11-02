@@ -7,6 +7,12 @@ All notable changes to RoberJ Online Shop are documented here, newest first. For
 
 ## [Unreleased]
 
+### Added (Return outcome emails)
+
+- **Buyers are told how a return ended:** an email when the refund is issued, when the admin rejects the request, and when the ship-back deadline passes and the return is closed. Refund wording promises no number of days, because that depends on the buyer's bank or e-wallet.
+- A **seller's** rejection is deliberately not emailed: the admin can still decide after it, so the buyer would be told "rejected" and possibly overruled.
+- Same switches and limits as the first return emails (buyer "email" and "order updates" settings; only outcomes from the last 2 days). Needs migration `20261102130000` applied first; code that predates it ignores the new kinds.
+
 ### Changed (Database types)
 
 - `database.types.ts` regenerated from the live database. It now includes `return_notification_log` and seven internal functions it was missing. The four argument types the generator cannot know are nullable were re-applied by hand, and CONTRIBUTING lists them so the next regeneration is quick. No behaviour change.
