@@ -2194,14 +2194,20 @@ export async function deleteDemoReviews(): Promise<number> {
  * `notifications` table, no triggers, no realtime (see DECISIONS.md
  * ADR-018). "Confirmed"/"processing" are not represented: `orders` has no
  * timestamp column for those transitions, and this deliberately doesn't
- * guess one.
+ * guess one. `before` is a keyset cursor (an `occurred_at` ISO string) for
+ * paging past the first page — pass the oldest row's `occurredAt` from the
+ * previous call to get the next older page. `cache()`-wrapped so the header
+ * bell and the `/notifications` page don't duplicate identical calls within
+ * one request.
  */
-export async function getBuyerActivityFeed(
+export const getBuyerActivityFeed = cache(async function getBuyerActivityFeed(
   limit = 20,
+  before?: string,
 ): Promise<BuyerActivityEvent[]> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc("get_buyer_activity_feed", {
     p_limit: limit,
+    p_before: before ?? null,
   });
 
   if (error) {
@@ -2214,7 +2220,7 @@ export async function getBuyerActivityFeed(
     orderNumber: row.order_number,
     occurredAt: row.occurred_at,
   }));
-}
+});
 
 // ============================================================================
 // Categories
