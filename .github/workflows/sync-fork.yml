@@ -1,0 +1,143 @@
+name: Sync fork (Manuel00216 -> ItsManuelB)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run only - report status, make no changes, no deploy"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-fork
+  cancel-in-progress: false
+
+env:
+  ORIGIN_REPO: Manuel00216/RobertJ-OnlineShop
+  ORIGIN_OWNER: Manuel00216
+  FORK_REPO: ItsManuelB/RobertJ-OnlineShop
+  BRANCH: main
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Determine mode
+        id: mode
+        run: |
+          event="${{ github.event_name }}"
+          requested_dry_run="${{ github.event.inputs.dry_run }}"
+          sync_enabled="${{ vars.SYNC_ENABLED }}"
+
+          if [ "$event" = "workflow_dispatch" ] && [ "$requested_dry_run" = "false" ] && [ "$sync_enabled" = "true" ]; then
+            echo "mode=live" >> "$GITHUB_OUTPUT"
+          elif [ "$event" = "push" ] && [ "$sync_enabled" = "true" ]; then
+            echo "mode=live" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=dry" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Read origin main SHA
+        id: origin_sha
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          sha="$(gh api "repos/${ORIGIN_REPO}/commits/${BRANCH}" --jq '.sha')"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Read fork main SHA (before)
+        id: fork_before
+        env:
+          GH_TOKEN: ${{ secrets.FORK_SYNC_TOKEN }}
+        run: |
+          set -euo pipefail
+          sha="$(gh api "repos/${FORK_REPO}/commits/${BRANCH}" --jq '.sha')"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Check how far the fork is behind
+        id: before
+        env:
+          GH_TOKEN: ${{ secrets.FORK_SYNC_TOKEN }}
+        run: |
+          set -euo pipefail
+          missing="$(gh api "repos/${FORK_REPO}/compare/${BRANCH}...${ORIGIN_OWNER}:${BRANCH}" --jq '.ahead_by')"
+          echo "missing=$missing" >> "$GITHUB_OUTPUT"
+
+      - name: Sync fork main
+        id: sync
+        if: steps.mode.outputs.mode == 'live' && steps.before.outputs.missing != '0'
+        env:
+          GH_TOKEN: ${{ secrets.FORK_SYNC_TOKEN }}
+        run: |
+          set -euo pipefail
+          resp="$(gh api --method POST "repos/${FORK_REPO}/merge-upstream" -f "branch=${BRANCH}")" || {
+            echo "::error::Fork sync failed. The fork was NOT modified - production keeps serving the last good deploy."
+            exit 1
+          }
+          merge_type="$(echo "$resp" | jq -r '.merge_type // "unknown"')"
+          echo "merge_type=$merge_type" >> "$GITHUB_OUTPUT"
+
+      - name: Read fork main SHA (after)
+        id: fork_after
+        if: steps.sync.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.FORK_SYNC_TOKEN }}
+        run: |
+          set -euo pipefail
+          sha="$(gh api "repos/${FORK_REPO}/commits/${BRANCH}" --jq '.sha')"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Verify fork now matches origin
+        id: verify
+        if: steps.sync.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.FORK_SYNC_TOKEN }}
+        run: |
+          set -euo pipefail
+          missing="$(gh api "repos/${FORK_REPO}/compare/${BRANCH}...${ORIGIN_OWNER}:${BRANCH}" --jq '.ahead_by')"
+          echo "missing=$missing" >> "$GITHUB_OUTPUT"
+          if [ "$missing" != "0" ]; then
+            echo "::error::Sync ran but the fork is still $missing commit(s) behind origin."
+            exit 1
+          fi
+
+      - name: Summary
+        if: always()
+        env:
+          MODE: ${{ steps.mode.outputs.mode }}
+          SYNC_ENABLED: ${{ vars.SYNC_ENABLED }}
+          ORIGIN_SHA: ${{ steps.origin_sha.outputs.sha }}
+          FORK_BEFORE_SHA: ${{ steps.fork_before.outputs.sha }}
+          MISSING_BEFORE: ${{ steps.before.outputs.missing }}
+          SYNC_OUTCOME: ${{ steps.sync.outcome }}
+          MERGE_TYPE: ${{ steps.sync.outputs.merge_type }}
+          FORK_AFTER_SHA: ${{ steps.fork_after.outputs.sha }}
+          MISSING_AFTER: ${{ steps.verify.outputs.missing }}
+        run: |
+          {
+            echo "### Fork sync summary"
+            echo ""
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Mode | $MODE |"
+            echo "| SYNC_ENABLED variable | ${SYNC_ENABLED:-<not set>} |"
+            echo "| Origin main SHA | \`$ORIGIN_SHA\` |"
+            echo "| Fork main SHA (before) | \`$FORK_BEFORE_SHA\` |"
+            echo "| Commits fork was missing | $MISSING_BEFORE |"
+            if [ "$SYNC_OUTCOME" = "success" ]; then
+              echo "| Merge type | $MERGE_TYPE |"
+              echo "| Fork main SHA (after) | \`$FORK_AFTER_SHA\` |"
+              echo "| Commits fork is missing now | $MISSING_AFTER |"
+            elif [ "$MODE" = "dry" ]; then
+              echo "| Result | DRY RUN - no write performed, no deploy triggered |"
+            elif [ "$MISSING_BEFORE" = "0" ]; then
+              echo "| Result | Already up to date - nothing to sync |"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
