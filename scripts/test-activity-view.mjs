@@ -32,6 +32,22 @@ test("days follow Manila time, not UTC", () => {
   assert.equal(group.key, "today");
 });
 
+test("the return events a buyer must act on or be told about are returns-category", () => {
+  for (const type of [
+    "return_approved_ship_back",
+    "return_received",
+    "return_expired",
+    "return_payout_pending",
+    "return_replacement_shipped",
+    "return_replacement_completed",
+  ]) {
+    assert.equal(getActivityCategory(type), "returns", type);
+  }
+  assert.equal(isAttentionEvent("return_approved_ship_back"), true);
+  assert.equal(isAttentionEvent("return_expired"), true);
+  assert.equal(isAttentionEvent("return_received"), false);
+});
+
 test("categories and filtering", () => {
   assert.equal(getActivityCategory("payment_failed"), "payments");
   assert.equal(getActivityCategory("return_filed"), "returns");
