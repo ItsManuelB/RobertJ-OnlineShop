@@ -7,6 +7,11 @@ All notable changes to RoberJ Online Shop are documented here, newest first. For
 
 ## [Unreleased]
 
+### Added (Admin returns digest)
+
+- Each active admin gets one email a day, from 9:00 Philippine time, listing returns running late: those waiting on the admin and those waiting on sellers, longest first. Nothing is sent on a day with nothing late.
+- Uses the same definition of "late" as the admin bell (`getWaitingStatus` and the two target constants), so they cannot disagree. A signal only: nothing is escalated or decided. Needs migration `20261102160000`. Design in ADR-031.
+
 ### Added (Email bounce and complaint handling)
 
 - A Resend webhook (`/api/webhooks/resend`, signature-verified) records addresses that bounce permanently or report spam, and the return and order emails now skip them instead of retrying forever. A temporary bounce does not suppress.

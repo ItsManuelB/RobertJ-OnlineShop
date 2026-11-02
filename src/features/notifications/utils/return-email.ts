@@ -84,6 +84,8 @@ export interface EmailParts {
   subject: string;
   intro: string;
   detail: string;
+  /** Optional headed lists between the detail and the button (the admin digest). */
+  sections?: { heading: string; items: string[] }[];
   cta: string;
 }
 
@@ -163,11 +165,21 @@ const FOOTER: Record<ReturnEmailAudience, string> = {
 
 /** Subject, plain text and HTML for one email from its words. Pure: the caller supplies the link and the footer. */
 export function renderEmail(parts: EmailParts, url: string, footer: string): ReturnEmailContent {
-  const text = `${parts.intro}\n\n${parts.detail}\n\n${parts.cta}: ${url}\n\n${footer}\n`;
+  const sections = parts.sections ?? [];
+  const sectionsText = sections.map((section) => `${section.heading}\n${section.items.map((item) => `- ${item}`).join("\n")}\n\n`).join("");
+  const text = `${parts.intro}\n\n${parts.detail}\n\n${sectionsText}${parts.cta}: ${url}\n\n${footer}\n`;
+  const sectionsHtml = sections
+    .map(
+      (section) =>
+        `<p style="margin-bottom:4px"><strong>${escapeHtml(section.heading)}</strong></p>` +
+        `<ul style="margin-top:0">${section.items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`,
+    )
+    .join("");
   const html =
     `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#1d2327;max-width:560px">` +
     `<p>${escapeHtml(parts.intro)}</p>` +
     `<p>${escapeHtml(parts.detail)}</p>` +
+    sectionsHtml +
     `<p><a href="${escapeHtml(url)}" style="display:inline-block;padding:10px 16px;background:#d62828;color:#ffffff;text-decoration:none;border-radius:6px">${escapeHtml(parts.cta)}</a></p>` +
     `<p style="font-size:12px;color:#5d676d">${escapeHtml(footer)}</p>` +
     `</div>`;
