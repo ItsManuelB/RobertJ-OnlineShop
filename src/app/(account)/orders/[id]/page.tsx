@@ -124,6 +124,16 @@ export default async function OrderDetailPage({
     order.paymentMethod === "xendit" &&
     (order.paymentStatus === "pending" || order.paymentStatus === "failed");
 
+  // E-invoice availability is payment-aware, not tied to a single fixed
+  // status: an online (Xendit) order is financially final the moment
+  // payment succeeds — holding the invoice back until delivery would be
+  // more conservative than the sale itself warrants. COD only becomes
+  // final at delivery, since that's when the cash is actually collected.
+  const canRequestInvoice =
+    order.paymentMethod === "xendit"
+      ? order.paymentStatus === "paid"
+      : order.status === ORDER_STATUS.delivered;
+
   // Reuses the existing checkout-group-membership lookup (already used to
   // build the post-payment redirect) purely to size the grouping indicator
   // below — informational only, no behavior change for any channel.
@@ -247,10 +257,12 @@ export default async function OrderDetailPage({
         ) : null}
       </div>
 
-      {/* E-invoice is offered once the order is Delivered — the only
-          terminal "completed" order status — the point at which the sale is
-          complete for both COD and online orders. */}
-      {order.status === ORDER_STATUS.delivered ? (
+      {/* E-invoice availability follows when the sale is actually final, not
+          a single fixed status — for an online (Xendit) order that's the
+          moment payment succeeds (COD isn't: the amount isn't collected
+          until delivery, so the sale could still fall through before then);
+          for COD it's Delivered, the point the cash is actually collected. */}
+      {canRequestInvoice ? (
         <section
           aria-label="E-invoice"
           className={cn(RJ_CARD, "flex flex-wrap items-center justify-between gap-3 p-4")}
@@ -258,7 +270,7 @@ export default async function OrderDetailPage({
           <div>
             <p className="text-sm font-bold text-rj-black">E-invoice</p>
             <p className="mt-0.5 text-xs text-rj-gray-600">
-              A printable invoice for this delivered order ({`INV-${order.orderNumber}`}).
+              A printable invoice for this order ({`INV-${order.orderNumber}`}).
             </p>
           </div>
           <Link
