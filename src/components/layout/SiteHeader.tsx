@@ -1,5 +1,6 @@
 import { USER_ROLES } from "@/constants/roles";
 import { SiteHeaderClient } from "@/components/layout/SiteHeaderClient";
+import { GlobalInbox } from "@/features/messages";
 import {
   getBuyerActivityFeed,
   getMyBuyerPreferences,
@@ -35,5 +36,12 @@ export async function SiteHeader() {
   ]);
   const notifications = await loadNotifications(user);
 
-  return <SiteHeaderClient user={user} categories={categories} notifications={notifications} />;
+  return (
+    <>
+      <SiteHeaderClient user={user} categories={categories} notifications={notifications} />
+      {/* Global messages inbox — one mount for every buyer surface (marketing,
+          shop, account) that renders this header. Renders nothing for guests. */}
+      <GlobalInbox />
+    </>
+  );
 }

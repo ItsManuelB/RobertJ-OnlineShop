@@ -21,6 +21,7 @@ export const DATABASE_TABLES = {
   PRODUCT_IMAGES: "product_images",
   ORDERS: "orders",
   ORDER_ITEMS: "order_items",
+  ORDER_MESSAGES: "order_messages",
   ORDER_SHIPMENTS: "order_shipments",
   PAYMENTS: "payments",
   SHOPS: "shops",

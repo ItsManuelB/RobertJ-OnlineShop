@@ -282,6 +282,23 @@ flowchart LR
     Admin --> Reports
 ```
 
+## 14. Messages (Contact Seller)
+
+| Field | Detail |
+|---|---|
+| **Purpose** | An order-scoped buyer↔shop conversation ("Contact Seller"). One shared thread per order; every member of the order's shop can read and reply, while the buyer sees one continuous conversation. See [ADR-026](./DECISIONS.md#adr-026-order-scoped-buyerseller-messaging-contact-seller). |
+| **Responsibilities** | Persisting/listing an order's messages; authorizing participants; deriving sender identity server-side; presenting a **global messages inbox** (all of a user's order conversations) on every authenticated surface, plus unread tracking and pinning. |
+| **Features** | Refresh-based only — **no** realtime, push, email, SMS, attachments, or typing indicators. **Global inbox** (Shopee-style): a bottom-right launcher pill (total-unread badge) → two-pane panel (conversation list with search + All/Unread/Pinned + per-row unread badges + pin; conversation view). A conversation is still **one order** (ADR-026). The buyer sees seller/admin messages attributed to the **shop name** (never individual staff); shop-mates see each other's individual names. Unread = messages after the viewer's `last_read_at` not authored by them (opening marks read). 2,000-char limit; double-submit dedup. |
+| **Pages** | None of its own — `GlobalInbox` is mounted once per surface in `SiteHeader` (buyer: marketing/shop/account) and the `seller`/`admin` layouts. The order-detail pages render an `OrderMessageButton` ("Contact Seller" / "Message buyer") that deep-links the inbox to that order via `?chat=<orderId>`. |
+| **Components** | `features/messages/components/{GlobalInbox (server), GlobalInboxDock (client two-pane), OrderMessageButton, MessageThreadBody}` — `MessageThreadBody` is the shared bubbles + composer reused by the inbox detail pane (with an `onSent` refresh hook). |
+| **Server Actions** | `features/messages/actions/message.actions.ts` — `sendOrderMessageAction`, `listConversationsAction`, `loadConversationAction` (context + per-viewer messages, marks read), `toggleConversationPinAction`. All `requireSessionUser` defense-in-depth; authorization lives in the RPCs. |
+| **Services** | `lib/supabase/queries.ts` — `listOrderMessages`, `sendOrderMessage`, `listMyConversations`, `getConversationContext`, `markConversationRead`, `setConversationPinned`. Per-viewer author labelling via `features/messages/utils/message-view.ts`. |
+| **Database Tables** | `order_messages` (one shared conversation per order; append-only; writes only via `send_order_message`). `order_conversation_state` (per-user `last_read_at` + `pinned_at`; RLS own-row + no direct grants — all access via the `SECURITY DEFINER` RPCs `list_my_conversations`, `get_conversation_context`, `mark_conversation_read`, `set_conversation_pinned`, `can_access_order_conversation`, whose visibility mirrors `order_messages`). See `20261031130000_order_messages.sql`, `20261101120000_global_inbox.sql`. |
+| **Dependencies** | Orders (every conversation is scoped to an order); Shops/`shop_users` (shared-inbox authorization via `is_shop_member`). |
+| **Current Status** | ✅ Implemented 2026-10-31; migration applied to the hosted project; verified via rolled-back RLS/RPC tests. |
+
+---
+
 > [!NOTE]
 > **Admin and Shop Owner do not own separate data models.** Both are role-scoped **views** over Products, Inventory, Orders, Payments, and Reports, differentiated entirely by RLS/role guards. Do not fork parallel components or services for these roles — extend the existing module and gate by role, per [CLAUDE.md → AI Non-Negotiable Rules](./CLAUDE.md#ai-non-negotiable-rules).
 

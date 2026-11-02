@@ -69,7 +69,7 @@ export default async function AssistantPage({ searchParams }: AssistantPageProps
         <CatalogHeader
           eyebrow="Guided Selection"
           title="Your matches"
-          description="Matched from what is in stock right now. Prices are live. Rule-based, not AI."
+          description="Matched from what is in stock right now. Prices are live."
         />
         <Suspense key={JSON.stringify(safeAnswers)} fallback={<GuidedResultsSkeleton />}>
           <GuidedResults answers={safeAnswers} category={category ? { name: category.name, slug: category.slug } : null} />

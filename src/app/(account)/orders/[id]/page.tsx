@@ -14,6 +14,7 @@ import { OrderHeader } from "@/features/orders/components/OrderHeader";
 import { OrderItemsList } from "@/features/orders/components/OrderItemsList";
 import { OrderSummary } from "@/features/orders/components/OrderSummary";
 import { OrderTimeline } from "@/features/orders/components/OrderTimeline";
+import { OrderMessageButton } from "@/features/messages";
 import { PaymentStatusBadge } from "@/features/orders/components/PaymentStatusBadge";
 import { ReceiptConfirmedNotice } from "@/features/orders/components/ReceiptConfirmedNotice";
 import { SellerShopRow } from "@/features/orders/components/SellerShopRow";
@@ -190,6 +191,12 @@ export default async function OrderDetailPage({
     ? await getOrderShipment(order.id).catch(() => null)
     : null;
 
+  // Contact Seller — opens the global messages inbox focused on this order's
+  // buyer<->shop conversation. Only when there is a seller to reach. The
+  // conversation itself (and its per-viewer author attribution) is loaded by
+  // the inbox on demand.
+  const canContactSeller = Boolean(order.sellerId);
+
   return (
     <article className="flex flex-col gap-8">
       <OrderHeader order={order} />
@@ -234,6 +241,9 @@ export default async function OrderDetailPage({
           Print Receipt
         </Link>
         <BuyAgainButton order={order} sellerName={shopName} />
+        {canContactSeller ? (
+          <OrderMessageButton orderId={order.id} label="Contact Seller" />
+        ) : null}
       </div>
 
       {showTracking ? (

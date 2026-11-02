@@ -98,6 +98,11 @@ import type {
   ShippingAddress,
 } from "@/features/orders/types/order.types";
 import type { UpdateProfileInput } from "@/features/account/schemas/account.schema";
+import type {
+  ConversationContext,
+  ConversationSummary,
+  OrderMessage,
+} from "@/features/messages/types/message.types";
 import type { OAuthProvider } from "@/features/auth/schemas/auth.schema";
 import type { BuyerPreferences, Profile } from "@/features/account/types/account.types";
 import {
@@ -4288,6 +4293,203 @@ export async function getOrderShipment(
   return toOrderShipment(data);
 }
 
+// Contact Seller — one shared buyer<->shop conversation per order.
+const ORDER_MESSAGE_COLUMNS = `
+  id, order_id, sender_id, sender_role, body, created_at,
+  sender:profiles!order_messages_sender_id_fkey ( full_name, username )
+`;
+
+type OrderMessageRow = {
+  id: string;
+  order_id: string;
+  sender_id: string;
+  sender_role: Database["public"]["Enums"]["user_role"];
+  body: string;
+  created_at: string;
+  sender: { full_name: string | null; username: string | null } | null;
+};
+
+function toOrderMessage(row: OrderMessageRow): OrderMessage {
+  return {
+    id: row.id,
+    orderId: row.order_id,
+    senderId: row.sender_id,
+    senderRole: row.sender_role,
+    // Individual author name (for the seller-side view only — the buyer UI
+    // resolves seller/admin messages to the shop name, never this).
+    senderName: row.sender?.full_name ?? row.sender?.username ?? null,
+    body: row.body,
+    createdAt: row.created_at,
+  };
+}
+
+/**
+ * The full conversation for one order, oldest-first. RLS restricts visibility
+ * to the order's participants — its buyer, the order's seller, any member of
+ * the order's shop (`is_shop_member(shop_id)`), or an admin — see
+ * 20261031130000_order_messages.sql. Safe to call from the buyer and the
+ * seller/admin order-detail pages alike.
+ */
+export async function listOrderMessages(orderId: string): Promise<OrderMessage[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from(DATABASE_TABLES.ORDER_MESSAGES)
+    .select(ORDER_MESSAGE_COLUMNS)
+    .eq("order_id", orderId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw queryError("Failed to load messages", error);
+  }
+  return ((data ?? []) as OrderMessageRow[]).map(toOrderMessage);
+}
+
+/**
+ * Appends a message to an order's conversation via the `send_order_message`
+ * RPC (SECURITY DEFINER), which authorizes the caller as a participant and
+ * derives sender identity/role from the session — never the client. The
+ * action layer revalidates and re-reads the thread afterward.
+ */
+export async function sendOrderMessage(orderId: string, body: string): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc("send_order_message", {
+    p_order_id: orderId,
+    p_body: body,
+  });
+
+  if (error) {
+    throw rpcError("Could not send your message.", error);
+  }
+}
+
+type ConversationThumbnailRow = {
+  order_id: string;
+  created_at: string;
+  product: { product_images: { url: string; sort_order: number }[] } | null;
+};
+
+/**
+ * One cover-image URL per order id, for the global inbox's conversation list
+ * (every other order listing in the app shows a product thumbnail — the inbox
+ * previously didn't). Batched in one query (no N+1): fetches every order's
+ * items oldest-first and keeps the first item seen per order, then picks that
+ * item's product's lowest-`sort_order` image — the same "cover image"
+ * convention `toProduct`/`getCoverImage` use elsewhere. RLS on `order_items`
+ * mirrors `order_messages`' own participant check, so this never leaks an
+ * image for an order the caller can't already see; a product with no visible
+ * image (e.g. inactive, for a buyer viewer) just maps to null.
+ */
+async function listOrderThumbnails(orderIds: string[]): Promise<Map<string, string | null>> {
+  const thumbnails = new Map<string, string | null>(orderIds.map((id) => [id, null]));
+  if (orderIds.length === 0) return thumbnails;
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from(DATABASE_TABLES.ORDER_ITEMS)
+    .select(
+      `order_id, created_at, product:products!order_items_product_id_fkey ( product_images ( url, sort_order ) )`,
+    )
+    .in("order_id", orderIds)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw queryError("Failed to load conversation thumbnails", error);
+  }
+
+  const seen = new Set<string>();
+  for (const row of (data ?? []) as unknown as ConversationThumbnailRow[]) {
+    if (seen.has(row.order_id)) continue;
+    seen.add(row.order_id);
+    const cover = [...(row.product?.product_images ?? [])].sort(
+      (a, b) => a.sort_order - b.sort_order,
+    )[0];
+    thumbnails.set(row.order_id, cover?.url ?? null);
+  }
+  return thumbnails;
+}
+
+/**
+ * Global inbox: every order-scoped conversation the caller can see that already
+ * has a message, with the counterpart's name, last-message preview, unread
+ * count, pin flag and a product thumbnail. Visibility mirrors `order_messages`'
+ * own SELECT policy (participant, shop member, or admin) — enforced inside the
+ * `list_my_conversations` SECURITY DEFINER RPC. Pinned first, then most recent.
+ */
+export async function listMyConversations(): Promise<ConversationSummary[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("list_my_conversations");
+  if (error) {
+    throw rpcError("Failed to load your conversations", error);
+  }
+  const rows = data ?? [];
+  const thumbnails = await listOrderThumbnails(rows.map((row) => row.order_id));
+  return rows.map((row) => ({
+    orderId: row.order_id,
+    orderNumber: row.order_number,
+    title: row.title,
+    viewerIsBuyer: row.viewer_is_buyer,
+    lastBody: row.last_body ?? null,
+    lastCreatedAt: row.last_created_at ?? null,
+    lastSenderId: row.last_sender_id ?? null,
+    unreadCount: row.unread_count,
+    pinned: row.pinned,
+    thumbnailUrl: thumbnails.get(row.order_id) ?? null,
+  }));
+}
+
+/**
+ * Header/identity data for one order's conversation — resolves even when the
+ * order has no messages yet (a deep-linked "Message" from an order page).
+ * Returns null when the caller can't access it (the RPC's own participant
+ * check yields no row). Pairs with `listOrderMessages` to label authors.
+ */
+export async function getConversationContext(
+  orderId: string,
+): Promise<ConversationContext | null> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("get_conversation_context", {
+    p_order_id: orderId,
+  });
+  if (error) {
+    throw rpcError("Failed to load this conversation", error);
+  }
+  const row = (data ?? [])[0];
+  if (!row) return null;
+  return {
+    orderId: row.order_id,
+    orderNumber: row.order_number,
+    viewerIsBuyer: row.viewer_is_buyer,
+    shopName: row.shop_name,
+    buyerName: row.buyer_name,
+  };
+}
+
+/** Marks the caller's conversation for `orderId` read up to now (clears unread). */
+export async function markConversationRead(orderId: string): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc("mark_conversation_read", {
+    p_order_id: orderId,
+  });
+  if (error) {
+    throw rpcError("Could not update the conversation.", error);
+  }
+}
+
+/** Pins/unpins the caller's conversation for `orderId` (per-user state). */
+export async function setConversationPinned(
+  orderId: string,
+  pinned: boolean,
+): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc("set_conversation_pinned", {
+    p_order_id: orderId,
+    p_pinned: pinned,
+  });
+  if (error) {
+    throw rpcError("Could not update the conversation.", error);
+  }
+}
+
 /**
  * Shipment records for a page of orders in one query (no N+1) — used by the
  * dashboard Shipped tab to show courier/tracking. RLS scopes visibility to
@@ -6958,6 +7160,29 @@ export async function updateOwnShopDescription(
 
   if (error) {
     throw queryError("Failed to update your shop", error);
+  }
+
+  return toShop(data as ShopRow);
+}
+
+/**
+ * Seller-scoped: renames the caller's own shop. Unlike `updateOwnShopDescription`
+ * (a plain `.update()` — RLS already permits it), this goes through the
+ * `update_own_shop_name` `SECURITY DEFINER` RPC: `shops.name` is deliberately
+ * excluded from the authenticated column grant (defense in depth, same
+ * reasoning as `send_order_message`), so every rename — regardless of which
+ * shop member makes it — passes through this one validated path. The RPC
+ * resolves the caller's shop itself via `shop_users`; no shop id is ever
+ * accepted from the client.
+ */
+export async function updateOwnShopName(name: string): Promise<Shop> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("update_own_shop_name", {
+    p_name: name,
+  });
+
+  if (error) {
+    throw rpcError("Could not rename your shop.", error);
   }
 
   return toShop(data as ShopRow);

@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { ShopBrandingForm } from "@/features/shops/components/ShopBrandingForm";
 import { ShopImageUploader } from "@/features/shops/components/ShopImageUploader";
+import { ShopNameForm } from "@/features/shops/components/ShopNameForm";
 import type { Shop } from "@/features/shops/types/shop.types";
 
 export interface MyShopWorkspaceProps {
@@ -23,6 +24,7 @@ export interface MyShopWorkspaceProps {
 export function MyShopWorkspace({ shop }: MyShopWorkspaceProps) {
   const [bannerUrl, setBannerUrl] = useState(shop.bannerUrl);
   const [logoUrl, setLogoUrl] = useState(shop.logoUrl);
+  const [name, setName] = useState(shop.name);
   const [description, setDescription] = useState(shop.description ?? "");
 
   const trimmed = description.trim();
@@ -57,13 +59,13 @@ export function MyShopWorkspace({ shop }: MyShopWorkspaceProps) {
                   }`}
                 >
                   {logoUrl ? (
-                    <Image src={logoUrl} alt={`${shop.name} logo`} fill className="object-cover" sizes="56px" />
+                    <Image src={logoUrl} alt={`${name} logo`} fill className="object-cover" sizes="56px" />
                   ) : (
                     <ImageIcon className="h-5 w-5" aria-hidden="true" />
                   )}
                 </div>
                 <div className="min-w-0">
-                  <p className="truncate text-base font-semibold text-foreground">{shop.name}</p>
+                  <p className="truncate text-base font-semibold text-foreground">{name}</p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     {trimmed || "No description yet. Buyers will see only your shop name."}
                   </p>
@@ -126,16 +128,26 @@ export function MyShopWorkspace({ shop }: MyShopWorkspaceProps) {
               kind="banner"
               label="Banner"
               currentUrl={shop.bannerUrl}
-              shopName={shop.name}
+              shopName={name}
               onUrlChange={setBannerUrl}
             />
             <ShopImageUploader
               kind="logo"
               label="Logo"
               currentUrl={shop.logoUrl}
-              shopName={shop.name}
+              shopName={name}
               onUrlChange={setLogoUrl}
             />
+          </CardContent>
+        </Card>
+
+        <Card className="border-border">
+          <CardContent className="flex flex-col gap-3 p-5">
+            <div>
+              <h2 className="text-base font-semibold text-foreground">Shop name</h2>
+              <p className="text-sm text-muted-foreground">Shown to buyers everywhere your shop appears.</p>
+            </div>
+            <ShopNameForm shop={shop} onNameChange={setName} />
           </CardContent>
         </Card>
 
@@ -157,10 +169,6 @@ export function MyShopWorkspace({ shop }: MyShopWorkspaceProps) {
             </div>
             <dl className="divide-y divide-border text-sm">
               <div className="flex items-center justify-between gap-4 py-2.5">
-                <dt className="text-muted-foreground">Shop name</dt>
-                <dd className="text-right font-medium text-foreground">{shop.name}</dd>
-              </div>
-              <div className="flex items-center justify-between gap-4 py-2.5">
                 <dt className="text-muted-foreground">Public link</dt>
                 <dd className="min-w-0 break-all text-right font-medium text-foreground">{shop.slug}</dd>
               </div>
@@ -173,7 +181,7 @@ export function MyShopWorkspace({ shop }: MyShopWorkspaceProps) {
             </dl>
             <p className="flex items-start gap-2 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
               <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-              To change the name, link or status, contact an administrator.
+              To change the link or status, contact an administrator.
             </p>
           </CardContent>
         </Card>

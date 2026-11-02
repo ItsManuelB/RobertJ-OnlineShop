@@ -559,6 +559,104 @@ export type Database = {
           },
         ]
       }
+      order_conversation_state: {
+        Row: {
+          last_read_at: string | null
+          order_id: string
+          pinned_at: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          last_read_at?: string | null
+          order_id: string
+          pinned_at?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          last_read_at?: string | null
+          order_id?: string
+          pinned_at?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_conversation_state_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_conversation_state_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_messages: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          order_id: string
+          sender_id: string
+          sender_role: Database["public"]["Enums"]["user_role"]
+          shop_id: string | null
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          id?: string
+          order_id: string
+          sender_id: string
+          sender_role: Database["public"]["Enums"]["user_role"]
+          shop_id?: string | null
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          order_id?: string
+          sender_id?: string
+          sender_role?: Database["public"]["Enums"]["user_role"]
+          shop_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_messages_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "buyer_order_lifecycle"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "order_messages_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_messages_sender_id_fkey"
+            columns: ["sender_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_messages_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       order_shipments: {
         Row: {
           courier: string | null
@@ -3172,6 +3270,60 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      can_access_order_conversation: {
+        Args: { p_order_id: string }
+        Returns: boolean
+      }
+      get_conversation_context: {
+        Args: { p_order_id: string }
+        Returns: {
+          buyer_name: string
+          order_id: string
+          order_number: string
+          shop_name: string
+          viewer_is_buyer: boolean
+        }[]
+      }
+      list_my_conversations: {
+        Args: never
+        Returns: {
+          last_body: string
+          last_created_at: string
+          last_sender_id: string
+          order_id: string
+          order_number: string
+          pinned: boolean
+          title: string
+          unread_count: number
+          viewer_is_buyer: boolean
+        }[]
+      }
+      mark_conversation_read: {
+        Args: { p_order_id: string }
+        Returns: undefined
+      }
+      set_conversation_pinned: {
+        Args: { p_order_id: string; p_pinned: boolean }
+        Returns: undefined
+      }
+      send_order_message: {
+        Args: { p_body: string; p_order_id: string }
+        Returns: {
+          body: string
+          created_at: string
+          id: string
+          order_id: string
+          sender_id: string
+          sender_role: Database["public"]["Enums"]["user_role"]
+          shop_id: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "order_messages"
+          isOneToOne: false
+          isSetofReturn: false
+        }
+      }
       submit_review: {
         Args: { p_comment: string; p_order_item_id: string; p_rating: number }
         Returns: {
@@ -3194,6 +3346,26 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "reviews"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      update_own_shop_name: {
+        Args: { p_name: string }
+        Returns: {
+          active: boolean
+          banner_url: string | null
+          created_at: string
+          description: string | null
+          id: string
+          logo_url: string | null
+          name: string
+          slug: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "shops"
           isOneToOne: true
           isSetofReturn: false
         }

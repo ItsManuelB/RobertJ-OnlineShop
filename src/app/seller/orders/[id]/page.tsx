@@ -21,6 +21,7 @@ import { RecordReturnConditionPanel } from "@/features/returns/components/Record
 import { ReturnRequestStatusCard } from "@/features/returns/components/ReturnRequestStatusCard";
 import { ReturnShippingActions } from "@/features/returns/components/ReturnShippingActions";
 import { RespondToReturnPanel } from "@/features/returns/components/RespondToReturnPanel";
+import { OrderMessageButton } from "@/features/messages";
 import {
   getDashboardOrder,
   getOwnShopId,
@@ -145,6 +146,9 @@ export default async function SellerOrderDetailPage({ params, searchParams }: Se
             <p className="mt-2 text-sm font-semibold text-foreground">
               {getBuyerDisplayName(order)}
             </p>
+            <div className="mt-3">
+              <OrderMessageButton orderId={order.id} label="Message buyer" themed />
+            </div>
             {order.buyerConfirmedReceivedAt ? (
               <div className="mt-3">
                 <BuyerReceiptConfirmation confirmedAt={order.buyerConfirmedReceivedAt} />

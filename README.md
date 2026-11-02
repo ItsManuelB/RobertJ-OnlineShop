@@ -488,7 +488,7 @@ Beyond the current capstone scope (kept clearly separate from committed scope):
 - Automated inventory syncing across shops.
 - Seller payouts, platform commission, and real-money settlement (Xendit Online Payment itself has shipped — see [ADR-019](./DECISIONS.md#adr-019-xendit-online-payment-gcash-maya-card-superseding-adr-008s-no-gateway-stance) — but payouts/commission remain explicitly out of scope for this sandbox implementation).
 - Courier / shipping API integration and live tracking.
-- Realtime notifications (Supabase Realtime) and push/email/SMS notification infrastructure. *(A lightweight, derived, read-only buyer activity feed — not realtime, no new infrastructure — was approved separately; see [ADR-018](./DECISIONS.md#adr-018-wishlist-reviews-and-a-derived-buyer-activity-feed).)*
+- Realtime notifications (Supabase Realtime) and push/email/SMS notification infrastructure. *(A lightweight, derived, read-only buyer activity feed — not realtime, no new infrastructure — was approved separately; see [ADR-018](./DECISIONS.md#adr-018-wishlist-reviews-and-a-derived-buyer-activity-feed). Order-scoped buyer↔seller messaging ("Contact Seller") was also approved and shipped, but is **refresh-based only** — not realtime, no push/email/SMS — see [ADR-026](./DECISIONS.md#adr-026-order-scoped-buyerseller-messaging-contact-seller).)*
 - Saved shipping addresses.
 - Richer analytics and exportable reports.
 
