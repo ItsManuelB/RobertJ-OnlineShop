@@ -26,7 +26,8 @@ export interface ReturnEmailSweepSummary {
 /**
  * Sends the return/refund emails that are due: a new request for the seller, a
  * reminder before the seller's reply time runs out, a Return and Refund
- * approval for the buyer, and a reminder before the buyer's ship-back deadline.
+ * approval for the buyer, a reminder before the buyer's ship-back deadline, and
+ * the buyer's outcome emails (refund issued, request rejected, return expired).
  *
  * Runs inside the existing reconciliation sweep (every ~15 minutes). Each
  * message is claimed in the database before it is sent, so overlapping runs
