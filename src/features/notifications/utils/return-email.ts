@@ -6,6 +6,9 @@ export const RETURN_EMAIL_KINDS = [
   "seller_response_reminder",
   "buyer_return_approved",
   "buyer_ship_back_reminder",
+  "buyer_return_refunded",
+  "buyer_return_rejected",
+  "buyer_return_expired",
 ] as const;
 export type ReturnEmailKind = (typeof RETURN_EMAIL_KINDS)[number];
 export type ReturnEmailAudience = "buyer" | "seller";
@@ -40,7 +43,7 @@ export interface ReturnEmailInput {
   orderNumber: string;
   /** Absolute link to the page where the recipient acts. */
   url: string;
-  /** The seller's reply-by time, or the buyer's ship-back deadline. */
+  /** The seller's reply-by time, or the buyer's ship-back deadline. Null for outcomes with no deadline. */
   deadlineAt: string | null;
 }
 
@@ -125,6 +128,28 @@ function partsFor(input: ReturnEmailInput): Parts {
         detail: by
           ? `The deadline is ${by}. Enter the courier and tracking number on your order page once you have shipped it. If it is not shipped in time, the request closes and nothing is refunded.`
           : "Enter the courier and tracking number on your order page once you have shipped it.",
+        cta: "Open my order",
+      };
+    case "buyer_return_refunded":
+      return {
+        subject: `Refund issued for order ${orderNumber}`,
+        intro: `Your refund for order ${orderNumber} has been issued.`,
+        detail:
+          "How soon it shows in your account depends on your bank or e-wallet. Open your order to see the details.",
+        cta: "Open my order",
+      };
+    case "buyer_return_rejected":
+      return {
+        subject: `Return request not approved for order ${orderNumber}`,
+        intro: `Your return request for order ${orderNumber} was not approved.`,
+        detail: "Open your order to see the decision and any note from the admin.",
+        cta: "Open my order",
+      };
+    case "buyer_return_expired":
+      return {
+        subject: `Return closed for order ${orderNumber}: not shipped back in time`,
+        intro: `Your return for order ${orderNumber} was closed because the item was not shipped back by the deadline.`,
+        detail: "Nothing is refunded for a closed return. Open your order for details.",
         cta: "Open my order",
       };
   }
