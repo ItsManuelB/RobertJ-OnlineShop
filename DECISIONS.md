@@ -47,6 +47,7 @@ Every decision is a numbered ADR with a fixed shape: **Context → Problem → O
 | [ADR-028](#adr-028-return-and-refund-emails-through-an-outbox-the-existing-sweep-sends) | Return and refund emails through an outbox the existing sweep sends | ✅ Accepted |
 | [ADR-029](#adr-029-order-emails-send-at-once-after-checkout-with-the-sweep-as-backstop) | Order emails send at once after checkout, with the sweep as backstop | ✅ Accepted |
 | [ADR-030](#adr-030-stop-emailing-addresses-that-bounce-or-complain-fed-by-resends-webhook) | Stop emailing addresses that bounce or complain, fed by Resend's webhook | ✅ Accepted |
+| [ADR-031](#adr-031-a-daily-admin-digest-of-returns-running-late-reusing-the-existing-late-definition) | A daily admin digest of returns running late, reusing the existing "late" definition | ✅ Accepted |
 
 ---
 
@@ -776,3 +777,24 @@ Original decision: Option 2. The Stripe code stayed in the repo (real, working c
 - The table holds personal data (email addresses): RLS on, no policies or grants, service-role functions only. Logs record the reason and a count, never the address.
 - A suppression is permanent until someone removes the row. There is no admin screen for it yet; that is a follow-up if support needs it.
 - Only the app's own return and order emails consult it. Supabase's auth emails are sent by Supabase through Resend's SMTP and are not affected (Resend still suppresses hard-bounced addresses on its side for them).
+
+---
+
+## ADR-031: A daily admin digest of returns running late, reusing the existing "late" definition
+
+**Status:** ✅ Accepted
+
+**Context:** Late return cases are only visible to an admin who opens the dashboard (the bell and the "waiting on" badges). An admin who does not open it that day learns nothing, and a case can sit past its target.
+
+**Options Considered:**
+1. An email per late case — rejected: noisy, and a case stays late for days, so it would repeat.
+2. A separate "late" rule in SQL for the digest — rejected: it would duplicate `getWaitingStatus`, and the bell and the digest could then disagree about what is late.
+3. One email a day per admin, built from the same `getWaitingStatus` and target constants as the bell — chosen.
+
+**Decision:** Option 3. The 15-minute sweep calls `sendAdminReturnDigest`. From 9:00 Philippine time it claims `(Philippine date, admin)` in `admin_digest_log` before building or sending, so overlapping runs cannot double-send and a day is handled once. It loads open returns through the service role, applies `getWaitingStatus` with `RETURN_ADMIN_DECISION_TARGET_DAYS` and `RETURN_SELLER_FULFILMENT_TARGET_DAYS`, and lists the cases waiting on the admin and those waiting on sellers, longest first, capped at 10 per section. **Nothing is sent on a day with nothing late.**
+
+**Consequences:**
+- It is a signal, not an escalation: nothing is decided, reassigned or closed by it, same as the bell. The two target constants are display targets, not business rules; changing them changes the bell and the digest together.
+- A claim is kept on a day with nothing late, so a case that becomes late later the same day waits for the next morning's digest.
+- Every active admin receives it; there is no per-admin switch yet. A suppressed address (ADR-030) or an inactive admin is skipped.
+- Only the return queue is covered. Late orders, payouts and low stock are not in the digest.

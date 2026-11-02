@@ -6345,6 +6345,94 @@ export async function recordEmailSuppression(
 }
 
 // ============================================================================
+// Admin daily digest (service role only — see
+// 20261102160000_admin_digest_log.sql)
+// ============================================================================
+
+/** A return that might be running late, with the timestamps `getWaitingStatus` reads. */
+export interface DigestReturn {
+  orderNumber: string;
+  status: ReturnStatus;
+  createdAt: string;
+  sellerDecidedAt: string | null;
+  adminDecidedAt: string | null;
+  returnShippedAt: string | null;
+  returnReceivedAt: string | null;
+  replacementShippedAt: string | null;
+  codRefundedAt: string | null;
+  restockedAt: string | null;
+  markedUnsellableAt: string | null;
+}
+
+/**
+ * Open returns that are waiting on the admin or on a seller, oldest first. The
+ * caller decides which are late (`getWaitingStatus`), so the definition of late
+ * lives in one place. Capped: a digest lists the worst few, not everything.
+ */
+export async function listReturnsForAdminDigest(limit = 200): Promise<DigestReturn[]> {
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin
+    .from(DATABASE_TABLES.RETURN_REQUESTS)
+    .select(
+      "status, created_at, seller_decided_at, admin_decided_at, return_shipped_at, return_received_at, replacement_shipped_at, cod_refunded_at, restocked_at, marked_unsellable_at, orders!inner(order_number)",
+    )
+    .in("status", [
+      RETURN_STATUS.sellerAccepted,
+      RETURN_STATUS.sellerRejected,
+      RETURN_STATUS.returnReceived,
+      RETURN_STATUS.refundDue,
+      RETURN_STATUS.pending,
+      RETURN_STATUS.returnShipped,
+      RETURN_STATUS.replacementApproved,
+    ])
+    .neq("reason_code", "order_cancelled")
+    .order("created_at", { ascending: true })
+    .limit(limit);
+  if (error) throw queryError("Failed to load returns for the admin digest", error);
+
+  return (data ?? []).map((row) => ({
+    orderNumber: row.orders.order_number,
+    status: row.status,
+    createdAt: row.created_at,
+    sellerDecidedAt: row.seller_decided_at,
+    adminDecidedAt: row.admin_decided_at,
+    returnShippedAt: row.return_shipped_at,
+    returnReceivedAt: row.return_received_at,
+    replacementShippedAt: row.replacement_shipped_at,
+    codRefundedAt: row.cod_refunded_at,
+    restockedAt: row.restocked_at,
+    markedUnsellableAt: row.marked_unsellable_at,
+  }));
+}
+
+/** The ids of active administrators, who receive the digest. */
+export async function listActiveAdminIds(): Promise<string[]> {
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin
+    .from(DATABASE_TABLES.PROFILES)
+    .select("id")
+    .eq("role", USER_ROLES.admin)
+    .eq("is_active", true);
+  if (error) throw queryError("Failed to load administrators", error);
+  return (data ?? []).map((row) => row.id);
+}
+
+/** Atomically claims one admin's digest for a date, so two overlapping runs cannot both send it. False means it was already handled. */
+export async function claimAdminDigest(date: string, adminId: string): Promise<boolean> {
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin.rpc("claim_admin_digest", { p_date: date, p_admin_id: adminId });
+  if (error) throw queryError("Failed to claim an admin digest", error);
+  return data === true;
+}
+
+/** Gives a claim back after a failed send so the next run retries it. */
+export async function releaseAdminDigest(date: string, adminId: string): Promise<void> {
+  const admin = createSupabaseAdminClient();
+  const { error } = await admin.rpc("release_admin_digest", { p_date: date, p_admin_id: adminId });
+  if (error) throw queryError("Failed to release an admin digest", error);
+}
+
+// ============================================================================
 // Order email outbox (service role only — see
 // 20261102140000_order_email_notifications.sql)
 // ============================================================================

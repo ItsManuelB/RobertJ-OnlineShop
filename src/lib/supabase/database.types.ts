@@ -2928,6 +2928,11 @@ export type Database = {
       }
       is_admin: { Args: never; Returns: boolean }
       is_shop_member: { Args: { p_shop_id: string }; Returns: boolean }
+      claim_admin_digest: {
+        Args: { p_admin_id: string; p_date: string }
+        Returns: boolean
+      }
+
       claim_order_notification: {
         Args: { p_kind: string; p_order_id: string }
         Returns: boolean
@@ -2955,6 +2960,11 @@ export type Database = {
 
       record_email_suppression: {
         Args: { p_detail?: string; p_email: string; p_reason: string }
+        Returns: undefined
+      }
+
+      release_admin_digest: {
+        Args: { p_admin_id: string; p_date: string }
         Returns: undefined
       }
 

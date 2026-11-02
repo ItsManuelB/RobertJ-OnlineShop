@@ -6,7 +6,7 @@ import { getServerEnv } from "@/config/env";
 import * as queries from "@/lib/supabase/queries";
 import { recoverCancellationRefunds } from "@/features/payments/lib/cancellation-refund";
 import { reconcileXenditRefund } from "@/features/payments/lib/xendit-refund-reconciliation";
-import { sendDueOrderEmails, sendDueReturnEmails } from "@/features/notifications/server";
+import { sendAdminReturnDigest, sendDueOrderEmails, sendDueReturnEmails } from "@/features/notifications/server";
 import {
   isStaleXenditAttempt,
   reconcileStaleXenditAttempt,
@@ -133,8 +133,9 @@ export async function GET(request: NextRequest) {
   const returns = await runReturnExpirySweep();
   const returnEmails = await runReturnEmailSweep();
   const orderEmails = await runOrderEmailSweep();
+  const adminDigest = await runAdminDigestSweep();
 
-  return NextResponse.json({ received: true, ...summary, expiry, refunds, returns, returnEmails, orderEmails });
+  return NextResponse.json({ received: true, ...summary, expiry, refunds, returns, returnEmails, orderEmails, adminDigest });
 }
 
 /**
@@ -164,6 +165,21 @@ async function runOrderEmailSweep() {
   } catch (error) {
     console.error("[order email sweep] failed", error);
     return { configured: true, due: 0, sent: 0, skipped: 0, failed: 0, error: true };
+  }
+}
+
+/**
+ * The admins' daily digest of returns running late: once a day, from 9:00
+ * Philippine time, and only when something is late. Does nothing until
+ * RESEND_API_KEY and EMAIL_FROM are set. A failure here is logged and never
+ * affects the sweeps above.
+ */
+async function runAdminDigestSweep() {
+  try {
+    return await sendAdminReturnDigest();
+  } catch (error) {
+    console.error("[admin digest] failed", error);
+    return { configured: true, due: false, admins: 0, late: 0, sent: 0, skipped: 0, failed: 0, error: true };
   }
 }
 
