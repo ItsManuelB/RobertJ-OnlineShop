@@ -29,6 +29,12 @@ const CATEGORY_BY_EVENT: Record<BuyerActivityEventType, ActivityCategory> = {
   return_rejected: "returns",
   return_refunded: "returns",
   return_replacement_approved: "returns",
+  return_approved_ship_back: "returns",
+  return_received: "returns",
+  return_expired: "returns",
+  return_payout_pending: "returns",
+  return_replacement_shipped: "returns",
+  return_replacement_completed: "returns",
 };
 
 /** Events that tell the buyer something went wrong or needs a look. */
@@ -38,6 +44,8 @@ const ATTENTION_EVENTS: ReadonlySet<BuyerActivityEventType> = new Set([
   "cancellation_declined",
   "return_rejected_by_seller",
   "return_rejected",
+  "return_approved_ship_back",
+  "return_expired",
 ]);
 
 export function getActivityCategory(eventType: BuyerActivityEventType): ActivityCategory {
