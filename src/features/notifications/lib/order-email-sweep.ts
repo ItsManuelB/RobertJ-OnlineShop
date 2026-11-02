@@ -2,16 +2,17 @@ import "server-only";
 
 import { publicEnv } from "@/config/env";
 import { ROUTES } from "@/constants/routes";
+import { getEmailChrome } from "@/lib/email/chrome";
+import { renderEmail } from "@/lib/email/layout";
 import { isEmailConfigured, sendEmail } from "@/lib/email/resend";
 import * as queries from "@/lib/supabase/queries";
 import {
-  ORDER_EMAIL_FOOTER,
   getOrderEmailAudience,
   isOrderEmailKind,
   isSellerOrderEmailAllowed,
-  orderEmailParts,
+  orderEmailMessage,
 } from "@/features/notifications/utils/order-email";
-import { isBuyerReturnEmailAllowed, renderEmail } from "@/features/notifications/utils/return-email";
+import { isBuyerReturnEmailAllowed } from "@/features/notifications/utils/return-email";
 
 export interface OrderEmailSweepSummary {
   /** False when no key or From address is set: nothing was looked up or sent. */
@@ -61,19 +62,36 @@ async function deliverDueOrderEmails(due: queries.DueOrderNotification[], summar
         continue;
       }
 
+      // The lines and shipment are decoration: if they cannot be read, the email still says everything it must.
+      // The delivered notice lists nothing, so it does not read them.
+      const details =
+        kind === "buyer_order_delivered"
+          ? null
+          : await queries.getOrderEmailDetails(item.orderId).catch((detailsError) => {
+              console.error("[order email] could not load order details; sending without them", {
+                orderId: item.orderId,
+                kind,
+                message: detailsError instanceof Error ? detailsError.message : "unknown error",
+              });
+              return null;
+            });
+
       const path = audience === "buyer" ? ROUTES.orderDetail(item.orderId) : ROUTES.sellerOrders;
       const mail = renderEmail(
-        orderEmailParts({
+        orderEmailMessage({
           kind,
           orderNumber: item.orderNumber,
+          url: new URL(path, publicEnv.NEXT_PUBLIC_SITE_URL).toString(),
           totalCents: item.totalCents,
           currency: item.currency,
           paymentMethod: item.paymentMethod,
           paymentStatus: item.paymentStatus,
           itemCount: item.itemCount,
+          // The buyer's name is only ever shown to the buyer.
+          firstName: audience === "buyer" ? recipient.firstName : null,
+          details,
         }),
-        new URL(path, publicEnv.NEXT_PUBLIC_SITE_URL).toString(),
-        ORDER_EMAIL_FOOTER[audience],
+        getEmailChrome(audience),
       );
       await sendEmail({
         to: recipient.email,

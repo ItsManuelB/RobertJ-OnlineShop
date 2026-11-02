@@ -7,6 +7,13 @@ All notable changes to RoberJ Online Shop are documented here, newest first. For
 
 ## [Unreleased]
 
+### Changed (Email redesign)
+
+- Every email the app sends now uses one shared layout in the shop's emerald brand, with the real logo, a status badge, a highlighted box for the date that matters, a centred button and a footer that says why the email was sent and links to the email settings. It fits phones down to 320px wide.
+- The order receipt lists the items and shipping fee, the shipped email shows the courier and tracking number, the refund email shows the amount, and buyers are greeted by first name. Subjects are 60 characters or fewer; the full deadline moved into the email body.
+- The daily admin digest is a table with an age pill for each case.
+- Password-reset, signup-confirmation and email-change emails are generated from the same layout into `supabase/templates/`. They take effect only once pasted into the Supabase dashboard. Design in ADR-032.
+
 ### Added (Admin returns digest)
 
 - Each active admin gets one email a day, from 9:00 Philippine time, listing returns running late: those waiting on the admin and those waiting on sellers, longest first. Nothing is sent on a day with nothing late.

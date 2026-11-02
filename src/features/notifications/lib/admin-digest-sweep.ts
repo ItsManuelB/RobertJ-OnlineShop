@@ -2,6 +2,8 @@ import "server-only";
 
 import { publicEnv } from "@/config/env";
 import { ROUTES } from "@/constants/routes";
+import { getEmailChrome } from "@/lib/email/chrome";
+import { renderEmail } from "@/lib/email/layout";
 import { isEmailConfigured, sendEmail } from "@/lib/email/resend";
 import * as queries from "@/lib/supabase/queries";
 import {
@@ -10,14 +12,12 @@ import {
   getWaitingStatus,
 } from "@/features/returns";
 import {
-  ADMIN_DIGEST_FOOTER,
-  adminDigestParts,
+  adminDigestMessage,
   getAdminDigestWindow,
   hasDigestContent,
   type AdminDigestInput,
   type DigestLine,
 } from "@/features/notifications/utils/admin-digest";
-import { renderEmail } from "@/features/notifications/utils/return-email";
 
 export interface AdminDigestSummary {
   /** False when no key or From address is set: nothing was looked up or sent. */
@@ -109,9 +109,8 @@ export async function sendAdminReturnDigest(now: Date = new Date()): Promise<Adm
       }
 
       const mail = renderEmail(
-        adminDigestParts(input),
-        new URL(ROUTES.adminReturns, publicEnv.NEXT_PUBLIC_SITE_URL).toString(),
-        ADMIN_DIGEST_FOOTER,
+        adminDigestMessage(input, new URL(ROUTES.adminReturns, publicEnv.NEXT_PUBLIC_SITE_URL).toString()),
+        getEmailChrome(null),
       );
       await sendEmail({
         to: recipient.email,
