@@ -19,6 +19,7 @@ Set these under Project Settings -> Environment Variables for **Production and P
 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Baked in at build time. The widget's hostnames must be plain (`robertjshop.store`, `www.robertjshop.store`, `robertj-shop-store.vercel.app`, `localhost`), with no trailing dot or scheme, or the widget fails with error 110200. Its secret key goes in Supabase -> Authentication -> Attack Protection. |
 | `XENDIT_SECRET_KEY`, `XENDIT_WEBHOOK_TOKEN` | Server only. |
 | `CRON_SECRET` | Vercel sends it as `Authorization: Bearer <value>` on cron calls. |
+| `RESEND_API_KEY`, `EMAIL_FROM` | Optional. Turn on return/refund emails (ADR-028). Leave both empty and the emails stay off. `EMAIL_FROM` is a full From header on a domain verified in Resend, e.g. `RobertJ Shop <no-reply@robertjshop.store>`. Server only. |
 
 ## 3. External settings
 

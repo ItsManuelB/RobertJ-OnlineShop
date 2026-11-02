@@ -2915,6 +2915,25 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: number
       }
+      list_due_return_notifications: {
+        Args: { p_limit?: number }
+        Returns: {
+          deadline_at: string | null
+          kind: string
+          order_id: string
+          order_number: string
+          recipient_id: string
+          return_request_id: string
+        }[]
+      }
+      claim_return_notification: {
+        Args: { p_kind: string; p_return_id: string }
+        Returns: boolean
+      }
+      release_return_notification: {
+        Args: { p_kind: string; p_return_id: string }
+        Returns: undefined
+      }
       cancel_order_with_refund: {
         Args: { p_order_id: string; p_reason: string }
         Returns: Json

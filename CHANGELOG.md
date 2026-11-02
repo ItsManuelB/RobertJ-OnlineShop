@@ -7,6 +7,15 @@ All notable changes to RoberJ Online Shop are documented here, newest first. For
 
 ## [Unreleased]
 
+### Added (Return and refund emails)
+
+- **Sellers are told:** an email when a buyer files a return request, and a reminder after 2 of the 3 reply days ("Reply needed"), so the admin does not have to step in for a request nobody saw.
+- **Buyers are told:** an email when a Return and Refund is approved, with the ship-back deadline in Philippine time, and a reminder when under 48 hours are left. Before this, a buyer only learned of the 5-day deadline by opening the order.
+- **Switches respected:** buyers' "email" and "order updates" settings, sellers' "return alerts". Off means no email.
+- **Off until configured:** needs `RESEND_API_KEY` and `EMAIL_FROM` in Vercel (see `docs/deployment-vercel.md`). With either empty, nothing is sent and nothing else changes. Only recent requests are eligible, so turning it on does not mail the backlog.
+- Sent by the existing 15-minute reconciliation sweep, so it adds no new cron or secret. Design in ADR-028.
+- Migration `20261102120000_return_email_notifications.sql`: a service-role-only `return_notification_log` table and three functions. Apply it before deploying this code. Not added: emails for the other buyer events, and an Admin digest.
+
 ### Added (Buyer return and refund updates)
 
 - **Told at every step:** the notifications feed now shows when a Return and Refund is approved (with the ship-back deadline), when the seller receives the parcel, when a return expires unshipped, when a cash-on-delivery refund is approved and the payout is on its way, and when a replacement ships or completes. Approval and expiry are flagged as needing attention.
