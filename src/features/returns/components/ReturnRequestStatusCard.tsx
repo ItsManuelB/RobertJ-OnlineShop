@@ -8,6 +8,7 @@ import {
   RETURN_REQUEST_TYPE_LABELS,
 } from "@/features/returns/constants/return.constants";
 import type { ReturnRequest } from "@/features/returns/types/return.types";
+import { getShipBackDeadline } from "@/features/returns/utils/return-deadline";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDateTime } from "@/lib/utils/date";
 import { cn } from "@/lib/utils/cn";
@@ -38,6 +39,28 @@ const RETURN_NEXT_STEP: Partial<Record<ReturnStatus, string>> = {
   replacement_approved: "the seller ships the replacement (its stock is taken off the shelf when it ships).",
   replacement_shipped: "the buyer confirms the replacement arrived. If they don't, it completes automatically after 7 days.",
 };
+
+function ShipBackDeadlineLine({
+  deadlineAt,
+  ink,
+  muted,
+  themed,
+}: {
+  deadlineAt: string;
+  ink: string;
+  muted: string;
+  themed: boolean;
+}) {
+  const deadline = getShipBackDeadline(deadlineAt);
+  const urgentTone = themed ? "text-destructive" : "text-rj-red";
+  return (
+    <p className={cn("mt-2 text-xs", muted)}>
+      <span className={cn("font-semibold", ink)}>Ship back by:</span> {formatDateTime(deadlineAt)}
+      {" · "}
+      <span className={cn("font-semibold", deadline.urgent ? urgentTone : ink)}>{deadline.label}</span>
+    </p>
+  );
+}
 
 export interface ReturnRequestStatusCardProps {
   request: ReturnRequest;
@@ -181,9 +204,7 @@ export async function ReturnRequestStatusCard({
       ) : null}
 
       {request.returnDeadlineAt && request.status === RETURN_STATUS.awaitingReturn ? (
-        <p className={cn("mt-2 text-xs", muted)}>
-          <span className={cn("font-semibold", ink)}>Ship back by:</span> {formatDateTime(request.returnDeadlineAt)}
-        </p>
+        <ShipBackDeadlineLine deadlineAt={request.returnDeadlineAt} ink={ink} muted={muted} themed={themed} />
       ) : null}
 
       {request.returnShippedAt ? (

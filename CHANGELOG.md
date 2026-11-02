@@ -7,6 +7,13 @@ All notable changes to RoberJ Online Shop are documented here, newest first. For
 
 ## [Unreleased]
 
+### Added (Buyer return and refund updates)
+
+- **Told at every step:** the notifications feed now shows when a Return and Refund is approved (with the ship-back deadline), when the seller receives the parcel, when a return expires unshipped, when a cash-on-delivery refund is approved and the payout is on its way, and when a replacement ships or completes. Approval and expiry are flagged as needing attention.
+- **Deadline countdown:** the return card on the order page now shows how long is left to ship the item back ("Ship back by 7 Nov · 3 days left"), in red once under a day.
+- **Fixes in the feed:** a cash-on-delivery refund is dated by the real payout, not the approval; "replacement approved" no longer disappears once the replacement ships.
+- Migration `20261102110000_buyer_activity_feed_return_events.sql` (function only, no new table or column; same signature). Apply it before deploying this code. Not added: "seller accepted", which needs a new column to tell apart from a rejection once the request moves on.
+
 ### Added (Stalled return and refund signals)
 
 - **Who is waiting, and for how long:** the Returns queues for the seller and the admin now show "Waiting on admin · 3 days" on each open request, in red with "· late" once the person is past their target (admin 2 days, seller 3 days for confirming a returned parcel, shipping a replacement or recording the item's condition). The admin banner counts the late ones, and the admin bell has a "Returns waiting too long" item.
