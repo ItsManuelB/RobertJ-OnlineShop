@@ -23,6 +23,10 @@ const serverEnvSchema = publicEnvSchema.extend({
   XENDIT_WEBHOOK_TOKEN: z.string().min(1).optional(),
   /** Compared against the `Authorization: Bearer <secret>` header Vercel Cron sends when this env var is set. Phase 4A passive-reconciliation sweep only — distinct from XENDIT_WEBHOOK_TOKEN (different caller, different trust boundary). */
   CRON_SECRET: z.string().min(1).optional(),
+  /** Resend API key for transactional email (return/refund reminders). Optional: with no key, or no EMAIL_FROM, the email sweep does nothing and the app is otherwise unaffected. */
+  RESEND_API_KEY: z.string().min(1).optional(),
+  /** The From header, e.g. `RobertJ Shop <no-reply@your-verified-domain>`. The domain must be verified in Resend. */
+  EMAIL_FROM: z.string().min(1).optional(),
 });
 
 /**
@@ -77,6 +81,8 @@ export function getServerEnv() {
     XENDIT_SECRET_KEY: process.env.XENDIT_SECRET_KEY,
     XENDIT_WEBHOOK_TOKEN: process.env.XENDIT_WEBHOOK_TOKEN,
     CRON_SECRET: process.env.CRON_SECRET,
+    RESEND_API_KEY: process.env.RESEND_API_KEY,
+    EMAIL_FROM: process.env.EMAIL_FROM,
   });
 
   if (!result.success) formatEnvError(result.error);

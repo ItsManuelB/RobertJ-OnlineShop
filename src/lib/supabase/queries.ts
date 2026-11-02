@@ -6229,6 +6229,89 @@ export async function requestReturn(
   }
 }
 
+// ============================================================================
+// Return/refund email outbox (service role only — see
+// 20261102120000_return_email_notifications.sql)
+// ============================================================================
+
+export interface DueReturnNotification {
+  returnRequestId: string;
+  /** One of `ReturnEmailKind`; narrowed by the caller. */
+  kind: string;
+  orderId: string;
+  orderNumber: string;
+  recipientId: string;
+  /** The seller's reply-by time or the buyer's ship-back deadline. */
+  deadlineAt: string | null;
+}
+
+/** Return emails that are due and not yet claimed, oldest first. */
+export async function listDueReturnNotifications(limit = 25): Promise<DueReturnNotification[]> {
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin.rpc("list_due_return_notifications", { p_limit: limit });
+  if (error) throw queryError("Failed to load due return emails", error);
+  return (data ?? []).map((row) => ({
+    returnRequestId: row.return_request_id,
+    kind: row.kind,
+    orderId: row.order_id,
+    orderNumber: row.order_number,
+    recipientId: row.recipient_id,
+    deadlineAt: row.deadline_at,
+  }));
+}
+
+/** Atomically claims one email so two overlapping runs cannot both send it. False means someone already did. */
+export async function claimReturnNotification(returnId: string, kind: string): Promise<boolean> {
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin.rpc("claim_return_notification", { p_return_id: returnId, p_kind: kind });
+  if (error) throw queryError("Failed to claim a return email", error);
+  return data === true;
+}
+
+/** Gives a claim back after a failed send so the next run retries it. */
+export async function releaseReturnNotification(returnId: string, kind: string): Promise<void> {
+  const admin = createSupabaseAdminClient();
+  const { error } = await admin.rpc("release_return_notification", { p_return_id: returnId, p_kind: kind });
+  if (error) throw queryError("Failed to release a return email", error);
+}
+
+export interface ReturnEmailRecipient {
+  /** Null when the account has no address or no longer exists. */
+  email: string | null;
+  isActive: boolean;
+  /** Null means the person never changed a setting, which counts as on. */
+  buyerPrefs: { emailEnabled: boolean; orderUpdates: boolean } | null;
+  sellerPrefs: { alertReturns: boolean } | null;
+}
+
+/**
+ * Where a return email goes and whether the person allows it. Emails live in
+ * the auth system, not in `profiles`, so this needs the service role; the
+ * address is used to send and never returned to a client.
+ */
+export async function getReturnEmailRecipient(userId: string): Promise<ReturnEmailRecipient> {
+  const admin = createSupabaseAdminClient();
+  const [authResult, profileResult, buyerResult, sellerResult] = await Promise.all([
+    admin.auth.admin.getUserById(userId),
+    admin.from(DATABASE_TABLES.PROFILES).select("is_active").eq("id", userId).maybeSingle(),
+    admin.from(DATABASE_TABLES.BUYER_PREFERENCES).select("email_enabled, order_updates").eq("user_id", userId).maybeSingle(),
+    admin.from(DATABASE_TABLES.SELLER_PREFERENCES).select("alert_returns").eq("user_id", userId).maybeSingle(),
+  ]);
+
+  if (profileResult.error) throw queryError("Failed to load a recipient profile", profileResult.error);
+  if (buyerResult.error) throw queryError("Failed to load a recipient's buyer settings", buyerResult.error);
+  if (sellerResult.error) throw queryError("Failed to load a recipient's seller settings", sellerResult.error);
+
+  return {
+    email: authResult.data.user?.email ?? null,
+    isActive: profileResult.data?.is_active ?? false,
+    buyerPrefs: buyerResult.data
+      ? { emailEnabled: buyerResult.data.email_enabled, orderUpdates: buyerResult.data.order_updates }
+      : null,
+    sellerPrefs: sellerResult.data ? { alertReturns: sellerResult.data.alert_returns } : null,
+  };
+}
+
 /**
  * The order's own seller, or admin, accepts/rejects a pending return
  * request via the `respond_to_return` RPC — the sole write path. Ownership
