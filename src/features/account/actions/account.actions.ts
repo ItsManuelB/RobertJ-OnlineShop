@@ -242,6 +242,18 @@ export async function deactivateAccountAction(): Promise<ActionResult<null>> {
   redirect(ROUTES.signIn);
 }
 
+/**
+ * Only the rate limiter's own copy is safe to show; any other error may carry
+ * provider/database internals, so it is logged and replaced by `fallback`.
+ */
+function friendlyExportError(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.startsWith("Too many attempts")) {
+    return error.message;
+  }
+  console.error("[account] action failed:", error);
+  return fallback;
+}
+
 /** Orders are fetched in pages of this size when building the data export. */
 const EXPORT_ORDER_PAGE_SIZE = 100;
 /** Upper bound so a pathological account can't make one export unbounded. */
@@ -266,13 +278,23 @@ export async function exportMyDataAction(): Promise<ActionResult<MyDataExport>> 
     ]);
 
     const orders = [];
+    let complete = false;
     for (let page = 1; page <= EXPORT_ORDER_MAX_PAGES; page += 1) {
       const result = await queries.listBuyerOrders(user.id, {
         page,
         pageSize: EXPORT_ORDER_PAGE_SIZE,
       });
       orders.push(...result.items);
-      if (page >= result.totalPages) break;
+      if (page >= result.totalPages) {
+        complete = true;
+        break;
+      }
+    }
+    // Never hand back a file that silently omits older orders.
+    if (!complete) {
+      return fail(
+        "Your order history is too large to download in one file. Please contact support for a full copy.",
+      );
     }
 
     return ok(
@@ -286,7 +308,7 @@ export async function exportMyDataAction(): Promise<ActionResult<MyDataExport>> 
       }),
     );
   } catch (error) {
-    return fail(error instanceof Error ? error.message : "Could not prepare your data.");
+    return fail(friendlyExportError(error, "Could not prepare your data. Please try again."));
   }
 }
 
@@ -298,8 +320,6 @@ export async function signOutOtherDevicesAction(): Promise<ActionResult<null>> {
     await queries.signOutOtherSessions();
     return ok(null);
   } catch (error) {
-    return fail(
-      error instanceof Error ? error.message : "Could not sign out your other devices.",
-    );
+    return fail(friendlyExportError(error, "Could not sign out your other devices."));
   }
 }
