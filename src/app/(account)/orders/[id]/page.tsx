@@ -19,6 +19,7 @@ import { PaymentStatusBadge } from "@/features/orders/components/PaymentStatusBa
 import { ReceiptConfirmedNotice } from "@/features/orders/components/ReceiptConfirmedNotice";
 import { SellerShopRow } from "@/features/orders/components/SellerShopRow";
 import { ShipmentTrackingCard } from "@/features/orders/components/ShipmentTrackingCard";
+import { ShippingAddressCard } from "@/features/orders/components/ShippingAddressCard";
 import { paymentMethodLabel } from "@/features/orders/utils/payment-method-label";
 import { PaymentStatusWatcher } from "@/features/payments/components/PaymentStatusWatcher";
 import { ReportProblemPanel } from "@/features/returns/components/ReportProblemPanel";
@@ -324,6 +325,7 @@ export default async function OrderDetailPage({
             reviewerPublicName={maskReviewerName(user.fullName)}
             rateItemId={rateItemId}
           />
+          <ShippingAddressCard address={order.shippingAddress} />
         </div>
         <div className="flex flex-col gap-6">
           <OrderSummary order={order} />
