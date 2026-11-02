@@ -6,16 +6,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { renderEmail } from "../src/lib/email/layout.ts";
 import {
-  ADMIN_DIGEST_FOOTER,
   ADMIN_DIGEST_MAX_LINES,
-  adminDigestParts,
+  ADMIN_DIGEST_REASON,
+  adminDigestMessage,
   describeDigestStatus,
   getAdminDigestWindow,
   hasDigestContent,
 } from "../src/features/notifications/utils/admin-digest.ts";
-import { renderEmail } from "../src/features/notifications/utils/return-email.ts";
 
+const URL = "https://shop.test/admin/returns-refunds";
+const chrome = { logoUrl: "https://shop.test/brand/email-logo.png", siteUrl: "https://shop.test", settingsUrl: null, canReply: false };
 const line = (orderNumber, days, status = "seller_accepted") => ({ orderNumber, days, status });
 const input = (extra = {}) => ({
   waitingOnAdmin: [],
@@ -24,6 +26,7 @@ const input = (extra = {}) => ({
   sellerTargetDays: 3,
   ...extra,
 });
+const message = (extra, max) => adminDigestMessage(input(extra), URL, max);
 
 test("the digest is due from 9:00 Philippine time, on the Philippine date", () => {
   // 00:59 UTC = 08:59 Manila: not yet. 01:00 UTC = 09:00 Manila: due.
@@ -50,59 +53,63 @@ test("nothing late means nothing to send", () => {
 
 test("the subject counts each side and omits an empty one", () => {
   assert.equal(
-    adminDigestParts(input({ waitingOnAdmin: [line("RJ-1", 3), line("RJ-2", 2)], waitingOnSellers: [line("RJ-3", 5, "pending")] })).subject,
+    message({ waitingOnAdmin: [line("RJ-1", 3), line("RJ-2", 2)], waitingOnSellers: [line("RJ-3", 5, "pending")] }).subject,
     "Returns running late: 2 waiting on you, 1 waiting on sellers",
   );
-  assert.equal(adminDigestParts(input({ waitingOnAdmin: [line("RJ-1", 3)] })).subject, "Returns running late: 1 waiting on you");
-  assert.equal(adminDigestParts(input({ waitingOnSellers: [line("RJ-3", 5, "pending")] })).subject, "Returns running late: 1 waiting on sellers");
+  assert.equal(message({ waitingOnAdmin: [line("RJ-1", 3)] }).subject, "Returns running late: 1 waiting on you");
+  assert.equal(message({ waitingOnSellers: [line("RJ-3", 5, "pending")] }).subject, "Returns running late: 1 waiting on sellers");
 });
 
-test("grammar follows the count", () => {
-  assert.match(adminDigestParts(input({ waitingOnAdmin: [line("RJ-1", 1)] })).intro, /^1 return is running late\.$/);
-  assert.match(adminDigestParts(input({ waitingOnAdmin: [line("RJ-1", 3), line("RJ-2", 3)] })).intro, /^2 returns are running late\.$/);
+test("the headline's grammar follows the count", () => {
+  assert.equal(message({ waitingOnAdmin: [line("RJ-1", 1)] }).headline, "1 return is running late");
+  assert.equal(message({ waitingOnAdmin: [line("RJ-1", 3), line("RJ-2", 3)] }).headline, "2 returns are running late");
 });
 
-test("the longest-waiting case is listed first, with its status and days", () => {
-  const parts = adminDigestParts(input({ waitingOnAdmin: [line("RJ-1", 2), line("RJ-2", 9, "return_received"), line("RJ-3", 1, "refund_due")] }));
-  const [section] = parts.sections;
+test("the preheader names the longest wait", () => {
+  const m = message({ waitingOnAdmin: [line("RJ-1", 3)], waitingOnSellers: [line("RJ-2", 9, "pending")] });
+  assert.equal(m.preheader, "Longest wait: 9 days, order RJ-2.");
+});
+
+test("the longest-waiting case is listed first, with its status and age", () => {
+  const m = message({ waitingOnAdmin: [line("RJ-1", 2), line("RJ-2", 9, "return_received"), line("RJ-3", 1, "refund_due")] });
+  const [section] = m.sections;
   assert.equal(section.heading, "Waiting on you (over 2 days)");
-  assert.equal(section.items[0], "Order RJ-2: item received, refund decision needed (9 days)");
-  assert.match(section.items[2], /1 day\)/);
-  assert.doesNotMatch(section.items[2], /1 days/);
+  assert.deepEqual(section.rows[0], { label: "RJ-2", text: "Item received, refund decision needed", pill: "9 days" });
+  assert.equal(section.rows[2].pill, "1 day");
 });
 
 test("a long list is capped and says how many more", () => {
   const many = Array.from({ length: ADMIN_DIGEST_MAX_LINES + 4 }, (_, i) => line(`RJ-${i}`, 10 + i));
-  const items = adminDigestParts(input({ waitingOnAdmin: many })).sections[0].items;
-  assert.equal(items.length, ADMIN_DIGEST_MAX_LINES + 1);
-  assert.equal(items.at(-1), "and 4 more");
+  const rows = message({ waitingOnAdmin: many }).sections[0].rows;
+  assert.equal(rows.length, ADMIN_DIGEST_MAX_LINES + 1);
+  assert.deepEqual(rows.at(-1), { label: "", text: "and 4 more", pill: "" });
 });
 
 test("both sections carry their own target and the wording makes clear nothing is automatic", () => {
-  const parts = adminDigestParts(input({ waitingOnAdmin: [line("RJ-1", 3)], waitingOnSellers: [line("RJ-2", 5, "pending")] }));
-  assert.deepEqual(parts.sections.map((s) => s.heading), ["Waiting on you (over 2 days)", "Waiting on sellers (over 3 days)"]);
-  assert.match(parts.detail, /nothing is decided or escalated automatically/);
+  const m = message({ waitingOnAdmin: [line("RJ-1", 3)], waitingOnSellers: [line("RJ-2", 5, "pending")] });
+  assert.deepEqual(m.sections.map((s) => s.heading), ["Waiting on you (over 2 days)", "Waiting on sellers (over 3 days)"]);
+  assert.match(m.paragraphs[0], /nothing is decided or escalated automatically/);
 });
 
 test("every status an admin can see has plain words, and unknown ones do not leak a raw code", () => {
   for (const status of ["seller_accepted", "seller_rejected", "return_received", "refund_due", "pending", "return_shipped", "replacement_approved"]) {
     assert.doesNotMatch(describeDigestStatus(status), /_/, status);
   }
-  assert.equal(describeDigestStatus("something_new"), "waiting");
+  assert.equal(describeDigestStatus("something_new"), "Waiting");
 });
 
-test("rendered, the sections appear as a headed list in text and html, escaped", () => {
-  const parts = adminDigestParts(input({ waitingOnAdmin: [line("<b>RJ</b>", 3)] }));
-  const mail = renderEmail(parts, "https://shop.test/admin/returns", ADMIN_DIGEST_FOOTER);
-  assert.match(mail.text, /Waiting on you \(over 2 days\)\n- Order <b>RJ<\/b>: needs your decision \(3 days\)/);
-  assert.match(mail.html, /<ul style="margin-top:0"><li>Order &lt;b&gt;RJ&lt;\/b&gt;/);
-  assert.doesNotMatch(mail.html, /<li>Order <b>/);
-  assert.match(mail.text, /Open returns: https:\/\/shop\.test\/admin\/returns/);
-  assert.match(mail.text, /only sent on a day when a return is running late/);
+test("the subject fits a phone", () => {
+  const m = message({ waitingOnAdmin: [line("RJ-1", 3)], waitingOnSellers: [line("RJ-2", 5, "pending")] });
+  assert.ok(m.subject.length <= 60, `${m.subject.length} characters`);
 });
 
-test("an email without sections renders exactly as before", () => {
-  const mail = renderEmail({ subject: "s", intro: "i", detail: "d", cta: "Go" }, "https://x.test", "foot");
-  assert.equal(mail.text, "i\n\nd\n\nGo: https://x.test\n\nfoot\n");
-  assert.doesNotMatch(mail.html, /<ul/);
+test("rendered, each case is a table row with an age pill, escaped, and the reason is in the footer", () => {
+  const mail = renderEmail(message({ waitingOnAdmin: [line("<b>RJ</b>", 3)] }), chrome);
+  assert.match(mail.text, /Waiting on you \(over 2 days\)\n- <b>RJ<\/b>: Needs your decision \(3 days\)/);
+  assert.match(mail.html, /<strong[^>]*>&lt;b&gt;RJ&lt;\/b&gt;<\/strong><br>Needs your decision/);
+  assert.match(mail.html, />3 days<\/span>/);
+  assert.doesNotMatch(mail.html, /<strong[^>]*><b>/);
+  assert.match(mail.text, /Open returns: https:\/\/shop\.test\/admin\/returns-refunds/);
+  assert.ok(mail.text.includes(ADMIN_DIGEST_REASON));
+  assert.match(ADMIN_DIGEST_REASON, /only sent on a day when a return is running late/);
 });

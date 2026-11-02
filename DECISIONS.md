@@ -48,6 +48,7 @@ Every decision is a numbered ADR with a fixed shape: **Context → Problem → O
 | [ADR-029](#adr-029-order-emails-send-at-once-after-checkout-with-the-sweep-as-backstop) | Order emails send at once after checkout, with the sweep as backstop | ✅ Accepted |
 | [ADR-030](#adr-030-stop-emailing-addresses-that-bounce-or-complain-fed-by-resends-webhook) | Stop emailing addresses that bounce or complain, fed by Resend's webhook | ✅ Accepted |
 | [ADR-031](#adr-031-a-daily-admin-digest-of-returns-running-late-reusing-the-existing-late-definition) | A daily admin digest of returns running late, reusing the existing "late" definition | ✅ Accepted |
+| [ADR-032](#adr-032-one-shared-email-layout-and-account-emails-kept-in-the-repo) | One shared email layout, and account emails kept in the repo | ✅ Accepted |
 
 ---
 
@@ -798,3 +799,24 @@ Original decision: Option 2. The Stripe code stayed in the repo (real, working c
 - A claim is kept on a day with nothing late, so a case that becomes late later the same day waits for the next morning's digest.
 - Every active admin receives it; there is no per-admin switch yet. A suppressed address (ADR-030) or an inactive admin is skipped.
 - Only the return queue is covered. Late orders, payouts and low stock are not in the digest.
+
+---
+
+## ADR-032: One shared email layout, and account emails kept in the repo
+
+**Status:** ✅ Accepted
+
+**Context:** Each email module (returns, orders, the admin digest) produced its own words, but the layout lived in `return-email.ts` and the order and digest senders imported it from there. The layout used the old red button, had no logo, no phone styling and no Outlook-safe button, and the footer text was defined in three files. The password-reset email was a bare heading and a link, set by hand in the Supabase dashboard with no history.
+
+**Options Considered:**
+1. A templating or email-component library (React Email, MJML) — rejected: a new dependency (CLAUDE.md asks for clear value and approval) for markup that is a few table rows.
+2. Leave the layout in the return module and restyle it there — rejected: the dependency points the wrong way and the account emails still could not share it.
+3. A pure `src/lib/email/layout.ts` that turns an `EmailMessage` (words and data) into HTML and plain text; each module returns only an `EmailMessage`; account emails are rendered from the same layout into `supabase/templates/` — chosen.
+
+**Decision:** Option 3. `layout.ts` has no imports, so Node can unit-test it. It is table-based and fluid (full width up to 600px, tighter padding and a full-width button under 480px), with the brand colours from `globals.css` written out once, the real logo (a 120 KB copy at `/brand/email-logo.png`; the original is 2 MB), a status badge, a callout for the one date that matters, a button built from a table cell (Outlook ignores padding on a link), a hidden preheader, and a footer with the reason, a settings link and the shop address. `chrome.ts` supplies the logo and footer links. Subjects are 60 characters or fewer, with the full deadline in the body. The order receipt lists the lines and shipping fee, the shipped email the courier and tracking number, the refund email the amount, read through `getOrderEmailDetails` and `getReturnRefundAmount`; if a read fails the email still sends without it. The recipient lookup adds a first name for the greeting; seller emails never carry the buyer's name.
+
+**Consequences:**
+- The outbox, claim-before-send, windows and opt-out rules are untouched. No migration, no new dependency.
+- `renderEmail`, `buildReturnEmail`, `orderEmailParts` and `adminDigestParts` are replaced by `renderEmail(message, chrome)` and one `...Message` function per module. They were internal to the notifications feature.
+- The generated templates in `supabase/templates/` must be pasted into the Supabase dashboard by hand (the hosted project does not read the folder); rerun `npm run build:email-templates` after any layout change.
+- The layout is checked with unit tests and a rendered screenshot, not in real mail clients. Gmail and Outlook may recolour or restyle some parts; send one of each to a real inbox before relying on it.

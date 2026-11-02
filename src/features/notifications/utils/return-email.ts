@@ -1,4 +1,5 @@
-// No value imports on purpose: unit-tested with plain Node, which can't resolve the `@/` alias.
+// Types only on purpose: unit-tested with plain Node, which can't resolve the `@/` alias or sibling value imports.
+import type { EmailMessage } from "@/lib/email/layout";
 
 /** Mirrors the `kind` check constraint on `return_notification_log`. */
 export const RETURN_EMAIL_KINDS = [
@@ -45,24 +46,8 @@ export interface ReturnEmailInput {
   url: string;
   /** The seller's reply-by time, or the buyer's ship-back deadline. Null for outcomes with no deadline. */
   deadlineAt: string | null;
-}
-
-export interface ReturnEmailContent {
-  subject: string;
-  text: string;
-  html: string;
-}
-
-const HTML_ESCAPES: Record<string, string> = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;",
-  "'": "&#39;",
-};
-
-export function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (char) => HTML_ESCAPES[char]);
+  /** The refund as shown to the buyer (already formatted), when known. Only the refund email uses it. */
+  refundAmount?: string | null;
 }
 
 /** "Sat, 7 Nov 2026, 3:20 pm (Philippine time)". Shown in Manila time whatever the server's zone is. */
@@ -79,114 +64,117 @@ export function formatDeadline(iso: string): string {
   return `${formatted} (Philippine time)`;
 }
 
-/** The words of one email. The order emails reuse the layout and only supply their own text. */
-export interface EmailParts {
-  subject: string;
-  intro: string;
-  detail: string;
-  /** Optional headed lists between the detail and the button (the admin digest). */
-  sections?: { heading: string; items: string[] }[];
-  cta: string;
+/** "7 Nov", for places too short for the full deadline (the subject line). Manila time. */
+export function formatShortDate(iso: string): string {
+  return new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", day: "numeric", month: "short" }).format(new Date(iso));
 }
 
-function partsFor(input: ReturnEmailInput): EmailParts {
-  const { kind, orderNumber, deadlineAt } = input;
+/** Why the person got the email, by audience. */
+export const RETURN_EMAIL_REASON: Record<ReturnEmailAudience, string> = {
+  buyer: "You get this because order update emails are on for your account.",
+  seller: "You get this because return alerts are on for your seller account.",
+};
+
+/** The words of one return email. Pure: the caller supplies the link and the amounts. */
+export function returnEmailMessage(input: ReturnEmailInput): EmailMessage {
+  const { kind, orderNumber, deadlineAt, url } = input;
   const by = deadlineAt ? formatDeadline(deadlineAt) : null;
+  const byShort = deadlineAt ? formatShortDate(deadlineAt) : null;
+  const reason = RETURN_EMAIL_REASON[getReturnEmailAudience(kind)];
+  const orderRow = { label: "Order", value: orderNumber };
+
   switch (kind) {
     case "seller_new_request":
       return {
         subject: `New return request for order ${orderNumber}`,
-        intro: `A buyer asked for a return or refund on order ${orderNumber}.`,
-        detail: by
-          ? `Please read the reason and photo, then accept or reject it by ${by}.`
-          : "Please read the reason and photo, then accept or reject it.",
-        cta: "Open returns",
+        preheader: byShort ? `Reply by ${byShort}.` : "Open it to accept or reject.",
+        badge: { label: "Action needed", tone: "warning" },
+        headline: "A buyer asked for a return",
+        paragraphs: ["Please read the reason and photo, then accept or reject it."],
+        rows: [orderRow],
+        callout: by ? { label: "Reply by", text: by } : undefined,
+        cta: { label: "Open returns", url },
+        reason,
       };
     case "seller_response_reminder":
       return {
-        subject: `Reply needed: return request for order ${orderNumber}`,
-        intro: `The return request for order ${orderNumber} is still waiting for your answer.`,
-        detail: by
-          ? `Please accept or reject it by ${by}. After that, the admin can decide without your reply.`
-          : "Please accept or reject it. After the response time, the admin can decide without your reply.",
-        cta: "Open returns",
+        subject: `Reply needed: return request for ${orderNumber}`,
+        preheader: byShort ? `After ${byShort} the admin can decide without you.` : "The admin can decide without your reply.",
+        badge: { label: "Reminder", tone: "warning" },
+        headline: "A return is waiting for your answer",
+        paragraphs: ["Please accept or reject it. After the reply time, the admin can decide without your reply."],
+        rows: [orderRow],
+        callout: by ? { label: "Reply by", text: by } : undefined,
+        cta: { label: "Open returns", url },
+        reason,
       };
     case "buyer_return_approved":
       return {
-        subject: by
-          ? `Return approved: ship back order ${orderNumber} by ${by}`
-          : `Return approved for order ${orderNumber}`,
-        intro: `Your return for order ${orderNumber} was approved.`,
-        detail: by
-          ? `Please ship the item back and enter the courier and tracking number on your order page by ${by}. If it is not shipped in time, the request closes and nothing is refunded.`
-          : "Please ship the item back and enter the courier and tracking number on your order page.",
-        cta: "Open my order",
+        subject: byShort ? `Return approved for ${orderNumber}: ship back by ${byShort}` : `Return approved for order ${orderNumber}`,
+        preheader: "Ship it back and add the tracking number.",
+        badge: { label: "Return approved", tone: "success" },
+        headline: "Your return was approved",
+        paragraphs: [
+          by
+            ? `Order ${orderNumber} can be sent back. If it is not shipped in time, the request closes and nothing is refunded.`
+            : `Order ${orderNumber} can be sent back.`,
+        ],
+        callout: by ? { label: "Ship back by", text: by } : undefined,
+        steps: [
+          "Pack the item with its tags.",
+          "Ship it with any courier.",
+          "Enter the courier and tracking number on your order page.",
+        ],
+        cta: { label: "Add tracking number", url },
+        reason,
       };
     case "buyer_ship_back_reminder":
       return {
-        subject: by
-          ? `Reminder: ship back order ${orderNumber} by ${by}`
-          : `Reminder: ship back order ${orderNumber}`,
-        intro: `Your return for order ${orderNumber} is waiting for you to ship the item back.`,
-        detail: by
-          ? `The deadline is ${by}. Enter the courier and tracking number on your order page once you have shipped it. If it is not shipped in time, the request closes and nothing is refunded.`
-          : "Enter the courier and tracking number on your order page once you have shipped it.",
-        cta: "Open my order",
+        subject: byShort ? `Reminder: ship back ${orderNumber} by ${byShort}` : `Reminder: ship back order ${orderNumber}`,
+        preheader: "Your return closes if it is not shipped in time.",
+        badge: { label: "Reminder", tone: "warning" },
+        headline: "Your return is waiting to be shipped",
+        paragraphs: [
+          by
+            ? `Order ${orderNumber} is waiting for you to ship the item back. Enter the courier and tracking number once you have shipped it. If it is not shipped in time, the request closes and nothing is refunded.`
+            : `Order ${orderNumber} is waiting for you to ship the item back. Enter the courier and tracking number once you have shipped it.`,
+        ],
+        callout: by ? { label: "Ship back by", text: by } : undefined,
+        cta: { label: "Add tracking number", url },
+        reason,
       };
     case "buyer_return_refunded":
       return {
         subject: `Refund issued for order ${orderNumber}`,
-        intro: `Your refund for order ${orderNumber} has been issued.`,
-        detail:
-          "How soon it shows in your account depends on your bank or e-wallet. Open your order to see the details.",
-        cta: "Open my order",
+        preheader: input.refundAmount ? `${input.refundAmount} is on its way back to you.` : "Your refund has been issued.",
+        badge: { label: "Refund issued", tone: "success" },
+        headline: "Your refund has been issued",
+        paragraphs: ["How soon it shows in your account depends on your bank or e-wallet."],
+        rows: input.refundAmount ? [orderRow, { label: "Refund amount", value: input.refundAmount }] : [orderRow],
+        cta: { label: "View my order", url },
+        reason,
       };
     case "buyer_return_rejected":
       return {
-        subject: `Return request not approved for order ${orderNumber}`,
-        intro: `Your return request for order ${orderNumber} was not approved.`,
-        detail: "Open your order to see the decision and any note from the admin.",
-        cta: "Open my order",
+        subject: `Return request not approved for ${orderNumber}`,
+        preheader: "See the decision and the admin's note.",
+        badge: { label: "Not approved", tone: "danger" },
+        headline: "Your return was not approved",
+        paragraphs: ["Open your order to see the decision and any note from the admin."],
+        rows: [orderRow],
+        cta: { label: "View the decision", url },
+        reason,
       };
     case "buyer_return_expired":
       return {
-        subject: `Return closed for order ${orderNumber}: not shipped back in time`,
-        intro: `Your return for order ${orderNumber} was closed because the item was not shipped back by the deadline.`,
-        detail: "Nothing is refunded for a closed return. Open your order for details.",
-        cta: "Open my order",
+        subject: `Return closed for order ${orderNumber}`,
+        preheader: "It was not shipped back by the deadline.",
+        badge: { label: "Return closed", tone: "danger" },
+        headline: "Your return was closed",
+        paragraphs: ["The item was not shipped back by the deadline, so nothing is refunded. Open your order for details."],
+        rows: [orderRow],
+        cta: { label: "View my order", url },
+        reason,
       };
   }
-}
-
-const FOOTER: Record<ReturnEmailAudience, string> = {
-  buyer: "You receive this because order update emails are on in your account notification settings.",
-  seller: "You receive this because return alerts are on in your seller notification settings.",
-};
-
-/** Subject, plain text and HTML for one email from its words. Pure: the caller supplies the link and the footer. */
-export function renderEmail(parts: EmailParts, url: string, footer: string): ReturnEmailContent {
-  const sections = parts.sections ?? [];
-  const sectionsText = sections.map((section) => `${section.heading}\n${section.items.map((item) => `- ${item}`).join("\n")}\n\n`).join("");
-  const text = `${parts.intro}\n\n${parts.detail}\n\n${sectionsText}${parts.cta}: ${url}\n\n${footer}\n`;
-  const sectionsHtml = sections
-    .map(
-      (section) =>
-        `<p style="margin-bottom:4px"><strong>${escapeHtml(section.heading)}</strong></p>` +
-        `<ul style="margin-top:0">${section.items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`,
-    )
-    .join("");
-  const html =
-    `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#1d2327;max-width:560px">` +
-    `<p>${escapeHtml(parts.intro)}</p>` +
-    `<p>${escapeHtml(parts.detail)}</p>` +
-    sectionsHtml +
-    `<p><a href="${escapeHtml(url)}" style="display:inline-block;padding:10px 16px;background:#d62828;color:#ffffff;text-decoration:none;border-radius:6px">${escapeHtml(parts.cta)}</a></p>` +
-    `<p style="font-size:12px;color:#5d676d">${escapeHtml(footer)}</p>` +
-    `</div>`;
-  return { subject: parts.subject, text, html };
-}
-
-/** Subject, plain text and HTML for one return email. Pure: the caller supplies the link and the times. */
-export function buildReturnEmail(input: ReturnEmailInput): ReturnEmailContent {
-  return renderEmail(partsFor(input), input.url, FOOTER[getReturnEmailAudience(input.kind)]);
 }
