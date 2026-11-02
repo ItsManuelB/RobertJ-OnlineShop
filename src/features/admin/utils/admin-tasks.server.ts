@@ -6,6 +6,11 @@ import { ROUTES } from "@/constants/routes";
 import { RETURN_STATUS } from "@/constants/status";
 import type { PortalNotification } from "@/components/portal/portal.types";
 import {
+  RETURN_ADMIN_DECISION_TARGET_DAYS,
+  RETURN_SELLER_FULFILMENT_TARGET_DAYS,
+  getWaitingStatus,
+} from "@/features/returns";
+import {
   getLowStockReport,
   getOrderAttentionCounts,
   getOverduePendingReturnCount,
@@ -27,16 +32,29 @@ import {
  * even see, let alone act on (the RPC refused anything still `pending`).
  */
 async function loadAdminNotifications(): Promise<PortalNotification[]> {
-  const [attentionCounts, lowStock, pendingReturns, payoutReturns, receivedReturns, overdueReturns, stalePayments] = await Promise.all([
+  const [attentionCounts, lowStock, acceptedReturns, rejectedReturns, payoutReturns, receivedReturns, overdueReturns, stalePayments] = await Promise.all([
     getOrderAttentionCounts(),
     getLowStockReport(),
     listReturnRequests(RETURN_STATUS.sellerAccepted),
+    listReturnRequests(RETURN_STATUS.sellerRejected),
     listReturnRequests(RETURN_STATUS.refundDue),
     listReturnRequests(RETURN_STATUS.returnReceived),
     getOverduePendingReturnCount(),
     // A failed count must not take the whole bell down.
     getStalePaymentCount().catch(() => 0),
   ]);
+
+  // A seller rejection also needs the admin: it is an escalation, not a final answer.
+  const pendingReturns = [...acceptedReturns, ...rejectedReturns];
+
+  // Cases the admin has had longer than the target. Display only: nothing escalates.
+  const lateDecisions = [...pendingReturns, ...receivedReturns, ...payoutReturns].filter((request) => {
+    const waiting = getWaitingStatus(request, {
+      admin: RETURN_ADMIN_DECISION_TARGET_DAYS,
+      seller: RETURN_SELLER_FULFILMENT_TARGET_DAYS,
+    });
+    return waiting?.actor === "admin" && waiting.pastTarget;
+  }).length;
 
   const notifications: PortalNotification[] = [];
 
@@ -98,6 +116,16 @@ async function loadAdminNotifications(): Promise<PortalNotification[]> {
       href: ROUTES.adminReturns,
       tone: "danger",
       count: overdueReturns,
+    });
+  }
+  if (lateDecisions > 0) {
+    notifications.push({
+      id: "late-return-decisions",
+      title: "Returns waiting too long",
+      description: `${lateDecisions} return${lateDecisions === 1 ? "" : "s"} waiting on you for more than ${RETURN_ADMIN_DECISION_TARGET_DAYS} days`,
+      href: ROUTES.adminReturns,
+      tone: "danger",
+      count: lateDecisions,
     });
   }
   if (stalePayments > 0) {
