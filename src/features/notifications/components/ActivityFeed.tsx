@@ -125,7 +125,14 @@ export function ActivityFeed({ events, category, limit }: ActivityFeedProps) {
       )}
 
       {events.length >= limit ? (
-        <p className="text-center text-xs text-rj-gray-400">Showing your latest {limit} updates</p>
+        <Link
+          href={`${ROUTES.notifications}?${
+            category ? `type=${category}&` : ""
+          }before=${encodeURIComponent(events[events.length - 1].occurredAt)}`}
+          className="block text-center text-xs font-semibold text-rj-red-dark hover:underline"
+        >
+          Load older updates
+        </Link>
       ) : null}
     </div>
   );

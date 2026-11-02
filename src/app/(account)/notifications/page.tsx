@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 
 import { EmptyState } from "@/components/feedback/EmptyState";
+import { ErrorState } from "@/components/feedback/ErrorState";
 import { ROUTES } from "@/constants/routes";
 import { CatalogHeader } from "@/features/products/components/CatalogHeader";
 import { ActivityFeed } from "@/features/notifications/components/ActivityFeed";
@@ -24,13 +25,23 @@ interface NotificationsPageProps {
 export default async function NotificationsPage({ searchParams }: NotificationsPageProps) {
   const params = await searchParams;
   const category = parseActivityCategory(typeof params.type === "string" ? params.type : undefined);
+  const beforeParam = typeof params.before === "string" ? params.before : undefined;
+  const before = beforeParam && !Number.isNaN(Date.parse(beforeParam)) ? beforeParam : undefined;
   // `proxy.ts` already guards /notifications; this is the belt-and-suspenders re-check.
   const user = await requireSessionUser();
   const preferences = await getMyBuyerPreferences(user.id).catch(() => null);
 
   const orderUpdatesOff = preferences !== null && !preferences.orderUpdates;
 
-  const events = orderUpdatesOff ? [] : await getBuyerActivityFeed(FEED_LIMIT).catch(() => []);
+  let events: Awaited<ReturnType<typeof getBuyerActivityFeed>> = [];
+  let loadFailed = false;
+  if (!orderUpdatesOff) {
+    try {
+      events = await getBuyerActivityFeed(FEED_LIMIT, before);
+    } catch {
+      loadFailed = true;
+    }
+  }
 
   return (
     <div className="flex flex-col gap-8">
@@ -52,6 +63,8 @@ export default async function NotificationsPage({ searchParams }: NotificationsP
             </Link>
           }
         />
+      ) : loadFailed ? (
+        <ErrorState message="We couldn't load your notifications right now. Please try again shortly." />
       ) : (
         <ActivityFeed events={events} category={category} limit={FEED_LIMIT} />
       )}
