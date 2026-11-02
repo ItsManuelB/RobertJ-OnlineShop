@@ -10,6 +10,7 @@ import { BuyAgainButton } from "@/features/orders/components/BuyAgainButton";
 import { CancelOrderButton } from "@/features/orders/components/CancelOrderButton";
 import { OrderCancellationSection } from "@/features/orders/components/OrderCancellationSection";
 import { DeliveryResolutionChoice } from "@/features/orders/components/DeliveryResolutionChoice";
+import { OrderActivityTimeline } from "@/features/orders/components/OrderActivityTimeline";
 import { OrderHeader } from "@/features/orders/components/OrderHeader";
 import { OrderItemsList } from "@/features/orders/components/OrderItemsList";
 import { OrderSummary } from "@/features/orders/components/OrderSummary";
@@ -18,7 +19,7 @@ import { OrderMessageButton } from "@/features/messages";
 import { PaymentStatusBadge } from "@/features/orders/components/PaymentStatusBadge";
 import { ReceiptConfirmedNotice } from "@/features/orders/components/ReceiptConfirmedNotice";
 import { SellerShopRow } from "@/features/orders/components/SellerShopRow";
-import { ShipmentTrackingCard } from "@/features/orders/components/ShipmentTrackingCard";
+import { ShippingAddressCard } from "@/features/orders/components/ShippingAddressCard";
 import { paymentMethodLabel } from "@/features/orders/utils/payment-method-label";
 import { PaymentStatusWatcher } from "@/features/payments/components/PaymentStatusWatcher";
 import { ReportProblemPanel } from "@/features/returns/components/ReportProblemPanel";
@@ -246,9 +247,39 @@ export default async function OrderDetailPage({
         ) : null}
       </div>
 
-      {showTracking ? (
-        <ShipmentTrackingCard shipment={shipment} shippedAt={order.shippedAt} />
+      {/* E-invoice is offered once the order is Delivered — the only
+          terminal "completed" order status — the point at which the sale is
+          complete for both COD and online orders. */}
+      {order.status === ORDER_STATUS.delivered ? (
+        <section
+          aria-label="E-invoice"
+          className={cn(RJ_CARD, "flex flex-wrap items-center justify-between gap-3 p-4")}
+        >
+          <div>
+            <p className="text-sm font-bold text-rj-black">E-invoice</p>
+            <p className="mt-0.5 text-xs text-rj-gray-600">
+              A printable invoice for this delivered order ({`INV-${order.orderNumber}`}).
+            </p>
+          </div>
+          <Link
+            href={ROUTES.orderInvoice(order.id)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={cn(buttonVariants({ variant: "rjOutline", size: "rjSm" }))}
+          >
+            Request Now
+          </Link>
+        </section>
       ) : null}
+
+      <section aria-label="Delivery" className="grid gap-6 lg:grid-cols-3">
+        <div className="lg:col-span-1">
+          <ShippingAddressCard address={order.shippingAddress} />
+        </div>
+        <div className="lg:col-span-2">
+          <OrderActivityTimeline order={order} shipment={shipment} />
+        </div>
+      </section>
 
       <OrderCancellationSection orderId={order.id} viewer="buyer" paidOnline={paidOnline} />
 

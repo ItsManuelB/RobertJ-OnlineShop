@@ -23,6 +23,7 @@ export const ROUTES = {
   orderDetail: (id: string) => `/orders/${id}`,
   orderCancellation: (id: string) => `/orders/${id}/cancellation`,
   orderReceipt: (id: string) => `/orders/${id}/receipt`,
+  orderInvoice: (id: string) => `/orders/${id}/invoice`,
   profile: "/profile",
   addresses: "/addresses",
   wishlist: "/wishlist",
