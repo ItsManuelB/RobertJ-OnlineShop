@@ -140,10 +140,7 @@ export function OrderTimeline({
           return (
             <li
               key={step}
-              className={cn(
-                "flex min-w-0 flex-1 flex-col items-center gap-2",
-                isLast && "flex-none",
-              )}
+              className="flex min-w-0 flex-1 flex-col items-center gap-2"
             >
               <div className="flex w-full items-center">
                 <span
